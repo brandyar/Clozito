@@ -1,0 +1,721 @@
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
+import { directusClient } from '../api/directus';
+import { swrCache } from '../api/swrCache';
+import { storageManager } from '../storage';
+import {
+  CACHED_USER_KEY,
+  safeSaveCachedUserProfile,
+  safeSetLocalStorageItem,
+} from '../utils/profileCache';
+import { getActiveLocale } from '../utils/formatters';
+import { BRAND } from '../config/brand';
+
+export interface UserRole {
+  id?: string;
+  name?: string;
+  description?: string;
+  admin_access?: boolean;
+}
+
+export interface User {
+  id: string;
+  first_name?: string;
+  last_name?: string;
+  email: string;
+  user_phone?: string;
+  avatar?: string;
+  title?: string;
+  description?: string;
+  role?: string | UserRole;
+  status?: string;
+  activeOrganization?: any;
+  active_organization?: any;
+  organizations?: any[];
+}
+
+export interface RegisterParams {
+  firstName?: string;
+  lastName?: string;
+  userPhone?: string;
+  user_phone?: string;
+  email: string;
+  pass?: string;
+  password?: string;
+  orgName?: string;
+  orgSlug?: string;
+  currency?: string;
+  locale?: 'en' | 'it';
+  initialCategoryName?: string;
+  initialWarehouseName?: string;
+}
+
+export type RegisterFunction = {
+  (params: RegisterParams): Promise<boolean>;
+  (firstName: string, lastName: string, email: string, password: string, orgName?: string): Promise<boolean>;
+};
+
+interface AuthContextType {
+  user: User | null;
+  isAuthenticated: boolean;
+  isCloudAuthenticated: boolean;
+  isLoading: boolean;
+  loginError: string | null;
+  isLoginModalOpen: boolean;
+  openLoginModal: () => void;
+  closeLoginModal: () => void;
+  login: (email: string, pass: string) => Promise<boolean>;
+  register: RegisterFunction;
+  loginOfflineGuest: () => void;
+  logout: () => Promise<void>;
+  updateUserOrganization: (org: any) => void;
+  refreshUser: () => Promise<User | null>;
+  updateUserProfile: (data: {
+    first_name?: string;
+    last_name?: string;
+    title?: string;
+    avatar?: string;
+    password?: string;
+    current_password?: string;
+  }) => Promise<{ success: boolean; error?: string }>;
+}
+
+const AuthContext = createContext<AuthContextType | undefined>(undefined);
+
+const LAST_ACTIVITY_KEY = 'tankhor_last_activity_timestamp';
+const MAX_INACTIVITY_MS = 24 * 60 * 60 * 1000; // 24 hours of inactivity requires re-login
+
+function sanitizeOrgPlanClient(org: any): any {
+  if (!org) return org;
+  const now = Date.now();
+  if (org.plan === 'pro') {
+    if (org.trial_ends_at && new Date(org.trial_ends_at).getTime() <= now && !org.has_active_subscription) {
+      return { ...org, plan: 'free', is_trial: false, trial_expired: true };
+    }
+  }
+  return org;
+}
+
+export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const [user, setUser] = useState<User | null>(() => {
+    try {
+      const token = localStorage.getItem('tankhor_directus_token');
+      const cached = localStorage.getItem(CACHED_USER_KEY);
+      if (token && cached) {
+        const parsed = JSON.parse(cached);
+        if (parsed && (parsed.id || parsed.email)) {
+          return parsed;
+        }
+      }
+    } catch {}
+    return null;
+  });
+
+  const [isCloudAuthenticated, setIsCloudAuthenticated] = useState<boolean>(() => {
+    try {
+      const token = localStorage.getItem('tankhor_directus_token');
+      const cached = localStorage.getItem(CACHED_USER_KEY);
+      return Boolean(token && cached);
+    } catch {
+      return false;
+    }
+  });
+
+  const [isLoading, setIsLoading] = useState<boolean>(() => {
+    try {
+      const token = localStorage.getItem('tankhor_directus_token');
+      const cached = localStorage.getItem(CACHED_USER_KEY);
+      // If we have token and cached profile, don't show full-screen blocking loader
+      return Boolean(token && !cached);
+    } catch {
+      return false;
+    }
+  });
+
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState<boolean>(false);
+
+  const openLoginModal = () => setIsLoginModalOpen(true);
+  const closeLoginModal = () => {
+    setIsLoginModalOpen(false);
+    setLoginError(null);
+  };
+
+  const updateActivity = useCallback(() => {
+    safeSetLocalStorageItem(LAST_ACTIVITY_KEY, Date.now().toString());
+  }, []);
+
+  const clearAllSessionData = useCallback(() => {
+    directusClient.setToken(null, null);
+    swrCache.clearAll();
+    localStorage.removeItem(CACHED_USER_KEY);
+    localStorage.removeItem('tankhor_directus_token');
+    localStorage.removeItem('tankhor_directus_refresh_token');
+    localStorage.removeItem('tankhor_active_org_id');
+    localStorage.removeItem(LAST_ACTIVITY_KEY);
+    setUser(null);
+    setIsCloudAuthenticated(false);
+    storageManager.setMode('local_offline', { verifiedPro: false, force: true });
+  }, []);
+
+  const lastActiveTimestampRef = useRef<number>(Date.now());
+
+  // Monitor user inactivity
+  useEffect(() => {
+    const handleUserInteraction = () => {
+      lastActiveTimestampRef.current = Date.now();
+      updateActivity();
+    };
+
+    window.addEventListener('mousedown', handleUserInteraction);
+    window.addEventListener('keydown', handleUserInteraction);
+    window.addEventListener('touchstart', handleUserInteraction);
+
+    return () => {
+      window.removeEventListener('mousedown', handleUserInteraction);
+      window.removeEventListener('keydown', handleUserInteraction);
+      window.removeEventListener('touchstart', handleUserInteraction);
+    };
+  }, [updateActivity]);
+
+  // Proactive Silent Token Refresh & Connection Warmup on idle resume or periodic keep-alive
+  useEffect(() => {
+    if (!isCloudAuthenticated) return;
+
+    const handleResumeOrWarmup = () => {
+      if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return;
+      const idleMs = Date.now() - lastActiveTimestampRef.current;
+      if (idleMs >= 45_000) {
+        lastActiveTimestampRef.current = Date.now();
+        directusClient.warmupConnection().catch(() => {});
+        directusClient.ensureFreshTokenIfNeeded().catch(() => {});
+      }
+    };
+
+    // Initial check on mount
+    directusClient.ensureFreshTokenIfNeeded().catch(() => {});
+
+    document.addEventListener('visibilitychange', handleResumeOrWarmup);
+    window.addEventListener('focus', handleResumeOrWarmup);
+
+    // Gentle 4-minute keep-alive & silent refresh check while tab is active
+    const keepAliveTimer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        directusClient.ensureFreshTokenIfNeeded().catch(() => {});
+        directusClient.warmupConnection().catch(() => {});
+      }
+    }, 4 * 60 * 1000);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleResumeOrWarmup);
+      window.removeEventListener('focus', handleResumeOrWarmup);
+      clearInterval(keepAliveTimer);
+    };
+  }, [isCloudAuthenticated]);
+
+  useEffect(() => {
+    const token = localStorage.getItem('tankhor_directus_token');
+    const lastActivity = localStorage.getItem(LAST_ACTIVITY_KEY);
+
+    // Check inactivity timeout
+    if (lastActivity) {
+      const elapsed = Date.now() - Number(lastActivity);
+      if (elapsed > MAX_INACTIVITY_MS) {
+        console.warn('[Auth] Session expired due to inactivity. Forcing re-login.');
+        clearAllSessionData();
+        setIsLoading(false);
+        return;
+      }
+    }
+
+    if (token) {
+      // Only set loading true if we don't already have hydrated cached user
+      if (!user) {
+        setIsLoading(true);
+      }
+
+      directusClient.getMe()
+        .then(async (meData) => {
+          if (meData && (meData.id || meData.email)) {
+            let activeOrg = sanitizeOrgPlanClient(meData.active_organization || meData.activeOrganization);
+            let orgsList = Array.isArray(meData.organizations) ? meData.organizations.map(sanitizeOrgPlanClient) : [];
+
+            if (orgsList.length === 0) {
+              const verifiedOrgs = await directusClient.getOrganizations().catch(() => []);
+              if (verifiedOrgs.length > 0) {
+                orgsList = verifiedOrgs.map(sanitizeOrgPlanClient);
+                if (!activeOrg) activeOrg = orgsList[0];
+              }
+            }
+
+            const finalUser: User = {
+              ...meData,
+              activeOrganization: activeOrg,
+              active_organization: activeOrg,
+              organizations: orgsList,
+            };
+
+            if (activeOrg && activeOrg.id) {
+              safeSetLocalStorageItem('tankhor_active_org_id', String(activeOrg.id));
+            }
+            safeSaveCachedUserProfile(finalUser);
+
+            storageManager.syncModeWithOrganization(activeOrg);
+
+            setUser(finalUser);
+            setIsCloudAuthenticated(true);
+            updateActivity();
+
+            if (activeOrg && activeOrg.id) {
+              storageManager.getLocalAdapter().saveOrganization(activeOrg).catch(() => {});
+            }
+          } else {
+            // Token was invalid or unauthenticated
+            clearAllSessionData();
+          }
+        })
+        .catch((err: any) => {
+          const isAuthError =
+            err?.status === 401 ||
+            err?.message?.includes('401') ||
+            err?.message?.toLowerCase().includes('token expired') ||
+            err?.message?.toLowerCase().includes('invalid token') ||
+            err?.message?.includes('TOKEN_EXPIRED') ||
+            err?.message?.includes('INVALID_TOKEN');
+
+          if (isAuthError) {
+            clearAllSessionData();
+          } else {
+            // Network glitch or transient offline: keep active cached session
+            console.warn('[Auth] Background check error, keeping local cached session:', err?.message);
+          }
+        })
+        .finally(() => setIsLoading(false));
+    } else {
+      // No token present -> User must always see LoginView (No auto-login or guest bypassing)
+      clearAllSessionData();
+      setIsLoading(false);
+    }
+  }, [clearAllSessionData, updateActivity]);
+
+  const handleOfflineFallback = (cachedUserRaw: string | null) => {
+    if (cachedUserRaw) {
+      try {
+        const parsed = JSON.parse(cachedUserRaw);
+        if (parsed && (parsed.id || parsed.email)) {
+          setUser(parsed);
+          setIsCloudAuthenticated(false);
+          storageManager.setMode('local_offline');
+          return;
+        }
+      } catch {
+        // invalid JSON
+      }
+    }
+    setUser(null);
+    setIsCloudAuthenticated(false);
+    storageManager.setMode('local_offline');
+  };
+
+  const loginOfflineGuest = () => {
+    const offlineUser: User = {
+      id: 'local_guest',
+      first_name: 'Local',
+      last_name: 'User',
+      email: 'guest@clozito.local',
+      role: 'Administrator (Offline)',
+    };
+    setUser(offlineUser);
+    setIsCloudAuthenticated(false);
+    safeSaveCachedUserProfile(offlineUser);
+    storageManager.setMode('local_offline', { verifiedPro: false, force: true });
+  };
+
+  const login = async (email: string, pass: string): Promise<boolean> => {
+    setLoginError(null);
+    setIsLoading(true);
+    // Always clear old tokens and caches before attempting login
+    directusClient.setToken(null, null);
+    swrCache.clearAll();
+    try {
+      const loginRes = await directusClient.login(email, pass);
+      let userData = await directusClient.getMe().catch(() => null);
+
+      const activeOrg = sanitizeOrgPlanClient(loginRes.activeOrganization || userData?.activeOrganization || userData?.active_organization);
+      const rawOrgs = (Array.isArray(loginRes.organizations) && loginRes.organizations.length > 0)
+        ? loginRes.organizations
+        : (Array.isArray(userData?.organizations) && userData.organizations.length > 0)
+        ? userData.organizations
+        : (activeOrg ? [activeOrg] : []);
+      const orgsList = rawOrgs.map(sanitizeOrgPlanClient);
+
+      const finalUser: User = {
+        ...(loginRes.user || {}),
+        ...(userData || {}),
+        email: email.toLowerCase().trim(),
+        activeOrganization: activeOrg,
+        active_organization: activeOrg,
+        organizations: orgsList,
+      };
+
+      if (finalUser && (finalUser.id || finalUser.email)) {
+        if (activeOrg && activeOrg.id) {
+          safeSetLocalStorageItem('tankhor_active_org_id', String(activeOrg.id));
+        }
+        safeSaveCachedUserProfile(finalUser);
+
+        storageManager.syncModeWithOrganization(activeOrg);
+
+        setUser(finalUser);
+        setIsCloudAuthenticated(true);
+        updateActivity();
+
+        if (activeOrg && activeOrg.id) {
+          await storageManager.getLocalAdapter().saveOrganization(activeOrg).catch(() => {});
+        }
+        for (const org of orgsList) {
+          if (org && org.id && org.name) {
+            await storageManager.getLocalAdapter().saveOrganization(org).catch(() => {});
+          }
+        }
+
+        setIsLoginModalOpen(false);
+        return true;
+      }
+      const isIt = getActiveLocale() === 'it';
+      throw new Error(isIt ? 'Impossibile caricare i dati del profilo utente.' : 'Failed to load user account profile.');
+    } catch (err: any) {
+      const isIt = getActiveLocale() === 'it';
+      const msg = err?.message || (isIt ? 'Email o password non validi.' : 'Invalid email address or password.');
+      setLoginError(msg);
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const register: RegisterFunction = (async (
+    paramOrFirst: RegisterParams | string,
+    lastNameArg?: string,
+    emailArg?: string,
+    passArg?: string,
+    orgNameArg?: string
+  ): Promise<boolean> => {
+    setLoginError(null);
+    setIsLoading(true);
+    // Always clear old tokens and caches before attempting registration
+    directusClient.setToken(null, null);
+    swrCache.clearAll();
+    const activeLocale = getActiveLocale();
+    const isIt = activeLocale === 'it';
+    try {
+      let finalParams: RegisterParams;
+      if (typeof paramOrFirst === 'object' && paramOrFirst !== null) {
+        finalParams = paramOrFirst;
+      } else {
+        const firstStr = typeof paramOrFirst === 'string' ? paramOrFirst : '';
+        finalParams = {
+          firstName: firstStr,
+          lastName: lastNameArg || '',
+          email: emailArg || '',
+          pass: passArg || '',
+          orgName:
+            orgNameArg ||
+            (isIt
+              ? firstStr ? `Boutique ${firstStr} ${lastNameArg || ''}`.trim() : 'La Mia Boutique'
+              : firstStr ? `${firstStr} ${lastNameArg || ''} Boutique`.trim() : 'My Boutique'),
+        };
+      }
+
+      const email = (finalParams.email || '').trim();
+      const password = (finalParams.pass || finalParams.password || '').trim();
+      const firstName = (finalParams.firstName || '').trim();
+      const lastName = (finalParams.lastName || '').trim();
+      const userPhone = (finalParams.userPhone || finalParams.user_phone || '').trim();
+      const regLocale = finalParams.locale || activeLocale;
+      const orgName =
+        (finalParams.orgName || '').trim() ||
+        (regLocale === 'it'
+          ? firstName ? `Boutique ${firstName} ${lastName}`.trim() : 'La Mia Boutique'
+          : firstName ? `${firstName} ${lastName} Boutique`.trim() : 'My Boutique');
+
+      if (!email || !password) {
+        setLoginError(isIt ? 'Inserisci email e password.' : 'Email address and password are required.');
+        return false;
+      }
+
+      // 1. Send registration request with user & custom organization data
+      const regRes = await directusClient.register({
+        first_name: firstName,
+        last_name: lastName,
+        user_phone: userPhone,
+        email: email,
+        password: password,
+        org_name: orgName,
+        org_slug: finalParams.orgSlug,
+        currency: finalParams.currency || BRAND.defaultCurrency,
+        locale: regLocale,
+        initial_category_name: finalParams.initialCategoryName,
+        initial_warehouse_name: finalParams.initialWarehouseName,
+      });
+
+      // 2. Fetch authenticated profile & organization
+      let userData = await directusClient.getMe().catch(() => null);
+      if (!userData && regRes.user) {
+        userData = regRes.user;
+      }
+
+      if (userData && (userData.id || userData.email)) {
+        const activeOrg = sanitizeOrgPlanClient(userData.active_organization || userData.activeOrganization || regRes.organization || regRes.activeOrganization);
+        const normalizedUser: User = {
+          ...userData,
+          activeOrganization: activeOrg,
+          active_organization: activeOrg,
+          organizations: Array.isArray(userData.organizations)
+            ? userData.organizations.map(sanitizeOrgPlanClient)
+            : (activeOrg ? [activeOrg] : []),
+        };
+
+        if (activeOrg && activeOrg.id) {
+          safeSetLocalStorageItem('tankhor_active_org_id', String(activeOrg.id));
+        }
+        safeSaveCachedUserProfile(normalizedUser);
+
+        storageManager.syncModeWithOrganization(activeOrg);
+
+        setUser(normalizedUser);
+        setIsCloudAuthenticated(true);
+        updateActivity();
+
+        if (activeOrg && activeOrg.id) {
+          await storageManager.getLocalAdapter().saveOrganization(activeOrg).catch(() => {});
+        }
+        if (Array.isArray(userData.organizations)) {
+          for (const org of userData.organizations) {
+            if (org && org.id && org.name) {
+              await storageManager.getLocalAdapter().saveOrganization(org).catch(() => {});
+            }
+          }
+        }
+
+        setIsLoginModalOpen(false);
+        return true;
+      }
+
+      setLoginError(
+        isIt
+          ? 'Account e spazio di lavoro creati. Effettua l\'accesso.'
+          : 'Account and workspace created. Please sign in.'
+      );
+      return false;
+    } catch (err: any) {
+      console.error('[AuthContext] Cloud Registration Failed:', err);
+      const errMsg = err?.message || err?.toString() || '';
+
+      if (
+        errMsg.toLowerCase().includes('unique') ||
+        errMsg.includes('RECORD_NOT_UNIQUE') ||
+        errMsg.toLowerCase().includes('already exists')
+      ) {
+        setLoginError(
+          isIt
+            ? 'Questa email è già registrata. Effettua l\'accesso.'
+            : 'This email address is already registered. Please sign in.'
+        );
+      } else {
+        setLoginError(isIt ? `Errore di registrazione: ${errMsg}` : `Registration error: ${errMsg}`);
+      }
+      return false;
+    } finally {
+      setIsLoading(false);
+    }
+  }) as RegisterFunction;
+
+  const logout = async (): Promise<void> => {
+    setIsLoading(true);
+    try {
+      await directusClient.logout();
+    } catch {
+      // Ignore network errors
+    } finally {
+      clearAllSessionData();
+      setIsLoading(false);
+    }
+  };
+
+  const updateUserOrganization = useCallback((updatedOrg: any) => {
+    if (!updatedOrg) return;
+    const sanitized = sanitizeOrgPlanClient(updatedOrg);
+    setUser((prevUser) => {
+      if (!prevUser) return prevUser;
+      const prevOrgs = Array.isArray(prevUser.organizations) ? [...prevUser.organizations] : [];
+      const idx = prevOrgs.findIndex((o) => o && o.id === sanitized.id);
+      let newOrgs = prevOrgs;
+      if (idx !== -1) {
+        newOrgs[idx] = { ...newOrgs[idx], ...sanitized };
+      } else {
+        newOrgs.push(sanitized);
+      }
+      const updatedUser: User = {
+        ...prevUser,
+        activeOrganization: sanitized,
+        active_organization: sanitized,
+        organizations: newOrgs,
+      };
+      safeSaveCachedUserProfile(updatedUser);
+      return updatedUser;
+    });
+
+    if (sanitized.id) {
+      safeSetLocalStorageItem('tankhor_active_org_id', String(sanitized.id));
+    }
+    try {
+      const cachedRaw = localStorage.getItem(CACHED_USER_KEY);
+      if (cachedRaw) {
+        const cached = JSON.parse(cachedRaw);
+        const prevOrgs = Array.isArray(cached.organizations) ? [...cached.organizations] : [];
+        const idx = prevOrgs.findIndex((o: any) => o && o.id === sanitized.id);
+        if (idx !== -1) {
+          prevOrgs[idx] = { ...prevOrgs[idx], ...sanitized };
+        } else {
+          prevOrgs.push(sanitized);
+        }
+        safeSaveCachedUserProfile({
+          ...cached,
+          activeOrganization: sanitized,
+          active_organization: sanitized,
+          organizations: prevOrgs,
+        });
+      }
+    } catch {}
+
+    storageManager.syncModeWithOrganization(sanitized);
+
+    if (sanitized.id) {
+      storageManager.getLocalAdapter().saveOrganization(sanitized).catch(() => {});
+    }
+  }, []);
+
+  const refreshUser = useCallback(async (): Promise<User | null> => {
+    try {
+      const meData = await directusClient.getMe();
+      if (meData && (meData.id || meData.email)) {
+        let activeOrg = sanitizeOrgPlanClient(meData.active_organization || meData.activeOrganization);
+        let orgsList = Array.isArray(meData.organizations) ? meData.organizations.map(sanitizeOrgPlanClient) : [];
+
+        if (orgsList.length === 0) {
+          const verifiedOrgs = await directusClient.getOrganizations().catch(() => []);
+          if (verifiedOrgs.length > 0) {
+            orgsList = verifiedOrgs.map(sanitizeOrgPlanClient);
+            if (!activeOrg) activeOrg = orgsList[0];
+          }
+        }
+
+        const finalUser: User = {
+          ...meData,
+          activeOrganization: activeOrg,
+          active_organization: activeOrg,
+          organizations: orgsList,
+        };
+
+        if (activeOrg && activeOrg.id) {
+          safeSetLocalStorageItem('tankhor_active_org_id', String(activeOrg.id));
+        }
+        safeSaveCachedUserProfile(finalUser);
+
+        storageManager.syncModeWithOrganization(activeOrg);
+        setUser(finalUser);
+
+        return finalUser;
+      }
+    } catch (err) {
+      console.warn('[AuthContext] refreshUser error:', err);
+    }
+    return null;
+  }, []);
+
+  const updateUserProfile = async (data: {
+    first_name?: string;
+    last_name?: string;
+    title?: string;
+    avatar?: string;
+    password?: string;
+    current_password?: string;
+  }): Promise<{ success: boolean; error?: string }> => {
+    try {
+      let updatedUser: any = null;
+      if (isCloudAuthenticated && directusClient.getToken()) {
+        updatedUser = await directusClient.updateMe(data);
+      } else {
+        // Offline / Local storage profile update
+        updatedUser = {
+          first_name: data.first_name,
+          last_name: data.last_name,
+          title: data.title,
+          avatar: data.avatar,
+        };
+      }
+      const mergedUser: User = {
+        ...(user || {}),
+        ...(updatedUser || {}),
+        first_name: data.first_name !== undefined ? data.first_name : user?.first_name,
+        last_name: data.last_name !== undefined ? data.last_name : user?.last_name,
+        title: data.title !== undefined ? data.title : user?.title,
+        avatar: data.avatar !== undefined ? data.avatar : user?.avatar,
+        id: user?.id || updatedUser?.id || 'local_user',
+        email: user?.email || updatedUser?.email || '',
+      };
+      setUser(mergedUser);
+      try {
+        const cachedRaw = localStorage.getItem(CACHED_USER_KEY);
+        if (cachedRaw) {
+          const cached = JSON.parse(cachedRaw);
+          safeSaveCachedUserProfile({ ...cached, ...mergedUser });
+        } else {
+          safeSaveCachedUserProfile(mergedUser);
+        }
+      } catch {}
+      return { success: true };
+    } catch (err: any) {
+      console.error('[AuthContext] Update Profile Failed:', err);
+      const activeLocale = getActiveLocale();
+      return {
+        success: false,
+        error:
+          err?.message ||
+          (activeLocale === 'it'
+            ? 'Errore durante l’aggiornamento del profilo utente'
+            : 'Failed to update user profile'),
+      };
+    }
+  };
+
+  return (
+    <AuthContext.Provider
+      value={{
+        user,
+        isAuthenticated: !!user,
+        isCloudAuthenticated,
+        isLoading,
+        loginError,
+        isLoginModalOpen,
+        openLoginModal,
+        closeLoginModal,
+        login,
+        register,
+        loginOfflineGuest,
+        logout,
+        updateUserOrganization,
+        refreshUser,
+        updateUserProfile,
+      }}
+    >
+      {children}
+    </AuthContext.Provider>
+  );
+};
+
+export const useAuth = () => {
+  const context = useContext(AuthContext);
+  if (!context) throw new Error('useAuth must be used within AuthProvider');
+  return context;
+};

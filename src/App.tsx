@@ -1,0 +1,396 @@
+import React, { useState, useEffect } from 'react';
+import { I18nProvider } from './i18n';
+import { ThemeProvider } from './context/ThemeContext';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { OrganizationProvider, useOrganization } from './context/OrganizationContext';
+import { AppShell } from './components/layout/AppShell';
+import { LoginView } from './features/auth/LoginView';
+import { DashboardView } from './features/dashboard/DashboardView';
+import { ProductsView } from './features/products/ProductsView';
+import { VariantsView } from './features/products/VariantsView';
+import { CategoriesView } from './features/products/CategoriesView';
+import { CollectionsView } from './features/products/CollectionsView';
+import { BrandsView } from './features/products/BrandsView';
+import { SeasonsView } from './features/products/SeasonsView';
+import { ColorsView } from './features/products/ColorsView';
+import { SizeGroupsView } from './features/products/SizeGroupsView';
+import { SizesView } from './features/products/SizesView';
+import { SizeGuidesView } from './features/products/SizeGuidesView';
+import { InventoryView } from './features/inventory/InventoryView';
+import { BarcodePrintView } from './features/inventory/BarcodePrintView';
+import { WarehousesView } from './features/inventory/WarehousesView';
+import { LocationsView } from './features/inventory/LocationsView';
+import { MovementsView } from './features/inventory/MovementsView';
+import { TransfersView } from './features/inventory/TransfersView';
+import { OrdersView } from './features/orders/OrdersView';
+import { CreateOrderView } from './features/orders/CreateOrderView';
+import { ReturnsView } from './features/orders/ReturnsView';
+import { CustomersView } from './features/customers/CustomersView';
+import { SuppliersView } from './features/purchasing/SuppliersView';
+import { PurchaseOrdersView } from './features/purchasing/PurchaseOrdersView';
+import { AccountingView } from './features/accounting/AccountingView';
+import { ProductionView } from './features/production/ProductionView';
+import { WooCommercePage } from './features/woocommerce/WooCommercePage';
+import { OnlineCatalogAdminView } from './features/online-catalog/OnlineCatalogAdminView';
+import { PublicCatalogView } from './features/online-catalog/public/PublicCatalogView';
+import { SettingsView } from './features/settings/SettingsView';
+import { ReportsView } from './features/reports/ReportsView';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
+import { isTauriEnvironment, storageManager } from './storage';
+import { WebFreePlanGuardModal } from './components/modals/WebFreePlanGuardModal';
+import { ConfirmModalHost } from './components/ui/ConfirmModal';
+import { UpdateNotificationModal } from './components/modals/UpdateNotificationModal';
+import { PaymentResultModal } from './components/modals/PaymentResultModal';
+import { ModuleAccessProvider } from './context/ModuleAccessContext';
+import { Card } from './components/ui/Card';
+import { Button } from './components/ui/Button';
+import { ShieldAlert, RefreshCw, Shirt, Home } from 'lucide-react';
+import { useTranslation } from './i18n';
+
+const AccessDeniedCard: React.FC<{ userRole: string; onReturn: () => void }> = ({ userRole, onReturn }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="py-12 px-4 max-w-xl mx-auto text-center">
+      <Card className="p-8 border-amber-200 dark:border-amber-900/50 bg-amber-50/50 dark:bg-amber-950/20">
+        <div className="w-14 h-14 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 flex items-center justify-center mx-auto mb-4 border border-amber-300/80 dark:border-amber-800/80 shadow-xs">
+          <ShieldAlert className="w-7 h-7" />
+        </div>
+        <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+          {t('common.accessDenied')}
+        </h3>
+        <p className="text-xs text-neutral-600 dark:text-neutral-400 mt-2 leading-relaxed">
+          {t('common.accessDeniedDesc').replace('{role}', userRole)}
+        </p>
+        <div className="mt-6 flex justify-center">
+          <Button variant="primary" onClick={onReturn} icon={<Home className="w-4 h-4" />}>
+            {t('common.returnToDashboard')}
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+};
+
+const AuthenticatedApp: React.FC = () => {
+  const [currentRoute, setCurrentRoute] = useState<string>('dashboard');
+  const [storageMode, setStorageMode] = useState<string>(() => storageManager.getMode());
+  const { permissions, userRole, activeOrganization } = useOrganization();
+  const isDesktop = isTauriEnvironment();
+  const isWebFreeLocked = !isDesktop && !!activeOrganization && activeOrganization.plan === 'free';
+
+  useEffect(() => {
+    const handleStorageModeChanged = () => {
+      setStorageMode(storageManager.getMode());
+    };
+    window.addEventListener('tankhor_storage_mode_changed', handleStorageModeChanged);
+    return () => {
+      window.removeEventListener('tankhor_storage_mode_changed', handleStorageModeChanged);
+    };
+  }, []);
+
+  const isRouteAllowed = (route: string): boolean => {
+    switch (route) {
+      case 'dashboard':
+        return true;
+      case 'orders/create':
+        return permissions.canCreateOrders;
+      case 'orders/all':
+      case 'orders/returns':
+      case 'sales/catalog':
+      case 'sales/catalog/products':
+      case 'sales/catalog/size-engine':
+      case 'catalog':
+      case 'online_catalog':
+      case 'sales/woocommerce':
+      case 'orders/woocommerce':
+      case 'woocommerce':
+        return permissions.canViewOrders || permissions.canViewProducts;
+      case 'customers/all':
+        return permissions.canViewCustomers;
+      case 'inventory/overview':
+      case 'inventory/barcodes':
+      case 'products/barcodes':
+      case 'inventory/movements':
+        return permissions.canViewInventory;
+      case 'inventory/warehouses':
+      case 'inventory/locations':
+      case 'inventory/transfers':
+        return permissions.canManageInventory;
+      case 'products/all':
+      case 'products/create':
+      case 'products/variants':
+      case 'products/categories':
+      case 'products/collections':
+      case 'products/brands':
+      case 'products/seasons':
+      case 'products/colors':
+      case 'products/size-groups':
+      case 'products/sizes':
+      case 'products/size-guides':
+        return permissions.canViewProducts;
+      case 'purchasing/suppliers':
+      case 'purchasing/orders':
+      case 'purchasing/orders/create':
+        return permissions.canViewPurchasing;
+      case 'production':
+      case 'production/overview':
+      case 'production/materials':
+      case 'production/boms':
+      case 'production/orders':
+      case 'production/contractors':
+        return permissions.canViewInventory || permissions.canViewProducts || permissions.canViewPurchasing;
+      case 'accounting':
+      case 'accounting/dashboard':
+      case 'accounting/expenses':
+      case 'accounting/persons':
+      case 'accounting/accounts':
+      case 'accounting/cheques':
+      case 'accounting/landed-costs':
+      case 'accounting/tax':
+      case 'accounting/export':
+        return permissions.canViewFinancials;
+      case 'reports/apparel':
+        return permissions.canViewOrders || permissions.canViewFinancials;
+      case 'settings':
+      case 'settings/org':
+      case 'settings/general':
+      case 'settings/members':
+      case 'settings/modules':
+      case 'settings/sync':
+      case 'settings/appearance':
+      case 'settings/updater':
+        return permissions.canManageOrgSettings || permissions.canManageUsers;
+      default:
+        return true;
+    }
+  };
+
+  const renderCurrentView = () => {
+    if (!isRouteAllowed(currentRoute)) {
+      return <AccessDeniedCard userRole={userRole} onReturn={() => setCurrentRoute('dashboard')} />;
+    }
+
+    switch (currentRoute) {
+      case 'dashboard':
+        return <DashboardView onNavigate={setCurrentRoute} />;
+      case 'products/all':
+        return <ProductsView />;
+      case 'products/create':
+        return <ProductsView initialCreateMode={true} />;
+      case 'products/variants':
+        return <VariantsView />;
+      case 'products/categories':
+        return <CategoriesView />;
+      case 'products/collections':
+        return <CollectionsView />;
+      case 'products/brands':
+        return <BrandsView />;
+      case 'products/seasons':
+        return <SeasonsView />;
+      case 'products/colors':
+        return <ColorsView />;
+      case 'products/size-groups':
+        return <SizeGroupsView />;
+      case 'products/sizes':
+        return <SizesView />;
+      case 'products/size-guides':
+        return <SizeGuidesView />;
+      case 'inventory/overview':
+        return <InventoryView />;
+      case 'inventory/barcodes':
+      case 'products/barcodes':
+        return <BarcodePrintView />;
+      case 'inventory/warehouses':
+        return <WarehousesView />;
+      case 'inventory/locations':
+        return <LocationsView />;
+      case 'inventory/movements':
+        return <MovementsView />;
+      case 'inventory/transfers':
+        return <TransfersView />;
+      case 'orders/all':
+        return <OrdersView onNavigateToCreate={() => setCurrentRoute('orders/create')} />;
+      case 'orders/create':
+        return <CreateOrderView onOrderCreated={() => setCurrentRoute('orders/all')} />;
+      case 'orders/returns':
+        return <ReturnsView />;
+      case 'sales/catalog':
+      case 'sales/catalog/products':
+      case 'sales/catalog/size-engine':
+      case 'catalog':
+      case 'online_catalog': {
+        const tab = currentRoute.includes('products')
+          ? 'products'
+          : currentRoute.includes('size-engine')
+          ? 'size-engine'
+          : 'overview';
+        return (
+          <OnlineCatalogAdminView
+            initialTab={tab}
+            onTabChange={(newTab) => {
+              setCurrentRoute(newTab === 'overview' ? 'sales/catalog' : `sales/catalog/${newTab}`);
+            }}
+          />
+        );
+      }
+      case 'sales/woocommerce':
+      case 'sales/woocommerce/overview':
+      case 'sales/woocommerce/mappings':
+      case 'sales/woocommerce/logs':
+      case 'sales/woocommerce/settings':
+      case 'orders/woocommerce':
+      case 'woocommerce': {
+        const tab = currentRoute.includes('mappings')
+          ? 'mappings'
+          : currentRoute.includes('logs')
+          ? 'logs'
+          : currentRoute.includes('settings')
+          ? 'settings'
+          : 'overview';
+        return (
+          <WooCommercePage
+            initialTab={tab}
+            onNavigateTab={(newTab) => {
+              setCurrentRoute(newTab === 'overview' ? 'sales/woocommerce' : `sales/woocommerce/${newTab}`);
+            }}
+          />
+        );
+      }
+      case 'customers/all':
+        return <CustomersView />;
+      case 'purchasing/suppliers':
+        return <SuppliersView />;
+      case 'purchasing/orders':
+        return <PurchaseOrdersView />;
+      case 'purchasing/orders/create':
+        return <PurchaseOrdersView initialCreateMode={true} />;
+      case 'production':
+      case 'production/overview':
+      case 'production/materials':
+      case 'production/boms':
+      case 'production/orders':
+      case 'production/contractors':
+        return <ProductionView activeSubRoute={currentRoute} onNavigate={setCurrentRoute} />;
+      case 'accounting':
+      case 'accounting/dashboard':
+      case 'accounting/expenses':
+      case 'accounting/persons':
+      case 'accounting/accounts':
+      case 'accounting/cheques':
+      case 'accounting/landed-costs':
+      case 'accounting/tax':
+      case 'accounting/export':
+        return <AccountingView activeSubRoute={currentRoute} onNavigate={setCurrentRoute} />;
+      case 'reports':
+      case 'reports/sales':
+      case 'reports/sales-profit':
+      case 'reports/apparel':
+      case 'reports/inventory':
+      case 'reports/dead-stock':
+        return <ReportsView activeSubRoute={currentRoute} onNavigate={setCurrentRoute} />;
+      case 'settings':
+      case 'settings/org':
+      case 'settings/general':
+      case 'settings/members':
+      case 'settings/modules':
+      case 'settings/sync':
+      case 'settings/appearance':
+      case 'settings/updater':
+        return <SettingsView activeSubRoute={currentRoute} onNavigate={setCurrentRoute} />;
+      default:
+        return <DashboardView onNavigate={setCurrentRoute} />;
+    }
+  };
+
+  // If user is on the Web with a Free plan organization, render the Dedicated Guard View only.
+  // No AppShell, sidebar, dashboard, or data components are mounted in the DOM.
+  if (isWebFreeLocked) {
+    return <WebFreePlanGuardModal />;
+  }
+
+  return (
+    <AppShell currentRoute={currentRoute} onNavigate={setCurrentRoute}>
+      <ErrorBoundary
+        key={`${currentRoute}:${activeOrganization?.id ?? 'none'}:${storageMode}`}
+        onReset={() => setCurrentRoute('dashboard')}
+      >
+        {renderCurrentView()}
+      </ErrorBoundary>
+    </AppShell>
+  );
+};
+
+const getPublicCatalogSlug = (): string | null => {
+  if (typeof window === 'undefined') return null;
+  const path = window.location.pathname;
+  if (path.startsWith('/c/')) {
+    return path.replace('/c/', '').split('/')[0] || null;
+  }
+  if (path.startsWith('/catalog/')) {
+    return path.replace('/catalog/', '').split('/')[0] || null;
+  }
+  const params = new URLSearchParams(window.location.search);
+  const qCatalog = params.get('catalog') || params.get('c');
+  if (qCatalog) return qCatalog;
+
+  const hash = window.location.hash;
+  if (hash.startsWith('#/c/')) {
+    return hash.replace('#/c/', '').split('/')[0] || null;
+  }
+  if (hash.startsWith('#/catalog/')) {
+    return hash.replace('#/catalog/', '').split('/')[0] || null;
+  }
+  return null;
+};
+
+const MainAppContent: React.FC = () => {
+  const publicCatalogSlug = getPublicCatalogSlug();
+  if (publicCatalogSlug) {
+    return <PublicCatalogView organizationSlug={publicCatalogSlug} />;
+  }
+
+  const { isAuthenticated, isLoading } = useAuth();
+  const { t } = useTranslation();
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-[#fafafa] dark:bg-[#0c0d10] flex flex-col items-center justify-center p-6 text-center font-sans">
+        <div className="w-12 h-12 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 flex items-center justify-center mb-4 shadow-md animate-bounce">
+          <Shirt className="w-6 h-6 text-white dark:text-neutral-900" />
+        </div>
+        <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">{t('common.appName')}</p>
+        <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-1 flex items-center gap-1.5">
+          <RefreshCw className="w-3.5 h-3.5 animate-spin text-neutral-400 dark:text-neutral-500" />
+          <span>{t('common.checkingSession')}</span>
+        </p>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginView />;
+  }
+
+  return (
+    <OrganizationProvider>
+      <ModuleAccessProvider>
+        <AuthenticatedApp />
+        <PaymentResultModal />
+      </ModuleAccessProvider>
+    </OrganizationProvider>
+  );
+};
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <I18nProvider>
+        <AuthProvider>
+          <MainAppContent />
+          <ConfirmModalHost />
+          <UpdateNotificationModal />
+        </AuthProvider>
+      </I18nProvider>
+    </ThemeProvider>
+  );
+}

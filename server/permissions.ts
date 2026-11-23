@@ -1,0 +1,385 @@
+// Collections with strict organization_id tenant boundary
+export const TENANT_SCOPED_COLLECTIONS = new Set([
+  'products',
+  'product_variants',
+  'categories',
+  'collections',
+  'seasons',
+  'colors',
+  'brands',
+  'size_groups',
+  'sizes',
+  'warehouses',
+  'warehouse_locations',
+  'inventory_items',
+  'inventory_movements',
+  'orders',
+  'order_items',
+  'order_returns',
+  'order_return_items',
+  'customers',
+  'suppliers',
+  'purchase_orders',
+  'purchase_order_items',
+  'stock_transfers',
+  'stock_transfer_items',
+  'size_guide_templates',
+  'size_guide_measurements',
+  'size_guide_values',
+  'organization_users',
+  'subscriptions',
+  'organization_modules',
+  'expense_categories',
+  'expenses',
+  'person_transactions',
+  'financial_accounts',
+  'treasury_transactions',
+  'cheques',
+  'landed_costs',
+  'landed_cost_allocations',
+  'pos_shifts',
+  'woocommerce_settings',
+  'woocommerce_logs',
+  'woocommerce_mappings',
+  'raw_materials',
+  'bill_of_materials',
+  'bom_items',
+  'contractors',
+  'production_orders',
+  'production_order_items',
+  'production_stages',
+]);
+
+export function checkRolePermission(
+  userRole: string,
+  action: 'create' | 'update' | 'delete',
+  collection: string
+): { allowed: boolean; message?: string } {
+  const role = (userRole || 'viewer').toLowerCase();
+  if (role === 'owner' || role === 'manager') {
+    return { allowed: true };
+  }
+
+  if (role === 'viewer') {
+    return {
+      allowed: false,
+      message: 'دسترسی فقط مشاهده (Viewer): امکان ثبت، ویرایش یا حذف اطلاعات وجود ندارد.',
+    };
+  }
+
+  if (role === 'sales') {
+    if (action === 'delete') {
+      return { allowed: false, message: 'نقش فروشنده (Sales) اجازه حذف اطلاعات را ندارد.' };
+    }
+    const salesAllowedCollections = [
+      'orders',
+      'order_items',
+      'order_returns',
+      'order_return_items',
+      'customers',
+      'pos_shifts',
+      'treasury_transactions',
+      'person_transactions',
+      'inventory_movements',
+      'inventory_items',
+      'financial_accounts',
+    ];
+    if (!salesAllowedCollections.includes(collection)) {
+      return {
+        allowed: false,
+        message: `نقش فروشنده (Sales) مجاز به انجام عملیات روی «${collection}» نیست.`,
+      };
+    }
+    return { allowed: true };
+  }
+
+  if (role === 'warehouse') {
+    if (
+      action === 'delete' &&
+      (collection === 'products' ||
+        collection === 'product_variants' ||
+        collection === 'organizations' ||
+        collection === 'organization_users')
+    ) {
+      return { allowed: false, message: 'نقش انباردار (Warehouse) اجازه حذف این بخش را ندارد.' };
+    }
+    const warehouseRestrictedCollections = [
+      'orders',
+      'order_items',
+      'order_returns',
+      'order_return_items',
+      'customers',
+      'organizations',
+      'organization_users',
+    ];
+    if (warehouseRestrictedCollections.includes(collection)) {
+      return {
+        allowed: false,
+        message: `نقش انباردار (Warehouse) مجاز به تغییرات روی «${collection}» نیست.`,
+      };
+    }
+    return { allowed: true };
+  }
+
+  return { allowed: true };
+}
+
+export function sanitizePayloadForDirectus(
+  collection: string,
+  raw: Record<string, any>
+): Record<string, any> {
+  const payload = { ...raw };
+
+  // 1. Extract IDs if relational objects were sent
+  const relationalFields = [
+    'organization_id',
+    'category_id',
+    'account_id',
+    'financial_account_id',
+    'customer_id',
+    'supplier_id',
+    'product_id',
+    'variant_id',
+    'order_id',
+    'original_order_id',
+    'original_order_item_id',
+    'return_id',
+    'pos_shift_id',
+    'purchase_order_id',
+    'warehouse_id',
+    'destination_warehouse_id',
+    'source_warehouse_id',
+    'source_account_id',
+    'destination_account_id',
+    'target_account_id',
+    'brand_id',
+    'collection_id',
+    'season_id',
+    'color_id',
+    'size_id',
+    'size_group_id',
+    'template_id',
+    'bom_id',
+    'raw_material_id',
+    'contractor_id',
+    'production_order_id',
+  ];
+
+  for (const f of relationalFields) {
+    if (payload[f] !== undefined && payload[f] !== null) {
+      if (typeof payload[f] === 'object' && payload[f].id !== undefined) {
+        payload[f] = Number(payload[f].id);
+      } else if (
+        typeof payload[f] === 'string' &&
+        !isNaN(Number(payload[f])) &&
+        payload[f].trim() !== ''
+      ) {
+        payload[f] = Number(payload[f]);
+      }
+    }
+  }
+
+  // 2. Collection-specific sanitization & mapping
+  if (collection === 'expenses') {
+    const pm = payload.payment_method;
+    if (pm === 'bank_account' || pm === 'card_transfer' || pm === 'bank') {
+      payload.payment_method = 'bank';
+    } else if (pm === 'pos') {
+      payload.payment_method = 'pos';
+    } else if (pm === 'cheque') {
+      payload.payment_method = 'cheque';
+    } else if (pm === 'credit') {
+      payload.payment_method = 'credit';
+    } else {
+      payload.payment_method = 'cash';
+    }
+
+    const noteParts: string[] = [];
+    if (payload.paid_to) noteParts.push(`دریافت‌کننده: ${payload.paid_to}`);
+    if (payload.reference_code) noteParts.push(`کد پیگیری: ${payload.reference_code}`);
+    if (payload.description) noteParts.push(payload.description);
+    if (payload.notes && payload.notes !== payload.description) noteParts.push(payload.notes);
+    if (noteParts.length > 0) {
+      payload.notes = noteParts.join(' | ');
+    }
+
+    if (payload.amount !== undefined) {
+      payload.amount = Number(payload.amount) || 0;
+    }
+
+    if (payload.expense_date) {
+      const dateStr = String(payload.expense_date);
+      payload.expense_date = dateStr.includes('T') ? dateStr : `${dateStr}T00:00:00`;
+    }
+
+    delete payload.paid_to;
+    delete payload.reference_code;
+    delete payload.description;
+    delete payload.category_title;
+    delete payload.category_code;
+    delete payload.category_icon;
+    delete payload.account_name;
+    delete payload.created_by_name;
+  }
+
+  if (collection === 'expense_categories') {
+    if (!payload.icon) payload.icon = 'Receipt';
+    if (!payload.status) payload.status = 'active';
+    delete payload.expense_count;
+    delete payload.total_amount;
+  }
+
+  if (collection === 'financial_accounts') {
+    if (payload.initial_balance !== undefined)
+      payload.initial_balance = Number(payload.initial_balance) || 0;
+    if (payload.current_balance !== undefined)
+      payload.current_balance = Number(payload.current_balance) || 0;
+    if (payload.is_default !== undefined) payload.is_default = Boolean(payload.is_default);
+    delete payload.status;
+  }
+
+  if (collection === 'treasury_transactions') {
+    if (payload.amount !== undefined) {
+      payload.amount = Math.max(0, Math.round(Number(payload.amount) || 0));
+    }
+    delete payload.source_account_name;
+    delete payload.destination_account_name;
+    delete payload.description;
+    delete payload.person_transaction_id;
+    delete payload.expense_id;
+  }
+
+  if (collection === 'cheques') {
+    if (payload.amount !== undefined) payload.amount = Number(payload.amount) || 0;
+    if (payload.alert_days_before !== undefined)
+      payload.alert_days_before = Number(payload.alert_days_before) || 3;
+    delete payload.notes;
+    delete payload.customer_name;
+    delete payload.supplier_name;
+  }
+
+  if (collection === 'person_transactions') {
+    if (payload.amount !== undefined) payload.amount = Number(payload.amount) || 0;
+    if (payload.balance_after !== undefined)
+      payload.balance_after = Number(payload.balance_after) || 0;
+    delete payload.debit_amount;
+    delete payload.credit_amount;
+    delete payload.running_balance;
+    delete payload.status;
+    delete payload.customer_name;
+    delete payload.supplier_name;
+  }
+
+  if (collection === 'pos_shifts') {
+    delete payload.organization_id;
+    delete payload.notes;
+    delete payload.warehouse_name;
+    delete payload.account_name;
+    delete payload.user_name;
+    delete payload.user_email;
+    delete payload.total_sales_amount;
+    delete payload.total_cash_amount;
+    delete payload.total_pos_amount;
+    delete payload.total_card_amount;
+    delete payload.total_credit_amount;
+    delete payload.total_orders_count;
+    delete payload.total_returns_count;
+    delete payload.total_refund_amount;
+    delete payload.total_cash_refund_amount;
+    delete payload.total_exchange_cash_in_amount;
+    if (payload.opening_balance !== undefined && payload.opening_balance !== null) {
+      payload.opening_balance = String(payload.opening_balance);
+    }
+    if (payload.closing_balance !== undefined && payload.closing_balance !== null) {
+      payload.closing_balance = String(payload.closing_balance);
+    }
+    if (payload.status !== undefined && payload.status !== null) {
+      payload.status = Array.isArray(payload.status) ? payload.status : [payload.status];
+    }
+  }
+
+  if (collection === 'order_items') {
+    if (payload.quantity !== undefined) payload.quantity = Math.max(0, Math.round(Number(payload.quantity) || 0));
+    if (payload.returned_quantity !== undefined) {
+      payload.returned_quantity = Math.max(0, Math.round(Number(payload.returned_quantity) || 0));
+    }
+    if (payload.unit_price !== undefined) payload.unit_price = Number(payload.unit_price) || 0;
+    if (payload.discount !== undefined) payload.discount = Number(payload.discount) || 0;
+    if (payload.total !== undefined) payload.total = Number(payload.total) || 0;
+    delete payload.unit_cost;
+    delete payload.variant_sku;
+    delete payload.product_title;
+    delete payload.color_name;
+    delete payload.size_name;
+  }
+
+  if (collection === 'order_returns') {
+    if (payload.returned_total !== undefined) payload.returned_total = Math.max(0, Number(payload.returned_total) || 0);
+    if (payload.exchange_total !== undefined) payload.exchange_total = Math.max(0, Number(payload.exchange_total) || 0);
+    if (payload.net_amount !== undefined) payload.net_amount = Number(payload.net_amount) || 0;
+    if (!payload.customer_id) payload.customer_id = null;
+    if (!payload.pos_shift_id) payload.pos_shift_id = null;
+    if (!payload.financial_account_id) payload.financial_account_id = null;
+    delete payload.original_order_number;
+    delete payload.customer_name;
+    delete payload.warehouse_name;
+    delete payload.items;
+    delete payload.items_count;
+  }
+
+  if (collection === 'order_return_items') {
+    if (payload.quantity !== undefined) payload.quantity = Math.max(1, Math.round(Number(payload.quantity) || 1));
+    if (payload.unit_price !== undefined) payload.unit_price = Math.max(0, Number(payload.unit_price) || 0);
+    if (payload.unit_cost !== undefined) payload.unit_cost = Math.max(0, Number(payload.unit_cost) || 0);
+    if (payload.total !== undefined) payload.total = Math.max(0, Number(payload.total) || 0);
+    if (!payload.original_order_item_id) payload.original_order_item_id = null;
+    delete payload.sku;
+    delete payload.product_title;
+    delete payload.color_name;
+    delete payload.size_name;
+  }
+
+  if (collection === 'product_variants') {
+    if (payload.cost_price !== undefined && payload.cost === undefined) {
+      payload.cost = payload.cost_price;
+    }
+    if (payload.price !== undefined) payload.price = Number(payload.price) || 0;
+    if (payload.cost !== undefined) payload.cost = Number(payload.cost) || 0;
+    if (payload.sort !== undefined) payload.sort = Number(payload.sort) || 0;
+    if (payload.color_id === undefined || payload.color_id === 0 || payload.color_id === '') {
+      payload.color_id = null;
+    }
+    if (payload.size_id === undefined || payload.size_id === 0 || payload.size_id === '') {
+      payload.size_id = null;
+    }
+    delete payload.cost_price;
+    delete payload.stock_quantity;
+    delete payload.color_name;
+    delete payload.size_name;
+    delete payload.product_title;
+    delete payload.color;
+    delete payload.size;
+    delete payload.product;
+    delete payload._tempId;
+  }
+
+  if (collection === 'inventory_items') {
+    if (payload.quantity !== undefined) payload.quantity = Math.max(0, Number(payload.quantity) || 0);
+    if (payload.reserved_quantity !== undefined) payload.reserved_quantity = Math.max(0, Number(payload.reserved_quantity) || 0);
+    if (payload.available_quantity !== undefined) payload.available_quantity = Math.max(0, Number(payload.available_quantity) || 0);
+    if (payload.damaged_quantity !== undefined) payload.damaged_quantity = Math.max(0, Number(payload.damaged_quantity) || 0);
+    if (payload.reorder_point !== undefined) payload.reorder_point = Math.max(0, Number(payload.reorder_point) || 0);
+    if (payload.safety_stock !== undefined) payload.safety_stock = Math.max(0, Number(payload.safety_stock) || 0);
+    if (!payload.location_id) payload.location_id = null;
+    delete payload.variant;
+    delete payload.warehouse;
+    delete payload.location;
+    delete payload.product_title;
+    delete payload.sku;
+    delete payload.barcode;
+    delete payload.color_name;
+    delete payload.size_name;
+  }
+
+  return payload;
+}

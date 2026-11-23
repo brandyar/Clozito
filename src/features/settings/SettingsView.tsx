@@ -1,0 +1,935 @@
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from '../../i18n';
+import { useOrganization } from '../../context/OrganizationContext';
+import { useAuth } from '../../context/AuthContext';
+import { useTheme } from '../../context/ThemeContext';
+import { storageManager, isTauriEnvironment } from '../../storage';
+import { StorageSyncManager } from '../../storage/syncManager';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
+import { EditOrganizationModal } from '../organizations/EditOrganizationModal';
+import { CreateOrganizationModal } from '../organizations/CreateOrganizationModal';
+import { OrganizationMembersSection } from '../organizations/OrganizationMembersSection';
+import { LocalBackupRestoreCard } from './LocalBackupRestoreCard';
+import { ModulesManagementCard } from './ModulesManagementCard';
+import { UpgradeToProModal } from '../../components/modals/UpgradeToProModal';
+import { checkDesktopUpdate } from '../../utils/updater';
+import { getCurrentAppVersion, APP_VERSION } from '../../utils/version';
+import { ProductImage } from '../../components/ui/ProductImage';
+import {
+  Database,
+  Cloud,
+  RefreshCw,
+  LogIn,
+  LogOut,
+  ShieldCheck,
+  Building2,
+  Edit3,
+  Plus,
+  ShieldAlert,
+  Clock,
+  Boxes,
+  Users,
+  Sparkles,
+  ArrowUpCircle,
+  Sun,
+  Moon,
+  Monitor,
+  Palette,
+  SlidersHorizontal,
+  HardDrive,
+  UserCheck,
+  Globe,
+  Phone,
+  Smartphone,
+  MapPin,
+  Image as ImageIcon,
+} from 'lucide-react';
+
+interface SettingsViewProps {
+  activeSubRoute?: string;
+  onNavigate?: (route: string) => void;
+}
+
+export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'settings/org', onNavigate }) => {
+  const { t, locale, setLocale, isPersian } = useTranslation();
+  const { activeOrganization, isOwner, userRole, refreshOrganizations, permissions } = useOrganization();
+  const { theme, setTheme } = useTheme();
+  const {
+    user,
+    isCloudAuthenticated,
+    openLoginModal,
+    logout,
+  } = useAuth();
+
+  // Resolve current active tab from prop or sub-route
+  const getTabFromRoute = (route: string): 'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'updater' => {
+    if (route.includes('members') || route.includes('users')) return 'members';
+    if (route.includes('modules') || route.includes('license')) return 'modules';
+    if (route.includes('sync') || route.includes('storage') || route.includes('backup')) return 'sync';
+    if (route.includes('appearance') || route.includes('theme')) return 'appearance';
+    if (route.includes('updater') || route.includes('version')) return 'updater';
+    return 'org';
+  };
+
+  const [activeTab, setActiveTab] = useState<'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'updater'>(
+    getTabFromRoute(activeSubRoute)
+  );
+
+  useEffect(() => {
+    setActiveTab(getTabFromRoute(activeSubRoute));
+  }, [activeSubRoute]);
+
+  const handleTabChange = (tab: 'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'updater') => {
+    setActiveTab(tab);
+    if (onNavigate) {
+      const targetRoute = tab === 'org' ? 'settings/org' : `settings/${tab}`;
+      onNavigate(targetRoute);
+    }
+  };
+
+  const [mode, setMode] = useState(storageManager.getMode());
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatusMsg, setSyncStatusMsg] = useState<string | null>(null);
+  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
+  const [isEditOrgOpen, setIsEditOrgOpen] = useState(false);
+  const [desktopVersion, setDesktopVersion] = useState<string>(APP_VERSION);
+  const [updateStatusMsg, setUpdateStatusMsg] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
+  const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+
+  const isDesktop = isTauriEnvironment();
+
+  useEffect(() => {
+    getCurrentAppVersion().then(setDesktopVersion);
+  }, []);
+
+  const handleManualCheckUpdate = async () => {
+    setIsCheckingUpdate(true);
+    setUpdateStatusMsg(null);
+    const isIt = locale === 'it';
+    try {
+      const info = await checkDesktopUpdate();
+      setIsCheckingUpdate(false);
+      if (info.available) {
+        setUpdateStatusMsg({
+          type: 'success',
+          text: isIt
+            ? `Nuova versione v${info.version} disponibile. Finestra di download aperta.`
+            : `New version v${info.version} found. Download and install dialog opened.`,
+        });
+        return;
+      }
+      if (info.error) {
+        const errLower = info.error.toLowerCase();
+        if (errLower.includes('plugin') || errLower.includes('not found') || errLower.includes('ipc') || errLower.includes('deny')) {
+          setUpdateStatusMsg({
+            type: 'error',
+            text: isIt
+              ? `Il modulo di aggiornamento automatico non è abilitato in questa build (v${desktopVersion}).`
+              : `Auto-updater plugin is not enabled in this build (current: v${desktopVersion}).`,
+          });
+        } else if (errLower.includes('404')) {
+          setUpdateStatusMsg({
+            type: 'error',
+            text: isIt
+              ? 'File metadati aggiornamento (latest.json) non trovato sul server.'
+              : 'Update manifest (latest.json) was not found on the release server.',
+          });
+        } else if (errLower.includes('could not find a release') || errLower.includes('no release')) {
+          setUpdateStatusMsg({
+            type: 'info',
+            text: isIt
+              ? `Stai già utilizzando l'ultima versione di Clozito (v${desktopVersion}).`
+              : `You are running the latest version of Clozito (v${desktopVersion}).`,
+          });
+        } else {
+          setUpdateStatusMsg({
+            type: 'error',
+            text: isIt ? `Errore verifica aggiornamenti: ${info.error}` : `Update check error: ${info.error}`,
+          });
+        }
+      } else {
+        setUpdateStatusMsg({
+          type: 'info',
+          text: isIt
+            ? `Stai già utilizzando l'ultima versione di Clozito (v${desktopVersion}).`
+            : `You are running the latest version of Clozito (v${desktopVersion}).`,
+        });
+      }
+    } catch (e: any) {
+      setIsCheckingUpdate(false);
+      setUpdateStatusMsg({
+        type: 'error',
+        text: isIt
+          ? `Errore imprevisto nella verifica aggiornamenti: ${e?.message || e}`
+          : `Unexpected error checking updates: ${e?.message || e}`,
+      });
+    }
+  };
+
+  useEffect(() => {
+    const handleModeListener = () => {
+      setMode(storageManager.getMode());
+    };
+    window.addEventListener('tankhor_storage_mode_changed', handleModeListener);
+    return () => {
+      window.removeEventListener('tankhor_storage_mode_changed', handleModeListener);
+    };
+  }, []);
+
+  const isProOrg = storageManager.isOrganizationPro(activeOrganization);
+
+  const handleModeChange = (newMode: 'local_offline' | 'cloud_synced') => {
+    if (isProOrg && newMode === 'local_offline') {
+      // Pro organizations always operate in online cloud_synced mode
+      storageManager.setMode('cloud_synced', { verifiedPro: true });
+      setMode(storageManager.getMode());
+      return;
+    }
+    if (newMode === 'cloud_synced') {
+      if (!isCloudAuthenticated) {
+        openLoginModal();
+        return;
+      }
+      if (!isProOrg) {
+        setIsUpgradeModalOpen(true);
+        return;
+      }
+      storageManager.setMode('cloud_synced', { verifiedPro: true });
+      setMode(storageManager.getMode());
+      return;
+    }
+    storageManager.setMode(newMode, { verifiedPro: isProOrg });
+    setMode(storageManager.getMode());
+  };
+
+  const handleManualSync = async () => {
+    if (activeOrganization?.plan !== 'pro') {
+      setIsUpgradeModalOpen(true);
+      return;
+    }
+    setIsSyncing(true);
+    setSyncStatusMsg(null);
+    try {
+      const res = await StorageSyncManager.syncLocalToCloud(storageManager.getCloudAdapter());
+      const isIt = locale === 'it';
+      let msg = isIt
+        ? `Sincronizzazione completata: ${res.success} record riusciti, ${res.failed} non riusciti.`
+        : `Sync completed: ${res.success} records synced, ${res.failed} failed.`;
+      if (res.mediaSynced > 0 || res.mediaFailed > 0) {
+        msg += isIt
+          ? ` (${res.mediaSynced} immagini caricate sul cloud)`
+          : ` (${res.mediaSynced} images uploaded to cloud)`;
+      }
+      setSyncStatusMsg(msg);
+      await refreshOrganizations();
+    } catch (err: any) {
+      setSyncStatusMsg(locale === 'it' ? `Errore di sincronizzazione: ${err.message}` : `Sync error: ${err.message}`);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const getUserRoleName = () => {
+    if (!user) return t('settings.roleViewer');
+    if (typeof user.role === 'object' && user.role?.name) {
+      return user.role.name;
+    }
+    if (typeof user.role === 'string') {
+      return user.role;
+    }
+    return isCloudAuthenticated ? t('settings.roleManager') : t('settings.roleOwner');
+  };
+
+  // Tabs definitions
+  const tabs = [
+    {
+      id: 'org',
+      label: t('navigation.settingsGeneral', 'پروفایل و اطلاعات سازمان'),
+      icon: Building2,
+      visible: true,
+    },
+    {
+      id: 'members',
+      label: t('navigation.settingsMembers', 'اعضا و سطوح دسترسی'),
+      icon: Users,
+      visible: permissions.canManageUsers || isOwner,
+    },
+    {
+      id: 'modules',
+      label: t('navigation.settingsModules', 'مدیریت ماژول‌ها و لایسنس‌ها'),
+      icon: Boxes,
+      visible: true,
+    },
+    {
+      id: 'sync',
+      label: t('navigation.settingsSync', 'پایگاه‌داده و پشتیبان‌گیری'),
+      icon: HardDrive,
+      visible: true,
+    },
+    {
+      id: 'appearance',
+      label: t('navigation.settingsAppearance', 'ظاهر و تم سامانه'),
+      icon: Palette,
+      visible: true,
+    },
+    ...(isDesktop
+      ? [
+          {
+            id: 'updater',
+            label: t('navigation.settingsUpdater', 'بروزرسانی نرم‌افزار'),
+            icon: ArrowUpCircle,
+            visible: true,
+          },
+        ]
+      : []),
+  ].filter((t) => t.visible);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={t('settings.title', 'تنظیمات')}
+        subtitle={t('settings.subtitle', 'مدیریت حساب کاربری، سازمان، اعضا، ماژول‌ها، همگام‌سازی و تم سامانه')}
+      />
+
+      {/* Settings Submenu Navigation Tabs */}
+      <div className="flex items-center gap-1.5 p-1.5 bg-neutral-100 dark:bg-neutral-900 rounded-2xl border border-neutral-200/80 dark:border-neutral-800 overflow-x-auto custom-scrollbar">
+        {tabs.map((tab) => {
+          const Icon = tab.icon;
+          const isActive = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => handleTabChange(tab.id as any)}
+              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer shrink-0 ${
+                isActive
+                  ? 'bg-white dark:bg-neutral-800 text-neutral-900 dark:text-white shadow-xs'
+                  : 'text-neutral-500 dark:text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-200 hover:bg-neutral-200/50 dark:hover:bg-neutral-800/40'
+              }`}
+            >
+              <Icon className={`w-4 h-4 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-neutral-400'}`} />
+              <span>{tab.label}</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB 1: General & Org Profile */}
+      {activeTab === 'org' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Cloud Account Status Banner */}
+          <Card title={t('settings.userRoleInOrg')} subtitle={t('settings.membersTitle')}>
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 p-4 rounded-xl bg-neutral-50 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center font-bold text-lg text-white shadow-xs ${
+                    isCloudAuthenticated ? 'bg-blue-600' : 'bg-neutral-800 dark:bg-neutral-700'
+                  }`}
+                >
+                  {user?.first_name ? user.first_name[0] : 'T'}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
+                      {user?.first_name} {user?.last_name}
+                    </h3>
+                    <Badge variant={isCloudAuthenticated ? 'info' : 'neutral'}>
+                      {isCloudAuthenticated ? t('settings.cloudModeDesc') : t('settings.localOfflineMode')}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">{user?.email}</p>
+                  <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1">
+                    {t('settings.memberRole')}: <strong className="text-neutral-900 dark:text-neutral-100">{getUserRoleName()}</strong>
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {!isCloudAuthenticated ? (
+                  <Button
+                    variant="primary"
+                    onClick={openLoginModal}
+                    icon={<LogIn className="w-4 h-4" />}
+                    className="text-xs font-bold"
+                  >
+                    {t('auth.login')}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    onClick={() => logout()}
+                    icon={<LogOut className="w-4 h-4 text-red-500" />}
+                    className="text-xs font-bold text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/30 border-red-200 dark:border-red-900/60"
+                  >
+                    {t('auth.logout')}
+                  </Button>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* Active Org Profile & Owner Edit Section */}
+          <Card
+            title={t('settings.orgDetailsCard')}
+            subtitle={t('settings.orgDetailsSubtitle')}
+            action={
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsCreateOrgOpen(true)}
+                  icon={<Plus className="w-3.5 h-3.5" />}
+                  className="text-xs font-medium"
+                >
+                  {t('settings.inviteMember', 'ایجاد سازمان جدید')}
+                </Button>
+                {isOwner ? (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => setIsEditOrgOpen(true)}
+                    icon={<Edit3 className="w-3.5 h-3.5" />}
+                    className="text-xs font-bold bg-blue-600 hover:bg-blue-700"
+                  >
+                    {t('settings.editOrgDetailsBtn')}
+                  </Button>
+                ) : (
+                  <Badge variant="neutral">
+                    {t('settings.memberRole')}: {userRole}
+                  </Badge>
+                )}
+              </div>
+            }
+          >
+            <div className="space-y-4">
+              {!isOwner && (
+                <div className="flex items-center gap-2.5 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs rounded-xl">
+                  <ShieldAlert className="w-4 h-4 shrink-0 text-amber-600 dark:text-amber-400" />
+                  <span>
+                    {t('settings.roleViewer')} ({userRole})
+                  </span>
+                </div>
+              )}
+
+              {/* Organization Header with Logo & Brand Name */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-neutral-50/90 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
+                <div className="flex items-center gap-4">
+                  <div
+                    onClick={() => isOwner && setIsEditOrgOpen(true)}
+                    className={`w-16 h-16 rounded-2xl bg-white dark:bg-[#13151a] border border-neutral-200/80 dark:border-neutral-700/80 p-1 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative group ${isOwner ? 'cursor-pointer hover:border-blue-500 transition-colors' : ''}`}
+                    title={isOwner ? t('settings.orgLogoChange', 'تغییر یا بارگذاری لوگو') : undefined}
+                  >
+                    {activeOrganization?.logo ? (
+                      <ProductImage
+                        src={activeOrganization.logo}
+                        alt={activeOrganization.name}
+                        className="w-full h-full object-contain rounded-xl"
+                        fallbackText={activeOrganization?.name ? activeOrganization.name[0] : 'T'}
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-bold text-xl rounded-xl">
+                        {activeOrganization?.name ? activeOrganization.name[0] : 'T'}
+                      </div>
+                    )}
+                    {isOwner && (
+                      <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold rounded-xl backdrop-blur-2xs">
+                        <Edit3 className="w-4 h-4" />
+                      </div>
+                    )}
+                  </div>
+                  {/* Stamp / Signature Preview if present */}
+                  {activeOrganization?.signature && (
+                    <div
+                      onClick={() => isOwner && setIsEditOrgOpen(true)}
+                      className={`w-16 h-16 rounded-2xl bg-white dark:bg-[#13151a] border border-neutral-200/80 dark:border-neutral-700/80 p-1 hidden sm:flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative group ${isOwner ? 'cursor-pointer hover:border-blue-500 transition-colors' : ''}`}
+                      title={t('settings.orgSignatureLabel', 'مهر و امضای رسمی سازمان')}
+                    >
+                      <ProductImage
+                        src={activeOrganization.signature}
+                        alt="مهر و امضا"
+                        className="w-full h-full object-contain rounded-xl"
+                        fallbackText="امضا"
+                      />
+                      {isOwner && (
+                        <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold rounded-xl backdrop-blur-2xs">
+                          <Edit3 className="w-4 h-4" />
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                        {activeOrganization?.name || '-'}
+                      </h3>
+                      <Badge variant={activeOrganization?.status === 'active' ? 'success' : 'neutral'}>
+                        {activeOrganization?.status === 'active' ? t('settings.statusActive') : activeOrganization?.status || '-'}
+                      </Badge>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2 text-xs">
+                      <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono dir-ltr text-start">
+                        @{activeOrganization?.slug || '-'}
+                      </p>
+                      <span className="text-[11px] text-neutral-400">•</span>
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                        {activeOrganization?.logo ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ {t('settings.logo')}</span>
+                        ) : (
+                          <span className="text-amber-600 dark:text-amber-400 font-medium">! {t('settings.orgLogoEmpty')}</span>
+                        )}
+                      </span>
+                      <span className="text-[11px] text-neutral-400">•</span>
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                        {activeOrganization?.signature ? (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-medium">✓ {t('settings.orgSignatureStatusSet')}</span>
+                        ) : (
+                          <span className="text-neutral-400 font-medium">○ {t('settings.orgSignatureStatusNotSet')}</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {isOwner && (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditOrgOpen(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-700 dark:text-neutral-200 bg-white dark:bg-neutral-800 hover:bg-neutral-100 dark:hover:bg-neutral-700 border border-neutral-200 dark:border-neutral-700 rounded-xl transition-colors cursor-pointer self-start sm:self-center shrink-0 shadow-2xs"
+                  >
+                    <Edit3 className="w-3.5 h-3.5" />
+                    <span>{t('settings.editOrgDetailsBtn')}</span>
+                  </button>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl bg-neutral-50/70 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">{t('settings.orgName')}</span>
+                  <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
+                    <Building2 className="w-4 h-4 text-neutral-500 dark:text-neutral-400 shrink-0" />
+                    <span>{activeOrganization?.name || '-'}</span>
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">{t('settings.orgSlug')}</span>
+                  <p className="text-xs font-mono font-bold text-neutral-800 dark:text-neutral-200 dir-ltr text-start">
+                    {activeOrganization?.slug || '-'}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">{t('settings.orgCurrency')}</span>
+                  <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
+                    {(!activeOrganization?.currency || activeOrganization.currency === 'TOMAN' || activeOrganization.currency === 'EUR')
+                      ? t('settings.currencyEur')
+                      : activeOrganization.currency === 'USD'
+                      ? t('settings.currencyUsd')
+                      : activeOrganization.currency === 'GBP'
+                      ? t('settings.currencyGbp')
+                      : activeOrganization.currency === 'CHF'
+                      ? t('settings.currencyChf')
+                      : activeOrganization.currency}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">{t('settings.mainTimezone')}</span>
+                  <p className="text-xs font-mono text-neutral-800 dark:text-neutral-200 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-neutral-400 dark:text-neutral-500" />
+                    <span>{activeOrganization?.timezone || 'Europe/Rome'}</span>
+                  </p>
+                </div>
+              </div>
+
+              {/* Contact Information (Phone, Mobile, Address) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 rounded-xl bg-neutral-50/70 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center gap-1">
+                    <Phone className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>{t('customers.phone')}</span>
+                  </span>
+                  <p className="text-xs font-mono font-bold text-neutral-800 dark:text-neutral-200 dir-ltr text-start">
+                    {activeOrganization?.phone || '-'}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center gap-1">
+                    <Smartphone className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>{t('purchasing.mobile')}</span>
+                  </span>
+                  <p className="text-xs font-mono font-bold text-neutral-800 dark:text-neutral-200 dir-ltr text-start">
+                    {activeOrganization?.mobile || '-'}
+                  </p>
+                </div>
+
+                <div className="space-y-1 sm:col-span-2 lg:col-span-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-neutral-400" />
+                    <span>{t('customers.address')}</span>
+                  </span>
+                  <p className="text-xs font-medium text-neutral-800 dark:text-neutral-200 line-clamp-2">
+                    {activeOrganization?.address || '-'}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 text-xs text-neutral-500 dark:text-neutral-400 pt-2 border-t border-neutral-100 dark:border-neutral-800">
+                <div className="flex items-center gap-2">
+                  <span>{t('settings.statusActive')}:</span>
+                  <Badge variant={activeOrganization?.status === 'active' ? 'success' : 'neutral'}>
+                    {activeOrganization?.status === 'active' ? t('settings.statusActive') : activeOrganization?.status || '-'}
+                  </Badge>
+                  <span className="ms-2">{t('settings.activePlanBadge')}:</span>
+                  <Badge variant={activeOrganization?.plan === 'pro' ? 'info' : 'neutral'}>
+                    {activeOrganization?.plan === 'pro' ? t('settings.planPro') : t('settings.planFree')}
+                  </Badge>
+                </div>
+                {activeOrganization?.date_created && (
+                  <span className="font-mono text-[11px]">
+                    {new Date(activeOrganization.date_created).toLocaleDateString(locale === 'it' ? 'it-IT' : 'en-IE')}
+                  </span>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 2: Members & Permissions */}
+      {activeTab === 'members' && (
+        <div className="space-y-6 animate-fade-in">
+          <OrganizationMembersSection />
+        </div>
+      )}
+
+      {/* TAB 3: Modules & Licenses */}
+      {activeTab === 'modules' && (
+        <div className="space-y-6 animate-fade-in">
+          <ModulesManagementCard />
+        </div>
+      )}
+
+      {/* TAB 4: Database & Sync */}
+      {activeTab === 'sync' && (
+        <div className="space-y-6 animate-fade-in">
+          {/* Storage Mode Selector */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div
+              onClick={() => {
+                if (!isProOrg) handleModeChange('local_offline');
+              }}
+              aria-disabled={isProOrg}
+              className={`p-6 bg-white dark:bg-[#13151a] border rounded-2xl transition-all ${
+                isProOrg
+                  ? 'opacity-60 cursor-not-allowed border-neutral-200 dark:border-neutral-800'
+                  : mode === 'local_offline'
+                  ? 'cursor-pointer border-emerald-500 ring-2 ring-emerald-500/20 bg-emerald-50/20 dark:bg-emerald-950/10 shadow-md'
+                  : 'cursor-pointer border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-xl flex items-center justify-center">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {isTauriEnvironment() ? (
+                    <Badge variant="success">SQLite Desktop</Badge>
+                  ) : (
+                    <Badge variant="neutral">Local Storage</Badge>
+                  )}
+                  {mode === 'local_offline' && !isProOrg && <Badge variant="success">{t('settings.themeActive')}</Badge>}
+                </div>
+              </div>
+              <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
+                {t('settings.localOfflineMode')}{' '}
+                {isTauriEnvironment() ? t('settings.localOfflineSQLite') : t('settings.localOfflineBrowser')}
+              </h3>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
+                {isProOrg
+                  ? t('settings.proCloudOnlyNote')
+                  : isTauriEnvironment()
+                  ? t('settings.localOfflineSQLiteDesc')
+                  : t('settings.localOfflineBrowserDesc')}
+              </p>
+            </div>
+
+            <div
+              onClick={() => handleModeChange('cloud_synced')}
+              className={`p-6 bg-white dark:bg-[#13151a] border rounded-2xl cursor-pointer transition-all ${
+                mode === 'cloud_synced'
+                  ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/20 dark:bg-blue-950/10 shadow-md'
+                  : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-4">
+                <div className="w-10 h-10 bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 rounded-xl flex items-center justify-center">
+                  <Cloud className="w-5 h-5" />
+                </div>
+                <div className="flex items-center gap-1.5">
+                  {!isProOrg && (
+                    <Badge variant="warning" className="flex items-center gap-1 text-[10px]">
+                      <Sparkles className="w-3 h-3 text-amber-500" />
+                      {t('settings.planPro')}
+                    </Badge>
+                  )}
+                  {isProOrg && <Badge variant="info">{t('settings.proAutoOnlineBadge')}</Badge>}
+                  {mode === 'cloud_synced' && <Badge variant="info">{t('settings.themeActive')}</Badge>}
+                </div>
+              </div>
+              <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100 flex items-center justify-between">
+                <span>{t('settings.cloudSyncMode')}</span>
+                {!isProOrg && (
+                  <span className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline">
+                    {t('settings.upgradeToPro')}
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 leading-relaxed">
+                {t('settings.cloudSyncModeDesc')}
+              </p>
+            </div>
+          </div>
+
+          {/* Cloud Sync Manual Trigger Card */}
+          <Card title={t('settings.cloudSyncStatusTitle')} subtitle={t('settings.cloudSyncStatusSubtitle')}>
+            <div className="space-y-4 max-w-xl">
+              <p className="text-xs text-neutral-700 dark:text-neutral-300 leading-relaxed">
+                {t('settings.cloudSyncStatusDesc')}
+              </p>
+
+              <div className="flex items-center gap-3 pt-1">
+                <Button
+                  variant="outline"
+                  onClick={handleManualSync}
+                  isLoading={isSyncing}
+                  icon={<RefreshCw className="w-4 h-4" />}
+                >
+                  {t('settings.manualSyncBtn')}
+                </Button>
+              </div>
+
+              {syncStatusMsg && (
+                <p className="text-xs font-semibold text-blue-800 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/30 p-3 rounded-xl border border-blue-100 dark:border-blue-900/40">
+                  {syncStatusMsg}
+                </p>
+              )}
+            </div>
+          </Card>
+
+          {/* Local Backup, Restore & Demo Data Management */}
+          <LocalBackupRestoreCard />
+        </div>
+      )}
+
+      {/* TAB 5: Appearance & Theme */}
+      {activeTab === 'appearance' && (
+        <div className="space-y-6 animate-fade-in">
+          <Card
+            title={t('settings.appearanceTitle', 'ظاهر و تم سامانه')}
+            subtitle={t('settings.appearanceSubtitle', 'انتخاب حالت نمایشی روز (روشن)، شب (تاریک) یا هماهنگ با سیستم‌عامل')}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              {/* Light Theme Option */}
+              <div
+                onClick={() => setTheme('light')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center text-center ${
+                  theme === 'light'
+                    ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-500 ring-2 ring-amber-500/20 shadow-md'
+                    : 'bg-white dark:bg-[#14161c] border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-400 flex items-center justify-center mb-3">
+                  <Sun className="w-6 h-6" />
+                </div>
+                <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">{t('settings.themeLight')}</h4>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">{t('settings.themeLightDesc')}</p>
+                {theme === 'light' && (
+                  <Badge variant="warning" className="mt-3 text-[10px]">
+                    {t('settings.themeActive')}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Dark Theme Option */}
+              <div
+                onClick={() => setTheme('dark')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center text-center ${
+                  theme === 'dark'
+                    ? 'bg-indigo-50/50 dark:bg-indigo-950/20 border-indigo-500 ring-2 ring-indigo-500/20 shadow-md'
+                    : 'bg-white dark:bg-[#14161c] border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center mb-3">
+                  <Moon className="w-6 h-6" />
+                </div>
+                <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">{t('settings.themeDark')}</h4>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">{t('settings.themeDarkDesc')}</p>
+                {theme === 'dark' && (
+                  <Badge variant="info" className="mt-3 text-[10px]">
+                    {t('settings.themeActive')}
+                  </Badge>
+                )}
+              </div>
+
+              {/* System Theme Option */}
+              <div
+                onClick={() => setTheme('system')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center text-center ${
+                  theme === 'system'
+                    ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-500 ring-2 ring-blue-500/20 shadow-md'
+                    : 'bg-white dark:bg-[#14161c] border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                  <Monitor className="w-6 h-6" />
+                </div>
+                <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">{t('settings.themeSystem')}</h4>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">{t('settings.themeSystemDesc')}</p>
+                {theme === 'system' && (
+                  <Badge variant="neutral" className="mt-3 text-[10px]">
+                    {t('settings.themeActive')}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </Card>
+
+          {/* System Language & Localization Settings */}
+          <Card
+            title={t('settings.languageTitle')}
+            subtitle={t('settings.languageSubtitle')}
+          >
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* English Option (Default) */}
+              <div
+                onClick={() => setLocale('en')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center text-center ${
+                  locale === 'en'
+                    ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-500 ring-2 ring-blue-500/20 shadow-md'
+                    : 'bg-white dark:bg-[#14161c] border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-3">
+                  <Globe className="w-6 h-6" />
+                </div>
+                <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">{t('settings.langEnglish')}</h4>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">{t('settings.langEnglishDesc')}</p>
+                {locale === 'en' && (
+                  <Badge variant="info" className="mt-3 text-[10px]">
+                    {t('settings.langActive')}
+                  </Badge>
+                )}
+              </div>
+
+              {/* Italian Option */}
+              <div
+                onClick={() => setLocale('it')}
+                className={`p-4 rounded-2xl border cursor-pointer transition-all flex flex-col items-center text-center ${
+                  locale === 'it'
+                    ? 'bg-emerald-50/50 dark:bg-emerald-950/20 border-emerald-500 ring-2 ring-emerald-500/20 shadow-md'
+                    : 'bg-white dark:bg-[#14161c] border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
+                }`}
+              >
+                <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-900/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-3">
+                  <Globe className="w-6 h-6" />
+                </div>
+                <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">{t('settings.langItalian')}</h4>
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-1">{t('settings.langItalianDesc')}</p>
+                {locale === 'it' && (
+                  <Badge variant="success" className="mt-3 text-[10px]">
+                    {t('settings.langActive')}
+                  </Badge>
+                )}
+              </div>
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* TAB 6: App Updater (Tauri Desktop) */}
+      {activeTab === 'updater' && isDesktop && (
+        <div className="space-y-6 animate-fade-in">
+          <Card title={t('settings.desktopUpdaterTitle')} subtitle={t('settings.desktopUpdaterSubtitle')}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/40 border border-neutral-200/80 dark:border-neutral-700/70">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 flex items-center justify-center shrink-0">
+                  <ArrowUpCircle className="w-5 h-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
+                    {t('settings.installedDesktopVersion')}: v{desktopVersion}
+                  </p>
+                  <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">
+                    {t('settings.desktopUpdateSafeDesc')}
+                  </p>
+                </div>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleManualCheckUpdate}
+                isLoading={isCheckingUpdate}
+                icon={<RefreshCw className="w-3.5 h-3.5" />}
+                className="text-xs font-bold shrink-0"
+              >
+                {t('settings.checkNewVersionBtn')}
+              </Button>
+            </div>
+
+            {updateStatusMsg && (
+              <div
+                className={`mt-3 p-3 rounded-xl border text-xs leading-relaxed flex items-center justify-between gap-2 ${
+                  updateStatusMsg.type === 'error'
+                    ? 'bg-rose-50 dark:bg-rose-950/30 border-rose-200 dark:border-rose-800 text-rose-800 dark:text-rose-300'
+                    : updateStatusMsg.type === 'success'
+                    ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-300'
+                    : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300'
+                }`}
+              >
+                <span>{updateStatusMsg.text}</span>
+                <button
+                  type="button"
+                  onClick={() => setUpdateStatusMsg(null)}
+                  className="text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 font-bold px-1"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
+          </Card>
+        </div>
+      )}
+
+      {/* Upgrade to Pro Modal */}
+      <UpgradeToProModal
+        isOpen={isUpgradeModalOpen}
+        onClose={() => setIsUpgradeModalOpen(false)}
+        onSuccess={() => {
+          setMode('cloud_synced');
+          refreshOrganizations();
+        }}
+      />
+
+      {/* Edit Organization Modal */}
+      <EditOrganizationModal
+        isOpen={isEditOrgOpen}
+        onClose={() => setIsEditOrgOpen(false)}
+        organization={activeOrganization}
+        onSuccess={() => refreshOrganizations()}
+      />
+
+      {/* Create Organization Modal */}
+      <CreateOrganizationModal
+        isOpen={isCreateOrgOpen}
+        onClose={() => setIsCreateOrgOpen(false)}
+        onSuccess={() => refreshOrganizations()}
+      />
+    </div>
+  );
+};

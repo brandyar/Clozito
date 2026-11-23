@@ -1,0 +1,714 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from '../../i18n';
+import { useOrganization } from '../../context/OrganizationContext';
+import { storageManager } from '../../storage';
+import { Customer, Order } from '../../types';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Badge } from '../../components/ui/Badge';
+import { Modal } from '../../components/ui/Modal';
+import { DataTable } from '../../components/ui/DataTable';
+import { formatDate, formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { confirmAction } from '../../utils/confirm';
+import { exportCustomersToExcel, parseCustomersFromExcel } from '../../utils/excelUtils';
+import { useSwrRefresh } from '../../hooks/useSwrRefresh';
+import {
+  Users,
+  Plus,
+  Search,
+  Edit,
+  Phone,
+  Mail,
+  MapPin,
+  ShoppingBag,
+  History,
+  User,
+  CheckCircle2,
+  Trash2,
+  Download,
+  Upload,
+  RefreshCw,
+  AlertTriangle,
+  X,
+} from 'lucide-react';
+
+export const CustomersView: React.FC = () => {
+  const { t, locale } = useTranslation();
+  const { activeOrganization } = useOrganization();
+  const isPersian = false;
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [orders, setOrders] = useState<Order[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isImporting, setIsImporting] = useState(false);
+  const [search, setSearch] = useState('');
+  const [excelFeedback, setExcelFeedback] = useState<{
+    type: 'success' | 'error' | 'info';
+    message: string;
+    details?: string[];
+  } | null>(null);
+
+  // Add/Edit Modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
+  const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
+  const [address, setAddress] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // History Modal
+  const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
+  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
+
+  const loadData = async (silent: boolean | unknown = false) => {
+    if (silent !== true) setIsLoading(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id;
+      const [custList, orderList] = await Promise.all([
+        adapter.getCustomers({ organization_id: orgId }),
+        adapter.getOrders({ organization_id: orgId }),
+      ]);
+      setCustomers(custList);
+      setOrders(orderList);
+    } catch (err) {
+      console.error('[CustomersView] Error loading customers:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [activeOrganization]);
+
+  useSwrRefresh(['customers', 'orders'], () => {
+    loadData(true);
+  });
+
+  const handleOpenModal = (cust?: Customer) => {
+    if (cust) {
+      setEditingCustomer(cust);
+      setName(cust.name);
+      setPhone(cust.phone || '');
+      setEmail(cust.email || '');
+      setAddress(cust.address || '');
+      setNotes(cust.notes || '');
+    } else {
+      setEditingCustomer(null);
+      setName('');
+      setPhone('');
+      setEmail('');
+      setAddress('');
+      setNotes('');
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSaveCustomer = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id || 1;
+
+      await adapter.saveCustomer({
+        id: editingCustomer?.id,
+        organization_id: orgId,
+        name,
+        phone,
+        email,
+        address,
+        notes,
+        status: 'active',
+      });
+
+      setIsModalOpen(false);
+      await loadData();
+    } catch (err) {
+      console.error('[CustomersView] Error saving customer:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleOpenHistory = (cust: Customer) => {
+    setHistoryCustomer(cust);
+    setIsHistoryModalOpen(true);
+  };
+
+  const handleDeleteCustomer = async (cust: Customer) => {
+    if (!cust.id) return;
+    const isConfirmed = await confirmAction(`${t('customers.confirmDeleteCustomer')} (${cust.name})`);
+    if (!isConfirmed) return;
+
+    try {
+      const adapter = storageManager.getAdapter();
+      await adapter.deleteCustomer(cust.id);
+      await loadData();
+    } catch (err) {
+      console.error('[CustomersView] Error deleting customer:', err);
+    }
+  };
+
+  const filteredCustomers = customers.filter((c) => {
+    return (
+      (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.phone && c.phone.includes(search)) ||
+      (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
+    );
+  });
+
+  const getCustomerOrderStats = (customerId: number) => {
+    const custOrders = orders.filter((o) => {
+      const cId = typeof o.customer_id === 'object' ? (o.customer_id as any)?.id : o.customer_id;
+      return Number(cId) === Number(customerId);
+    });
+    const totalSpent = custOrders.reduce((sum, o) => sum + (Number(o.total) || 0), 0);
+    return { count: custOrders.length, totalSpent, orders: custOrders };
+  };
+
+  const handleExportExcel = () => {
+    setExcelFeedback(null);
+    const listToExport = search.trim() ? filteredCustomers : customers;
+    if (listToExport.length === 0) {
+      setExcelFeedback({
+        type: 'info',
+        message: 'مشتری‌ای جهت خروجی اکسل وجود ندارد.',
+      });
+      return;
+    }
+    const exportedCount = exportCustomersToExcel(listToExport);
+    setExcelFeedback({
+      type: 'success',
+      message: `فایل اکسل مشتریان (${isPersian ? toPersianDigits(exportedCount) : exportedCount} مشتری) با موفقیت دانلود شد.`,
+    });
+  };
+
+  const handleImportExcelClick = () => {
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+      fileInputRef.current.click();
+    }
+  };
+
+  const handleFileImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsImporting(true);
+    setExcelFeedback(null);
+    try {
+      const buffer = await file.arrayBuffer();
+      const result = parseCustomersFromExcel(buffer);
+
+      if (!result.success || result.items.length === 0) {
+        setExcelFeedback({
+          type: 'error',
+          message: t('customers.importError'),
+          details: result.errors.slice(0, 10),
+        });
+        return;
+      }
+
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id || 1;
+      const existingCustomers = await adapter.getCustomers({ organization_id: orgId });
+      const byPhone = new Map<string, Customer>();
+      const byName = new Map<string, Customer>();
+      existingCustomers.forEach((c) => {
+        if (c.phone) byPhone.set(c.phone.replace(/\s+/g, ''), c);
+        if (c.name) byName.set(c.name.trim().toLowerCase(), c);
+      });
+
+      let createdCount = 0;
+      let updatedCount = 0;
+      const runtimeErrors = [...result.errors];
+
+      for (const cust of result.items) {
+        if (!cust.name) continue;
+        try {
+          const cleanPhone = (cust.phone || '').replace(/\s+/g, '');
+          const cleanName = cust.name.trim().toLowerCase();
+          const existing =
+            (cleanPhone ? byPhone.get(cleanPhone) : undefined) ||
+            byName.get(cleanName);
+
+          const saved = await adapter.saveCustomer({
+            id: existing?.id,
+            organization_id: orgId,
+            name: cust.name,
+            phone: cust.phone || existing?.phone || '',
+            email: cust.email || existing?.email || '',
+            address: cust.address || existing?.address || '',
+            notes: cust.notes || existing?.notes || '',
+            status: cust.status || existing?.status || 'active',
+          });
+
+          if (saved.phone) byPhone.set(saved.phone.replace(/\s+/g, ''), saved);
+          if (saved.name) byName.set(saved.name.trim().toLowerCase(), saved);
+
+          if (existing) {
+            updatedCount++;
+          } else {
+            createdCount++;
+          }
+        } catch (rowErr: any) {
+          runtimeErrors.push(`${cust.name}: ${rowErr?.message || 'خطا در ذخیره‌سازی'}`);
+        }
+      }
+
+      await loadData();
+      const totalSaved = createdCount + updatedCount;
+      setExcelFeedback({
+        type: totalSaved > 0 ? 'success' : 'error',
+        message: `ورود اکسل مشتریان با موفقیت انجام شد (${isPersian ? toPersianDigits(createdCount) : createdCount} جدید، ${isPersian ? toPersianDigits(updatedCount) : updatedCount} به‌روزرسانی).`,
+        details: runtimeErrors.slice(0, 10),
+      });
+    } catch (err: any) {
+      console.error('[CustomersView] Excel import error:', err);
+      setExcelFeedback({
+        type: 'error',
+        message: `${t('customers.importError')}: ${err?.message || ''}`,
+      });
+    } finally {
+      setIsImporting(false);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileImport}
+        accept=".xlsx,.xls,.csv"
+        className="hidden"
+      />
+
+      <PageHeader
+        title={t('customers.title')}
+        subtitle={t('customers.subtitle')}
+        action={
+          <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportExcel}
+              icon={<Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />}
+            >
+              <span className="hidden sm:inline">{t('customers.exportExcel')}</span>
+              <span className="sm:hidden">خروجی</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleImportExcelClick}
+              disabled={isImporting}
+              icon={<Upload className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 dark:text-indigo-400 ${isImporting ? 'animate-bounce' : ''}`} />}
+            >
+              <span className="hidden sm:inline">{isImporting ? 'در حال ورود...' : t('customers.importExcel')}</span>
+              <span className="sm:hidden">{isImporting ? '...' : 'ورود'}</span>
+            </Button>
+            <Button
+              size="sm"
+              onClick={() => handleOpenModal()}
+              icon={<Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            >
+              <span>{t('customers.addNewCustomer')}</span>
+            </Button>
+          </div>
+        }
+      />
+
+      {excelFeedback && (
+        <div
+          className={`flex items-start justify-between gap-3 p-3.5 rounded-xl border text-xs ${
+            excelFeedback.type === 'success'
+              ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/60 text-emerald-900 dark:text-emerald-200'
+              : excelFeedback.type === 'error'
+              ? 'bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-800/60 text-red-900 dark:text-red-200'
+              : 'bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-800/60 text-blue-900 dark:text-blue-200'
+          }`}
+        >
+          <div className="space-y-1">
+            <div className="flex items-center gap-2 font-bold">
+              {excelFeedback.type === 'success' ? (
+                <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              ) : (
+                <AlertTriangle className="w-4 h-4 shrink-0" />
+              )}
+              <span>{excelFeedback.message}</span>
+            </div>
+            {excelFeedback.details && excelFeedback.details.length > 0 && (
+              <ul className="list-disc list-inside text-[11px] opacity-85 space-y-0.5 ps-5">
+                {excelFeedback.details.map((d, i) => (
+                  <li key={i}>{d}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={() => setExcelFeedback(null)}
+            className="p-1 rounded-lg hover:bg-black/5 dark:hover:bg-white/10 cursor-pointer shrink-0"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
+      {/* Unified Customers Container */}
+      <Card className="border-0 sm:border bg-transparent sm:bg-white dark:sm:bg-[#181a20] shadow-none sm:shadow-sm p-0 sm:p-5 md:p-6">
+        {/* Search Toolbar */}
+        <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 mb-5">
+          <div className="w-full sm:w-80">
+            <Input
+              placeholder={t('customers.searchPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              icon={<Search className="w-4 h-4" />}
+            />
+          </div>
+        </div>
+
+        {/* 1. Desktop Tabular View */}
+        <div className="hidden md:block">
+          <DataTable<Customer>
+            data={filteredCustomers}
+            keyExtractor={(c) => c.id}
+            isLoading={isLoading}
+            emptyMessage={t('customers.emptyMessage')}
+            columns={[
+              {
+                key: 'name',
+                header: t('customers.customerName'),
+                render: (c) => (
+                  <div>
+                    <span className="font-bold text-slate-900 dark:text-neutral-100 text-xs sm:text-sm">{c.name}</span>
+                    {c.date_created && (
+                      <div className="text-[10px] text-slate-400 dark:text-neutral-500">
+                        {t('customers.membership')}: {formatDate(c.date_created, isPersian)}
+                      </div>
+                    )}
+                  </div>
+                ),
+              },
+              {
+                key: 'phone',
+                header: t('customers.phone'),
+                render: (c) => (
+                  <div className="flex items-center gap-1.5 font-mono text-xs text-slate-700 dark:text-neutral-300">
+                    <Phone className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-500" />
+                    {c.phone || '-'}
+                  </div>
+                ),
+              },
+              {
+                key: 'email',
+                header: t('customers.emailOrAddress'),
+                render: (c) => (
+                  <div className="text-xs text-slate-600 dark:text-neutral-400 truncate max-w-xs">
+                    {c.email && (
+                      <div className="flex items-center gap-1 font-mono text-[11px]">
+                        <Mail className="w-3 h-3 text-slate-400 dark:text-neutral-500" />
+                        {c.email}
+                      </div>
+                    )}
+                    {c.address && (
+                      <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-neutral-400 truncate">
+                        <MapPin className="w-3 h-3 text-slate-400 dark:text-neutral-500 shrink-0" />
+                        {c.address}
+                      </div>
+                    )}
+                    {!c.email && !c.address && '-'}
+                  </div>
+                ),
+              },
+              {
+                key: 'orders',
+                header: t('customers.ordersCountAndTotal'),
+                render: (c) => {
+                  const stats = getCustomerOrderStats(c.id);
+                  return (
+                    <div>
+                      <div className="font-bold text-slate-900 dark:text-neutral-100 text-xs font-mono">
+                        {formatCurrency(stats.totalSpent, activeOrganization?.currency, isPersian)}
+                      </div>
+                      <div className="text-[10px] text-slate-500 dark:text-neutral-400 font-mono">
+                        {stats.count} {t('customers.ordersCountLabel')}
+                      </div>
+                    </div>
+                  );
+                },
+              },
+            ]}
+            actions={(c) => (
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenHistory(c)}
+                  icon={<History className="w-3.5 h-3.5" />}
+                >
+                  {t('customers.history')}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenModal(c)}
+                  icon={<Edit className="w-3.5 h-3.5" />}
+                >
+                  {t('common.edit')}
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                  onClick={() => handleDeleteCustomer(c)}
+                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                >
+                  {t('common.delete')}
+                </Button>
+              </div>
+            )}
+          />
+        </div>
+
+        {/* 2. Mobile Responsive Cards View */}
+        <div className="block md:hidden space-y-3">
+          {isLoading ? (
+            <div className="py-12 text-center text-slate-400 dark:text-neutral-500 text-sm">
+              {t('common.loading')}
+            </div>
+          ) : filteredCustomers.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 dark:text-neutral-500 text-sm">
+              {t('customers.emptyMessage')}
+            </div>
+          ) : (
+            filteredCustomers.map((c) => {
+              const stats = getCustomerOrderStats(c.id);
+
+              return (
+                <div
+                  key={`mob_cust_${c.id}`}
+                  className="rounded-2xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-[#181a20] p-4 shadow-sm space-y-3 transition-all"
+                >
+                  {/* Top: Customer Name + Membership Date */}
+                  <div className="flex items-start justify-between gap-2">
+                    <h3 className="font-bold text-slate-900 dark:text-neutral-100 text-sm">
+                      {c.name}
+                    </h3>
+                    {c.date_created && (
+                      <span className="text-[10px] text-slate-400 dark:text-neutral-500 font-mono">
+                        {t('customers.membership')}: {formatDate(c.date_created, isPersian)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Contact Info (Phone, Email, Address) */}
+                  <div className="space-y-1.5 text-xs text-slate-600 dark:text-neutral-300">
+                    {c.phone && (
+                      <div className="flex items-center gap-1.5 font-mono">
+                        <Phone className="w-3.5 h-3.5 text-slate-400" />
+                        <a href={`tel:${c.phone}`} className="hover:underline text-indigo-600 dark:text-indigo-400 font-bold">
+                          {c.phone}
+                        </a>
+                      </div>
+                    )}
+                    {c.email && (
+                      <div className="flex items-center gap-1.5 font-mono text-[11px] text-slate-500 dark:text-neutral-400">
+                        <Mail className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                        <span className="truncate">{c.email}</span>
+                      </div>
+                    )}
+                    {c.address && (
+                      <div className="flex items-start gap-1.5 text-[11px] text-slate-500 dark:text-neutral-400">
+                        <MapPin className="w-3.5 h-3.5 text-slate-400 shrink-0 mt-0.5" />
+                        <span className="line-clamp-2">{c.address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Orders Summary Matrix */}
+                  <div className="flex items-center justify-between p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-100 dark:border-neutral-800 text-xs">
+                    <div>
+                      <span className="text-[10px] text-slate-400 block">{t('customers.totalSpent')}:</span>
+                      <span className="font-mono font-extrabold text-slate-900 dark:text-neutral-100 text-sm">
+                        {formatCurrency(stats.totalSpent, activeOrganization?.currency, isPersian)}
+                      </span>
+                    </div>
+
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-300 font-bold text-xs font-mono">
+                      <ShoppingBag className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
+                      <span>{isPersian ? toPersianDigits(stats.count) : stats.count} {t('customers.ordersCountLabel')}</span>
+                    </span>
+                  </div>
+
+                  {/* Actions Row */}
+                  <div className="flex items-center justify-between gap-1 pt-1 border-t border-neutral-100 dark:border-neutral-800/80">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenHistory(c)}
+                      icon={<History className="w-3.5 h-3.5" />}
+                      className="h-8 px-2.5 text-xs"
+                    >
+                      {t('customers.history')}
+                    </Button>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleOpenModal(c)}
+                        icon={<Edit className="w-3.5 h-3.5" />}
+                        className="h-8 px-2.5 text-xs"
+                      >
+                        {t('common.edit')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 px-2 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+                        onClick={() => handleDeleteCustomer(c)}
+                        icon={<Trash2 className="w-3.5 h-3.5" />}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </Card>
+
+      {/* Modal: Create/Edit Customer */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingCustomer ? t('customers.editCustomerTitle') : t('customers.addNewCustomer')}
+      >
+        <form onSubmit={handleSaveCustomer} className="space-y-4">
+          <Input
+            label={t('customers.customerName')}
+            placeholder={t('customers.namePlaceholder')}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label={t('customers.phoneLabel')}
+              placeholder="09123456789"
+              value={phone}
+              onChange={(e) => setPhone(e.target.value)}
+            />
+            <Input
+              label={t('customers.email')}
+              type="email"
+              placeholder="customer@example.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-neutral-300 mb-1">{t('customers.deliveryAddressLabel')}</label>
+            <textarea
+              rows={2}
+              placeholder={t('customers.addressPlaceholder')}
+              value={address}
+              onChange={(e) => setAddress(e.target.value)}
+              className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-neutral-300 mb-1">{t('customers.notesLabel')}</label>
+            <textarea
+              rows={2}
+              placeholder={t('customers.notesPlaceholder')}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 outline-none"
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-neutral-800">
+            <Button variant="outline" type="button" onClick={() => setIsModalOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" isLoading={isSaving}>
+              {editingCustomer ? t('customers.saveChanges') : t('customers.submitCustomer')}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      {/* Modal: Customer History */}
+      {historyCustomer && (
+        <Modal
+          isOpen={isHistoryModalOpen}
+          onClose={() => setIsHistoryModalOpen(false)}
+          title={`${t('customers.historyTitle')} ${historyCustomer.name}`}
+        >
+          <div className="space-y-4">
+            {(() => {
+              const stats = getCustomerOrderStats(historyCustomer.id);
+              if (stats.orders.length === 0) {
+                return (
+                  <div className="p-8 text-center text-slate-400 dark:text-neutral-500 text-xs">
+                    {t('customers.noOrdersForCustomer')}
+                  </div>
+                );
+              }
+              return (
+                <div className="space-y-3 max-h-[400px] overflow-y-auto custom-scrollbar pe-1">
+                  {stats.orders.map((ord, ordIdx) => (
+                    <div
+                      key={`cust_ord_${ord.id || 'temp'}_${ordIdx}`}
+                      className="p-3 bg-slate-50 dark:bg-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-xl flex items-center justify-between text-xs"
+                    >
+                      <div>
+                        <div className="font-bold font-mono text-slate-900 dark:text-neutral-100">{ord.order_number}</div>
+                        <div className="text-[10px] text-slate-500 dark:text-neutral-400 font-mono">
+                          {formatDate(ord.date_created, isPersian)}
+                        </div>
+                      </div>
+
+                      <div className="text-end">
+                        <div className="font-bold text-slate-900 dark:text-neutral-100 font-mono">
+                          {formatCurrency(ord.total, activeOrganization?.currency, isPersian)}
+                        </div>
+                        <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-medium font-mono">
+                          {ord.status === 'completed' ? t('orders.statusCompleted') : ord.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              );
+            })()}
+
+            <div className="flex justify-end pt-3 border-t border-slate-100 dark:border-neutral-800">
+              <Button variant="outline" onClick={() => setIsHistoryModalOpen(false)}>
+                {t('common.close')}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};

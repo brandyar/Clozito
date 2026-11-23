@@ -1,0 +1,1006 @@
+import { CloudStorageBase, UUID_REGEX } from './cloudBase';
+import { QueryParams, PaginatedResult } from '../types';
+import { matchesSearchQuery } from '../../utils/formatters';
+import {
+  Category,
+  Collection,
+  Season,
+  Color,
+  SizeGroup,
+  Size,
+  Brand,
+  Product,
+  ProductVariant,
+  Warehouse,
+  InventoryItem,
+  InventoryMovement,
+  SizeGuideTemplate,
+  SizeGuideMeasurement,
+  SizeGuideValue,
+} from '../../types';
+
+export class CloudCatalogStorage {
+  constructor(private base: CloudStorageBase) {}
+
+  // Products & Variants
+  async getProducts(params?: QueryParams): Promise<Product[]> {
+    const query: any = {
+      sort: '-id',
+      fields: [
+        'id',
+        'organization_id',
+        'title',
+        'slug',
+        'category_id',
+        'brand_id',
+        'status',
+        'main_image',
+        'date_created',
+      ],
+    };
+    if (params?.organization_id) {
+      query.filter = { organization_id: { _eq: params.organization_id } };
+    }
+    try {
+      const products = await this.base.client.getItems<Product>('products', query);
+      const [variants, inventoryItems] = await Promise.all([
+        this.base.client.getItems<ProductVariant>('product_variants', {
+          filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+          fields: ['id', 'product_id', 'sku', 'barcode'],
+        }).catch(() => []),
+        this.base.client.getItems<InventoryItem>('inventory_items', {
+          filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+          fields: ['id', 'variant_id', 'quantity'],
+        }).catch(() => []),
+      ]);
+
+      let mappedProducts = products.map((p) => {
+        const normPId = this.base.normalizeId(p.id) || Number(p.id);
+        const pVariants = variants.filter((v) => {
+          const pId = this.base.normalizeId(v.product_id) || Number(v.product_id);
+          return pId === normPId;
+        });
+        const pVariantIds = new Set(
+          pVariants.map((v) => this.base.normalizeId(v.id) || Number(v.id)).filter(Boolean)
+        );
+        const pInventory = inventoryItems.filter((i) => {
+          const vId = this.base.normalizeId(i.variant_id) || Number(i.variant_id);
+          return pVariantIds.has(vId as number);
+        });
+        const totalStock = pInventory.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
+
+        return {
+          ...p,
+          id: normPId,
+          variants_count: pVariants.length,
+          total_stock: totalStock,
+        };
+      });
+
+      if (params?.search && params.search.trim()) {
+        const searchTerm = params.search.trim();
+        mappedProducts = mappedProducts.filter((p) => {
+          const pId = typeof p.id === 'number' ? p.id : (p as any)?.id;
+          const pVariants = variants.filter((v) => {
+            const pvId = typeof v.product_id === 'number' ? v.product_id : (v.product_id as any)?.id;
+            return pvId === pId;
+          });
+          const variantTexts = pVariants.map((v) => `${v.sku || ''} ${v.barcode || ''} ${v.color_name || ''} ${v.size_name || ''}`).join(' ');
+          const brandName = typeof p.brand === 'string' ? p.brand : p.brand?.name || (typeof p.brand_id === 'object' ? (p.brand_id as any)?.name : '');
+          return matchesSearchQuery(searchTerm, p.title, p.slug, p.description, p.tags, brandName, variantTexts);
+        });
+      }
+
+      return mappedProducts;
+    } catch {
+      return this.base.localAdapter.getProducts(params);
+    }
+  }
+
+  async getPaginatedProducts(params: QueryParams): Promise<PaginatedResult<Product>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const query: any = {
+      sort: params.sort || '-id',
+      limit: pageSize,
+      page,
+      fields: [
+        'id',
+        'organization_id',
+        'title',
+        'slug',
+        'category_id',
+        'brand_id',
+        'status',
+        'main_image',
+        'date_created',
+      ],
+    };
+
+    const filterObj: any = {};
+    if (params.organization_id) {
+      filterObj.organization_id = { _eq: params.organization_id };
+    }
+    if (params.category_id) {
+      filterObj.category_id = { _eq: params.category_id };
+    }
+    if (params.status && params.status !== 'all') {
+      filterObj.status = { _eq: params.status };
+    }
+    if (Object.keys(filterObj).length > 0) {
+      query.filter = filterObj;
+    }
+    if (params.search && params.search.trim()) {
+      query.search = params.search.trim();
+    }
+
+    try {
+      const res = await this.base.client.getPaginatedItems<Product>('products', query);
+      const productIds = res.data.map((p) => this.base.normalizeId(p.id) || Number(p.id)).filter(Boolean);
+
+      let variants: ProductVariant[] = [];
+      let inventoryItems: InventoryItem[] = [];
+      if (productIds.length > 0) {
+        [variants, inventoryItems] = await Promise.all([
+          this.base.client.getItems<ProductVariant>('product_variants', {
+            filter: { product_id: { _in: productIds } },
+            fields: ['id', 'product_id', 'sku', 'barcode'],
+          }).catch(() => []),
+          this.base.client.getItems<InventoryItem>('inventory_items', {
+            filter: params.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+            fields: ['id', 'variant_id', 'quantity'],
+          }).catch(() => []),
+        ]);
+      }
+
+      const items = res.data.map((p) => {
+        const normPId = this.base.normalizeId(p.id) || Number(p.id);
+        const pVariants = variants.filter((v) => {
+          const pId = this.base.normalizeId(v.product_id) || Number(v.product_id);
+          return pId === normPId;
+        });
+        const pVariantIds = new Set(
+          pVariants.map((v) => this.base.normalizeId(v.id) || Number(v.id)).filter(Boolean)
+        );
+        const pInventory = inventoryItems.filter((i) => {
+          const vId = this.base.normalizeId(i.variant_id) || Number(i.variant_id);
+          return pVariantIds.has(vId as number);
+        });
+        const totalStock = pInventory.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
+
+        return {
+          ...p,
+          id: normPId,
+          variants_count: pVariants.length,
+          total_stock: totalStock,
+        };
+      });
+
+      const totalCount = res.meta?.filter_count ?? res.meta?.total_count ?? items.length;
+      return {
+        items,
+        totalCount,
+        page,
+        pageSize,
+        totalPages: Math.ceil(totalCount / pageSize) || 1,
+      };
+    } catch {
+      if (this.base.localAdapter.getPaginatedProducts) {
+        return this.base.localAdapter.getPaginatedProducts(params);
+      }
+      const all = await this.base.localAdapter.getProducts(params);
+      const start = (page - 1) * pageSize;
+      return {
+        items: all.slice(start, start + pageSize),
+        totalCount: all.length,
+        page,
+        pageSize,
+        totalPages: Math.ceil(all.length / pageSize) || 1,
+      };
+    }
+  }
+
+  async getProductById(id: number): Promise<Product | null> {
+    try {
+      return await this.base.client.getItemById<Product>('products', id, '*');
+    } catch {
+      return this.base.localAdapter.getProductById(id);
+    }
+  }
+
+  async saveProduct(product: Partial<Product>): Promise<Product> {
+    const payload: any = { ...product };
+    delete payload.variants_count;
+    delete payload.total_stock;
+    delete payload.brand;
+    delete payload.category;
+    delete payload.collection;
+    delete payload.season;
+    delete payload.size_guide_template;
+    delete payload.variants;
+
+    if (payload.main_image) {
+      const rawImg = typeof payload.main_image === 'string' ? payload.main_image.trim() : (payload.main_image as any)?.id || '';
+      if (rawImg && !UUID_REGEX.test(rawImg)) {
+        try {
+          const uploadedUuid = await this.base.media.uploadMediaRefToCloud(rawImg);
+          if (uploadedUuid) {
+            payload.main_image = uploadedUuid;
+          }
+        } catch (uploadErr) {
+          console.warn('[CloudCatalogStorage] Auto-uploading local image to cloud failed:', uploadErr);
+        }
+      }
+    }
+
+    payload.main_image = this.base.cleanUuid(payload.main_image);
+    payload.brand_id = this.base.cleanInt(payload.brand_id);
+    payload.category_id = this.base.cleanInt(payload.category_id);
+    payload.collection_id = this.base.cleanInt(payload.collection_id);
+    payload.season_id = this.base.cleanInt(payload.season_id);
+    payload.size_guide_template_id = this.base.cleanInt(payload.size_guide_template_id);
+    payload.sort = Number(payload.sort) || 0;
+    if (!payload.status) payload.status = 'published';
+
+    const id = payload.id ? Number(payload.id) : undefined;
+    delete payload.id;
+
+    try {
+      if (id) {
+        return await this.base.client.updateItem<Product>('products', id, payload);
+      }
+      return await this.base.client.createItem<Product>('products', payload);
+    } catch (err: any) {
+      console.error('[CloudCatalogStorage] Cloud saveProduct failed:', err?.message || err);
+      throw err;
+    }
+  }
+
+  async deleteProduct(id: number): Promise<boolean> {
+    try {
+      const variants = await this.base.client.getItems<ProductVariant>('product_variants', {
+        filter: { product_id: { _eq: id } },
+      }).catch(() => []);
+
+      for (const v of variants) {
+        await this.deleteVariant(v.id).catch((err) => {
+          console.warn(`[CloudCatalogStorage] Delete variant ${v.id} warning:`, err?.message || err);
+        });
+      }
+
+      return await this.base.client.deleteItem('products', id);
+    } catch (err: any) {
+      console.error('[CloudCatalogStorage] Cloud deleteProduct failed:', err?.message || err);
+      throw err;
+    }
+  }
+
+  async getVariants(params?: QueryParams): Promise<ProductVariant[]> {
+    const query: any = {
+      sort: '-id',
+      fields: [
+        'id',
+        'organization_id',
+        'product_id',
+        'color_id',
+        'size_id',
+        'sku',
+        'barcode',
+        'price',
+        'cost',
+        'image',
+        'status',
+        'sort',
+      ],
+    };
+    if (params?.organization_id) {
+      query.filter = { organization_id: { _eq: params.organization_id } };
+    }
+    try {
+      const [variants, products, colors, sizes, inventoryItems] = await Promise.all([
+        this.base.client.getItems<ProductVariant>('product_variants', query),
+        this.base.client.getItems<Product>('products', {
+          filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+          fields: ['id', 'title'],
+        }).catch(() => []),
+        this.base.client.getItems<Color>('colors', {
+          fields: ['id', 'name', 'hex'],
+        }).catch(() => []),
+        this.base.client.getItems<Size>('sizes', {
+          fields: ['id', 'name'],
+        }).catch(() => []),
+        this.base.client.getItems<InventoryItem>('inventory_items', {
+          filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+          fields: ['id', 'variant_id', 'quantity'],
+        }).catch(() => []),
+      ]);
+
+      return variants.map((v) => {
+        const prodId = this.base.normalizeId(v.product_id) || Number(v.product_id);
+        const colorId = this.base.normalizeId(v.color_id);
+        const sizeId = this.base.normalizeId(v.size_id);
+
+        const prod = products.find((p) => (this.base.normalizeId(p.id) || Number(p.id)) === prodId);
+        const color = colors.find((c) => (this.base.normalizeId(c.id) || Number(c.id)) === colorId);
+        const size = sizes.find((s) => (this.base.normalizeId(s.id) || Number(s.id)) === sizeId);
+
+        const vNormId = this.base.normalizeId(v.id) || Number(v.id);
+        const vInv = inventoryItems.filter((i) => {
+          const vId = this.base.normalizeId(i.variant_id) || Number(i.variant_id);
+          return vId === vNormId;
+        });
+        const totalStock = vInv.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
+
+        return {
+          ...v,
+          id: vNormId,
+          product_id: prodId,
+          color_id: colorId || undefined,
+          size_id: sizeId || undefined,
+          product_title: prod?.title || v.product_title || 'محصول',
+          color_name: color?.name || v.color_name || '-',
+          size_name: size?.name || v.size_name || '-',
+          stock_quantity: totalStock,
+        };
+      });
+    } catch {
+      return this.base.localAdapter.getVariants(params);
+    }
+  }
+
+  async getVariantsByProductId(productId: number): Promise<ProductVariant[]> {
+    try {
+      const normProdId = this.base.normalizeId(productId) || Number(productId);
+      let variants = await this.base.client.getItems<ProductVariant>('product_variants', {
+        filter: {
+          _or: [
+            { product_id: { _eq: normProdId } },
+            { product_id: { _eq: String(normProdId) } },
+          ],
+        },
+        fields: [
+          'id',
+          'organization_id',
+          'product_id',
+          'color_id',
+          'size_id',
+          'sku',
+          'barcode',
+          'price',
+          'cost',
+          'image',
+          'status',
+          'sort',
+        ],
+      }).catch(() => []);
+
+      if (variants.length === 0) {
+        const allVariants = await this.base.client.getItems<ProductVariant>('product_variants', {
+          fields: [
+            'id',
+            'organization_id',
+            'product_id',
+            'color_id',
+            'size_id',
+            'sku',
+            'barcode',
+            'price',
+            'cost',
+            'image',
+            'status',
+            'sort',
+          ],
+        }).catch(() => []);
+        variants = allVariants.filter((v) => (this.base.normalizeId(v.product_id) || Number(v.product_id)) === normProdId);
+      }
+
+      const variantIds = variants.map((v) => this.base.normalizeId(v.id) || Number(v.id)).filter((id): id is number => Boolean(id));
+
+      const [inventoryItems, colors, sizes, products] = await Promise.all([
+        variantIds.length > 0
+          ? this.base.client.getItems<InventoryItem>('inventory_items', {
+              filter: {
+                _or: [
+                  { variant_id: { _in: variantIds } },
+                  { variant_id: { _in: variantIds.map(String) } },
+                ],
+              },
+              fields: ['id', 'variant_id', 'quantity'],
+            }).catch(() => [])
+          : Promise.resolve([] as InventoryItem[]),
+        this.base.client.getItems<Color>('colors', {
+          fields: ['id', 'name', 'hex'],
+        }).catch(() => []),
+        this.base.client.getItems<Size>('sizes', {
+          fields: ['id', 'name'],
+        }).catch(() => []),
+        this.base.client.getItems<Product>('products', {
+          filter: { id: { _eq: normProdId } },
+          fields: ['id', 'title'],
+        }).catch(() => []),
+      ]);
+
+      const productTitle = products[0]?.title || 'محصول';
+
+      return variants.map((v) => {
+        const vNormId = this.base.normalizeId(v.id) || Number(v.id);
+        const vInv = inventoryItems.filter((i) => {
+          const invVId = this.base.normalizeId(i.variant_id) || Number(i.variant_id);
+          return invVId === vNormId;
+        });
+        const totalStock = vInv.reduce((acc, curr) => acc + (Number(curr.quantity) || 0), 0);
+
+        const cId = this.base.normalizeId(v.color_id);
+        const sId = this.base.normalizeId(v.size_id);
+
+        const matchedColor = colors.find((c) => (this.base.normalizeId(c.id) || Number(c.id)) === cId);
+        const matchedSize = sizes.find((s) => (this.base.normalizeId(s.id) || Number(s.id)) === sId);
+
+        return {
+          ...v,
+          id: vNormId,
+          product_id: normProdId,
+          color_id: cId || undefined,
+          size_id: sId || undefined,
+          product_title: productTitle,
+          color_name: matchedColor?.name || v.color_name || '-',
+          size_name: matchedSize?.name || v.size_name || '-',
+          stock_quantity: totalStock,
+        };
+      });
+    } catch {
+      return this.base.localAdapter.getVariantsByProductId(productId);
+    }
+  }
+
+  async saveVariant(variant: Partial<ProductVariant>, warehouseId?: number, locationId?: number): Promise<ProductVariant> {
+    const payload: any = { ...variant };
+    const stockQty = payload.stock_quantity;
+    delete payload.stock_quantity;
+    delete payload.color_name;
+    delete payload.size_name;
+    delete payload.product_title;
+    delete payload.color;
+    delete payload.size;
+    delete payload.product;
+    delete payload._tempId;
+
+    if (payload.image) {
+      const rawImg = typeof payload.image === 'string' ? payload.image.trim() : (payload.image as any)?.id || '';
+      if (rawImg && !UUID_REGEX.test(rawImg)) {
+        try {
+          const uploadedUuid = await this.base.media.uploadMediaRefToCloud(rawImg);
+          if (uploadedUuid) {
+            payload.image = uploadedUuid;
+          }
+        } catch (uploadErr) {
+          console.warn('[CloudCatalogStorage] Auto-uploading variant image to cloud failed:', uploadErr);
+        }
+      }
+    }
+
+    payload.image = this.base.cleanUuid(payload.image);
+    payload.color_id = this.base.cleanInt(payload.color_id);
+    payload.size_id = this.base.cleanInt(payload.size_id);
+    payload.product_id = this.base.normalizeId(payload.product_id) || Number(payload.product_id);
+    payload.price = payload.price !== undefined && payload.price !== '' ? Number(payload.price) : 0;
+    payload.cost = payload.cost !== undefined && payload.cost !== '' ? Number(payload.cost) : 0;
+    payload.sort = Number(payload.sort) || 0;
+    if (!payload.status) payload.status = 'published';
+
+    const id = this.base.normalizeId(payload.id);
+    delete payload.id;
+
+    try {
+      let saved: ProductVariant;
+      if (id) {
+        try {
+          saved = await this.base.client.updateItem<ProductVariant>('product_variants', id, payload);
+        } catch (updateErr: any) {
+          if (
+            updateErr?.message?.includes('404') ||
+            updateErr?.message?.includes('not found') ||
+            updateErr?.message?.includes('RECORD_NOT_FOUND')
+          ) {
+            saved = await this.base.client.createItem<ProductVariant>('product_variants', payload);
+          } else {
+            throw updateErr;
+          }
+        }
+      } else {
+        saved = await this.base.client.createItem<ProductVariant>('product_variants', payload);
+      }
+
+      const savedNormId = this.base.normalizeId(saved.id) || Number(saved.id);
+      const orgId = this.base.normalizeId(saved.organization_id) || this.base.normalizeId(variant.organization_id) || 1;
+
+      // Robust inventory synchronization
+      if (stockQty !== undefined && stockQty !== null) {
+        const qtyNum = Math.max(0, Number(stockQty) || 0);
+
+        const existingInventory = await this.base.client.getItems<InventoryItem>('inventory_items', {
+          filter: {
+            _or: [
+              { variant_id: { _eq: savedNormId } },
+              { variant_id: { _eq: String(savedNormId) } },
+            ],
+          },
+        }).catch(() => []);
+
+        const targetWhNorm = this.base.normalizeId(warehouseId) || (warehouseId ? Number(warehouseId) : undefined);
+        const itemToUpdate = targetWhNorm
+          ? existingInventory.find((i) => {
+              const whId = this.base.normalizeId(i.warehouse_id) || Number(i.warehouse_id);
+              return whId === targetWhNorm;
+            })
+          : existingInventory[0];
+
+        if (itemToUpdate) {
+          const oldQty = Number(itemToUpdate.quantity) || 0;
+          const reserved = Number(itemToUpdate.reserved_quantity) || 0;
+          const damaged = Number(itemToUpdate.damaged_quantity) || 0;
+          const available = Math.max(0, qtyNum - reserved - damaged);
+
+          const invUpdatePayload: any = {
+            quantity: qtyNum,
+            available_quantity: available,
+            updated_at: new Date().toISOString(),
+          };
+          if (locationId) {
+            invUpdatePayload.location_id = locationId;
+          }
+
+          await this.base.client.updateItem<InventoryItem>('inventory_items', itemToUpdate.id, invUpdatePayload).catch((err) => {
+            console.warn('[CloudCatalogStorage] Update inventory failed:', err?.message || err);
+          });
+
+          if (qtyNum !== oldQty) {
+            await this.base.client.createItem<InventoryMovement>('inventory_movements', {
+              organization_id: orgId,
+              variant_id: savedNormId,
+              warehouse_id: this.base.normalizeId(itemToUpdate.warehouse_id) || targetWhNorm || 1,
+              location_id: locationId || undefined,
+              type: 'adjustment',
+              quantity: Math.abs(qtyNum - oldQty),
+              reference_type: 'manual',
+              reference_id: `ADJ-${savedNormId}`,
+              note: qtyNum > oldQty ? 'افزایش موجودی در ویرایش متغیر' : 'کاهش موجودی در ویرایش متغیر',
+            }).catch((movErr) => console.warn('[CloudCatalogStorage] Movement log error:', movErr));
+          }
+        } else {
+          let resolvedWarehouseId = targetWhNorm;
+          const warehouses = await this.base.client.getItems<Warehouse>('warehouses', {
+            filter: { organization_id: { _eq: orgId } },
+          }).catch(() => []);
+
+          if (resolvedWarehouseId && warehouses.some((w) => (this.base.normalizeId(w.id) || Number(w.id)) === resolvedWarehouseId)) {
+            // Valid warehouse selected
+          } else if (warehouses.length > 0) {
+            resolvedWarehouseId = this.base.normalizeId(warehouses[0].id) || warehouses[0].id;
+          } else {
+            const allWarehouses = await this.base.client.getItems<Warehouse>('warehouses', {}).catch(() => []);
+            if (allWarehouses.length > 0) {
+              resolvedWarehouseId = this.base.normalizeId(allWarehouses[0].id) || allWarehouses[0].id;
+            } else {
+              try {
+                const newWh = await this.base.client.createItem<Warehouse>('warehouses', {
+                  organization_id: orgId,
+                  name: 'Main Warehouse',
+                  code: 'MAIN',
+                  type: 'warehouse',
+                  status: 'active',
+                });
+                resolvedWarehouseId = newWh.id;
+              } catch (whErr) {
+                console.warn('[CloudCatalogStorage] Auto-create warehouse failed:', whErr);
+                resolvedWarehouseId = 1;
+              }
+            }
+          }
+
+          await this.base.client.createItem<InventoryItem>('inventory_items', {
+            organization_id: orgId,
+            variant_id: savedNormId,
+            warehouse_id: resolvedWarehouseId || 1,
+            location_id: locationId || undefined,
+            quantity: qtyNum,
+            reserved_quantity: 0,
+            available_quantity: qtyNum,
+            damaged_quantity: 0,
+            reorder_point: 5,
+            safety_stock: 2,
+            updated_at: new Date().toISOString(),
+          }).catch((err) => {
+            console.warn('[CloudCatalogStorage] Create inventory failed:', err?.message || err);
+          });
+
+          await this.base.client.createItem<InventoryMovement>('inventory_movements', {
+            organization_id: orgId,
+            variant_id: savedNormId,
+            warehouse_id: resolvedWarehouseId || 1,
+            location_id: locationId || undefined,
+            type: 'adjustment',
+            quantity: qtyNum,
+            reference_type: 'manual',
+            reference_id: `INIT-${savedNormId}`,
+            note: 'موجودی اولیه هنگام ایجاد متغیر کالا',
+          }).catch((movErr) => console.warn('[CloudCatalogStorage] Movement log error:', movErr));
+        }
+      }
+
+      return {
+        ...saved,
+        id: savedNormId,
+        product_id: this.base.normalizeId(saved.product_id) || Number(saved.product_id),
+        stock_quantity: stockQty !== undefined ? Number(stockQty) : (saved.stock_quantity || 0),
+      };
+    } catch (err: any) {
+      console.error('[CloudCatalogStorage] Cloud saveVariant failed:', err?.message || err);
+      throw err;
+    }
+  }
+
+  async deleteVariant(id: number): Promise<boolean> {
+    try {
+      const normId = this.base.normalizeId(id) || Number(id);
+      const inventoryItems = await this.base.client.getItems<InventoryItem>('inventory_items', {
+        filter: {
+          _or: [
+            { variant_id: { _eq: normId } },
+            { variant_id: { _eq: String(normId) } },
+          ],
+        },
+      }).catch(() => []);
+      for (const inv of inventoryItems) {
+        await this.base.client.deleteItem('inventory_items', inv.id).catch((err) => {
+          console.warn(`[CloudCatalogStorage] Delete inventory item ${inv.id} warning:`, err?.message || err);
+        });
+      }
+
+      const movements = await this.base.client.getItems<InventoryMovement>('inventory_movements', {
+        filter: {
+          _or: [
+            { variant_id: { _eq: normId } },
+            { variant_id: { _eq: String(normId) } },
+          ],
+        },
+      }).catch(() => []);
+      for (const mov of movements) {
+        await this.base.client.deleteItem('inventory_movements', mov.id).catch(() => null);
+      }
+
+      return await this.base.client.deleteItem('product_variants', normId).catch(() => true);
+    } catch (err: any) {
+      console.error('[CloudCatalogStorage] Cloud deleteVariant failed:', err?.message || err);
+      throw err;
+    }
+  }
+
+  // Categories
+  async getCategories(params?: QueryParams): Promise<Category[]> {
+    const query: any = { sort: 'name' };
+    if (params?.organization_id) {
+      query.filter = { organization_id: { _eq: params.organization_id } };
+    }
+    try {
+      return await this.base.client.getItems<Category>('categories', query);
+    } catch {
+      return this.base.localAdapter.getCategories(params);
+    }
+  }
+
+  async saveCategory(cat: Partial<Category>): Promise<Category> {
+    try {
+      if (cat.id) return await this.base.client.updateItem<Category>('categories', cat.id, cat);
+      return await this.base.client.createItem<Category>('categories', cat);
+    } catch {
+      const saved = await this.base.localAdapter.saveCategory(cat);
+      this.base.syncManager.enqueue({ action: cat.id ? 'UPDATE' : 'CREATE', collection: 'categories', payload: saved });
+      return saved;
+    }
+  }
+
+  async deleteCategory(id: number): Promise<boolean> {
+    try {
+      return await this.base.client.deleteItem('categories', id);
+    } catch {
+      const res = await this.base.localAdapter.deleteCategory(id);
+      this.base.syncManager.enqueue({ action: 'DELETE', collection: 'categories', payload: { id } });
+      return res;
+    }
+  }
+
+  // Collections
+  async getCollections(params?: QueryParams): Promise<Collection[]> {
+    try {
+      return await this.base.client.getItems<Collection>('collections', {
+        filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+      });
+    } catch {
+      return this.base.localAdapter.getCollections(params);
+    }
+  }
+
+  async saveCollection(col: Partial<Collection>): Promise<Collection> {
+    try {
+      if (col.id) return await this.base.client.updateItem<Collection>('collections', col.id, col);
+      return await this.base.client.createItem<Collection>('collections', col);
+    } catch {
+      const saved = await this.base.localAdapter.saveCollection(col);
+      this.base.syncManager.enqueue({ action: col.id ? 'UPDATE' : 'CREATE', collection: 'collections', payload: saved });
+      return saved;
+    }
+  }
+
+  async deleteCollection(id: number): Promise<boolean> {
+    try {
+      return await this.base.client.deleteItem('collections', id);
+    } catch {
+      const res = await this.base.localAdapter.deleteCollection(id);
+      this.base.syncManager.enqueue({ action: 'DELETE', collection: 'collections', payload: { id } });
+      return res;
+    }
+  }
+
+  // Brands
+  async getBrands(params?: QueryParams): Promise<Brand[]> {
+    try {
+      return await this.base.client.getItems<Brand>('brands', {
+        filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+      });
+    } catch {
+      return this.base.localAdapter.getBrands(params);
+    }
+  }
+
+  async saveBrand(brand: Partial<Brand>): Promise<Brand> {
+    try {
+      if (brand.id) return await this.base.client.updateItem<Brand>('brands', brand.id, brand);
+      return await this.base.client.createItem<Brand>('brands', brand);
+    } catch {
+      const saved = await this.base.localAdapter.saveBrand(brand);
+      this.base.syncManager.enqueue({ action: brand.id ? 'UPDATE' : 'CREATE', collection: 'brands', payload: saved });
+      return saved;
+    }
+  }
+
+  async deleteBrand(id: number): Promise<boolean> {
+    try {
+      return await this.base.client.deleteItem('brands', id);
+    } catch {
+      const res = await this.base.localAdapter.deleteBrand(id);
+      this.base.syncManager.enqueue({ action: 'DELETE', collection: 'brands', payload: { id } });
+      return res;
+    }
+  }
+
+  // Seasons
+  async getSeasons(params?: QueryParams): Promise<Season[]> {
+    try {
+      return await this.base.client.getItems<Season>('seasons', {
+        filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+      });
+    } catch {
+      return this.base.localAdapter.getSeasons(params);
+    }
+  }
+
+  async saveSeason(season: Partial<Season>): Promise<Season> {
+    const payload: Partial<Season> = {
+      ...season,
+      code: season.code?.trim() || null,
+      start_date: season.start_date && season.start_date.trim() !== '' ? season.start_date : null,
+      end_date: season.end_date && season.end_date.trim() !== '' ? season.end_date : null,
+    };
+    try {
+      if (payload.id) return await this.base.client.updateItem<Season>('seasons', payload.id, payload);
+      return await this.base.client.createItem<Season>('seasons', payload);
+    } catch {
+      const saved = await this.base.localAdapter.saveSeason(payload);
+      this.base.syncManager.enqueue({ action: payload.id ? 'UPDATE' : 'CREATE', collection: 'seasons', payload: saved });
+      return saved;
+    }
+  }
+
+  async deleteSeason(id: number): Promise<boolean> {
+    try {
+      return await this.base.client.deleteItem('seasons', id);
+    } catch {
+      const res = await this.base.localAdapter.deleteSeason(id);
+      this.base.syncManager.enqueue({ action: 'DELETE', collection: 'seasons', payload: { id } });
+      return res;
+    }
+  }
+
+  // Colors
+  async getColors(params?: QueryParams): Promise<Color[]> {
+    try {
+      return await this.base.client.getItems<Color>('colors', {
+        filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+      });
+    } catch {
+      return this.base.localAdapter.getColors(params);
+    }
+  }
+
+  async saveColor(color: Partial<Color>): Promise<Color> {
+    try {
+      if (color.id) return await this.base.client.updateItem<Color>('colors', color.id, color);
+      return await this.base.client.createItem<Color>('colors', color);
+    } catch {
+      const saved = await this.base.localAdapter.saveColor(color);
+      this.base.syncManager.enqueue({ action: color.id ? 'UPDATE' : 'CREATE', collection: 'colors', payload: saved });
+      return saved;
+    }
+  }
+
+  async deleteColor(id: number): Promise<boolean> {
+    try {
+      return await this.base.client.deleteItem('colors', id);
+    } catch {
+      const res = await this.base.localAdapter.deleteColor(id);
+      this.base.syncManager.enqueue({ action: 'DELETE', collection: 'colors', payload: { id } });
+      return res;
+    }
+  }
+
+  // Size Groups
+  async getSizeGroups(params?: QueryParams): Promise<SizeGroup[]> {
+    try {
+      return await this.base.client.getItems<SizeGroup>('size_groups', {
+        filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+      });
+    } catch {
+      return this.base.localAdapter.getSizeGroups(params);
+    }
+  }
+
+  async saveSizeGroup(group: Partial<SizeGroup>): Promise<SizeGroup> {
+    try {
+      if (group.id) return await this.base.client.updateItem<SizeGroup>('size_groups', group.id, group);
+      return await this.base.client.createItem<SizeGroup>('size_groups', group);
+    } catch {
+      const saved = await this.base.localAdapter.saveSizeGroup(group);
+      this.base.syncManager.enqueue({ action: group.id ? 'UPDATE' : 'CREATE', collection: 'size_groups', payload: saved });
+      return saved;
+    }
+  }
+
+  async deleteSizeGroup(id: number): Promise<boolean> {
+    try {
+      return await this.base.client.deleteItem('size_groups', id);
+    } catch {
+      const res = await this.base.localAdapter.deleteSizeGroup(id);
+      this.base.syncManager.enqueue({ action: 'DELETE', collection: 'size_groups', payload: { id } });
+      return res;
+    }
+  }
+
+  // Sizes
+  async getSizes(params?: QueryParams): Promise<Size[]> {
+    try {
+      return await this.base.client.getItems<Size>('sizes', {
+        filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+      });
+    } catch {
+      return this.base.localAdapter.getSizes(params);
+    }
+  }
+
+  async saveSize(size: Partial<Size>): Promise<Size> {
+    try {
+      if (size.id) return await this.base.client.updateItem<Size>('sizes', size.id, size);
+      return await this.base.client.createItem<Size>('sizes', size);
+    } catch {
+      const saved = await this.base.localAdapter.saveSize(size);
+      this.base.syncManager.enqueue({ action: size.id ? 'UPDATE' : 'CREATE', collection: 'sizes', payload: saved });
+      return saved;
+    }
+  }
+
+  async deleteSize(id: number): Promise<boolean> {
+    try {
+      return await this.base.client.deleteItem('sizes', id);
+    } catch {
+      const res = await this.base.localAdapter.deleteSize(id);
+      this.base.syncManager.enqueue({ action: 'DELETE', collection: 'sizes', payload: { id } });
+      return res;
+    }
+  }
+
+  // Size Guides
+  async getSizeGuideTemplates(params?: QueryParams): Promise<SizeGuideTemplate[]> {
+    try {
+      return await this.base.client.getItems<SizeGuideTemplate>('size_guide_templates', {
+        filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
+      });
+    } catch {
+      return this.base.localAdapter.getSizeGuideTemplates(params);
+    }
+  }
+
+  async getSizeGuideTemplateById(id: number): Promise<SizeGuideTemplate | null> {
+    try {
+      return await this.base.client.getItemById<SizeGuideTemplate>('size_guide_templates', id);
+    } catch {
+      const templates = await this.base.localAdapter.getSizeGuideTemplates();
+      return templates.find((t) => t.id === id) || null;
+    }
+  }
+
+  async saveSizeGuideTemplate(tpl: Partial<SizeGuideTemplate>): Promise<SizeGuideTemplate> {
+    try {
+      if (tpl.id) return await this.base.client.updateItem<SizeGuideTemplate>('size_guide_templates', tpl.id, tpl);
+      return await this.base.client.createItem<SizeGuideTemplate>('size_guide_templates', tpl);
+    } catch {
+      return this.base.localAdapter.saveSizeGuideTemplate(tpl);
+    }
+  }
+
+  async deleteSizeGuideTemplate(id: number): Promise<boolean> {
+    try {
+      await this.base.client.deleteItem('size_guide_templates', id);
+      return true;
+    } catch {
+      return this.base.localAdapter.deleteSizeGuideTemplate(id);
+    }
+  }
+
+  async getSizeGuideMeasurements(templateId?: number): Promise<SizeGuideMeasurement[]> {
+    try {
+      const filter = templateId ? { template_id: { _eq: templateId } } : undefined;
+      return await this.base.client.getItems<SizeGuideMeasurement>('size_guide_measurements', {
+        filter,
+      });
+    } catch {
+      return this.base.localAdapter.getSizeGuideMeasurements(templateId || 0);
+    }
+  }
+
+  async saveSizeGuideMeasurement(meas: Partial<SizeGuideMeasurement>): Promise<SizeGuideMeasurement> {
+    try {
+      if (meas.id) return await this.base.client.updateItem<SizeGuideMeasurement>('size_guide_measurements', meas.id, meas);
+      return await this.base.client.createItem<SizeGuideMeasurement>('size_guide_measurements', meas);
+    } catch {
+      return this.base.localAdapter.saveSizeGuideMeasurement(meas);
+    }
+  }
+
+  async deleteSizeGuideMeasurement(id: number): Promise<boolean> {
+    try {
+      await this.base.client.deleteItem('size_guide_measurements', id);
+      return true;
+    } catch {
+      return this.base.localAdapter.deleteSizeGuideMeasurement(id);
+    }
+  }
+
+  async getSizeGuideValues(templateId?: number): Promise<SizeGuideValue[]> {
+    try {
+      const filter = templateId ? { template_id: { _eq: templateId } } : undefined;
+      return await this.base.client.getItems<SizeGuideValue>('size_guide_values', {
+        filter,
+      });
+    } catch {
+      return this.base.localAdapter.getSizeGuideValues(templateId || 0);
+    }
+  }
+
+  async saveSizeGuideValue(val: Partial<SizeGuideValue>): Promise<SizeGuideValue> {
+    try {
+      if (val.id) return await this.base.client.updateItem<SizeGuideValue>('size_guide_values', val.id, val);
+      return await this.base.client.createItem<SizeGuideValue>('size_guide_values', val);
+    } catch {
+      return this.base.localAdapter.saveSizeGuideValue(val);
+    }
+  }
+
+  async deleteSizeGuideValue(id: number): Promise<boolean> {
+    try {
+      await this.base.client.deleteItem('size_guide_values', id);
+      return true;
+    } catch {
+      return this.base.localAdapter.deleteSizeGuideValue(id);
+    }
+  }
+}

@@ -1,0 +1,435 @@
+name: 'Release Tauri Multi-Platform App (Desktop & Android)'
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  release-desktop:
+    name: 'Build Desktop App (${{ matrix.platform }})'
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: 'macos-latest'
+            args: '--target universal-apple-darwin'
+          - platform: 'windows-latest'
+            args: ''
+
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+
+      - name: Install frontend dependencies
+        run: npm ci || npm install --include=optional --force
+
+      - name: Build and Package Tauri Desktop App
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY || secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD || secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY || secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD || secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'TANKHOR v__VERSION__'
+          releaseBody: 'انتشار نسخه چندپلتفرمه تن‌خور (ویندوز، مک و اندروید) با پشتیبانی کامل از دیتابیس آفلاین محلی و همگام‌سازی ابری.'
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true
+          args: ${{ matrix.args }}
+
+  generate-updater-json:
+    name: 'Generate & Upload latest.json'
+    needs: release-desktop
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Download release assets and publish latest.json
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          mkdir -p assets
+          cd assets
+          gh release download "$TAG_NAME" --repo "$REPO" --dir . || true
+          ls -la
+
+          node -e '
+          const fs = require("fs");
+
+          const tag = process.env.TAG_NAME || "v1.0.22";
+          const version = tag.replace(/^v/, "");
+          const repo = process.env.REPO || "brandyar/Tankhor";
+          const baseUrl = process.env.DOWNLOAD_BASE_URL || `https://dl.tankhor.com/${tag}`;
+          const files = fs.readdirSync(".");
+
+          console.log("All downloaded release assets:", files);
+
+          const platforms = {};
+
+          // Helper to read signature file content
+          function getSignature(filename) {
+            const candidates = [
+              filename + ".sig",
+              filename.replace(/\.zip$/, ".nsis.zip.sig"),
+              filename.replace(/\.exe$/, ".exe.sig"),
+              filename.replace(/\.tar\.gz$/, ".app.tar.gz.sig")
+            ];
+            for (const cand of candidates) {
+              if (fs.existsSync(cand)) {
+                return fs.readFileSync(cand, "utf8").trim();
+              }
+            }
+            return null;
+          }
+
+          // 1. First gather all signatures
+          const signatures = {};
+          files.filter(f => f.endsWith(".sig")).forEach(sigFile => {
+            const baseName = sigFile.slice(0, -4);
+            const content = fs.readFileSync(sigFile, "utf8").trim();
+            signatures[sigFile] = content;
+            signatures[baseName] = content;
+            console.log(`Found signature for: ${baseName}`);
+          });
+
+          // 2. Check if an existing latest.json or updater JSON was uploaded by tauri-action
+          files.filter(f => f.endsWith(".json") && f !== "latest.json").forEach(jsonFile => {
+            try {
+              const data = JSON.parse(fs.readFileSync(jsonFile, "utf8"));
+              if (data.platforms) {
+                Object.assign(platforms, data.platforms);
+                console.log(`Merged platforms from ${jsonFile}:`, Object.keys(data.platforms));
+              }
+            } catch (e) {
+              console.warn(`Could not parse ${jsonFile}:`, e.message);
+            }
+          });
+
+          // 3. Identify macOS Updater Asset (.app.tar.gz or .tar.gz ONLY)
+          const macArchive = files.find(f => f.endsWith(".app.tar.gz") || (f.includes("universal") && f.endsWith(".tar.gz")) || f.endsWith(".tar.gz"));
+          if (macArchive) {
+            const macSig = signatures[macArchive] || signatures[macArchive + ".sig"];
+            if (macSig) {
+              const macUrl = `${baseUrl}/${macArchive}`;
+              console.log(`Resolved valid macOS updater asset: ${macArchive}`);
+
+              const macTargets = [
+                "darwin-aarch64",
+                "darwin-aarch64-app",
+                "darwin-x86_64",
+                "darwin-x86_64-app",
+                "darwin-universal",
+                "darwin-universal-app",
+                "darwin-arm64",
+                "darwin-arm64-app"
+              ];
+
+              macTargets.forEach(target => {
+                if (!platforms[target]) {
+                  platforms[target] = { signature: macSig, url: macUrl };
+                }
+              });
+            } else {
+              console.warn(`macOS archive ${macArchive} found but missing .sig signature!`);
+            }
+          }
+
+          // 4. Identify Windows Updater Assets (.nsis.zip vs -setup.exe vs .msi.zip)
+          const winNsisZip = files.find(f => f.endsWith(".nsis.zip") || f.includes("-setup.nsis.zip") || (f.endsWith(".zip") && f.toLowerCase().includes("nsis")));
+          const winNsisExe = files.find(f => (f.endsWith("-setup.exe") || (f.endsWith(".exe") && !f.endsWith(".sig"))) && !f.includes("darwin"));
+          const winMsiArchive = files.find(f => f.endsWith(".msi.zip") || (f.endsWith(".zip") && f.toLowerCase().includes("msi")));
+          const winGenericZip = files.find(f => f.endsWith(".zip") && !f.includes("darwin") && !f.endsWith(".nsis.zip") && !f.endsWith(".msi.zip"));
+
+          // A) NSIS Installer targets (Prefer .nsis.zip if present, otherwise direct .exe installer)
+          const nsisArchive = winNsisZip || winNsisExe || (winGenericZip && !winMsiArchive ? winGenericZip : null);
+          if (nsisArchive) {
+            const nsisSig = signatures[nsisArchive] || signatures[nsisArchive + ".sig"] || getSignature(nsisArchive);
+            if (nsisSig) {
+              const nsisUrl = `${baseUrl}/${nsisArchive}`;
+              console.log(`Resolved NSIS Windows updater asset: ${nsisArchive}`);
+
+              const nsisTargets = [
+                "windows-x86_64",
+                "windows-x86_64-nsis",
+                "windows-i686",
+                "windows-i686-nsis",
+                "windows-x86"
+              ];
+
+              nsisTargets.forEach(target => {
+                if (!platforms[target]) {
+                  platforms[target] = { signature: nsisSig, url: nsisUrl };
+                }
+              });
+            } else {
+              console.warn(`NSIS Windows archive ${nsisArchive} found but missing .sig signature!`);
+            }
+          }
+
+          // B) MSI Installer targets
+          if (winMsiArchive) {
+            const msiSig = signatures[winMsiArchive] || signatures[winMsiArchive + ".sig"] || getSignature(winMsiArchive);
+            if (msiSig) {
+              const msiUrl = `${baseUrl}/${winMsiArchive}`;
+              console.log(`Resolved MSI Windows updater asset: ${winMsiArchive}`);
+
+              const msiTargets = [
+                "windows-x86_64-msi",
+                "windows-i686-msi"
+              ];
+
+              msiTargets.forEach(target => {
+                if (!platforms[target]) {
+                  platforms[target] = { signature: msiSig, url: msiUrl };
+                }
+              });
+            } else {
+              console.warn(`MSI Windows archive ${winMsiArchive} found but missing .sig signature!`);
+            }
+          }
+
+          // 5. Identify Linux Asset & Signature if present
+          const linuxAsset = files.find(f => f.endsWith(".AppImage.tar.gz") || f.endsWith(".appimage.tar.gz"));
+          if (linuxAsset) {
+            const linuxSig = signatures[linuxAsset] || signatures[linuxAsset + ".sig"];
+            if (linuxSig) {
+              const linuxUrl = `${baseUrl}/${linuxAsset}`;
+              if (!platforms["linux-x86_64"]) platforms["linux-x86_64"] = { signature: linuxSig, url: linuxUrl };
+              if (!platforms["linux-x86_64-appimage"]) platforms["linux-x86_64-appimage"] = { signature: linuxSig, url: linuxUrl };
+            }
+          }
+
+          const manifest = {
+            version: version,
+            notes: `بروزرسانی نسخه ${version} نرم‌افزار تن‌خور (پشتیبانی کامل ویندوز، مک و اندروید)`,
+            pub_date: new Date().toISOString(),
+            platforms: platforms
+          };
+
+          console.log("Final Generated latest.json Platforms:\n", Object.keys(platforms));
+          console.log("Full latest.json Content:\n", JSON.stringify(manifest, null, 2));
+          fs.writeFileSync("../latest.json", JSON.stringify(manifest, null, 2));
+          '
+
+          if [ -f "../latest.json" ]; then
+            gh release upload "$TAG_NAME" ../latest.json --repo "$REPO" --clobber
+            echo "latest.json uploaded successfully to GitHub Release!"
+
+            # Keep repo root latest.json strictly synchronized with current release signatures
+            cp ../latest.json ./latest.json
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git add latest.json
+            git commit -m "chore(updater): synchronize latest.json release signatures for $TAG_NAME [skip ci]" || true
+            git push origin HEAD:main || true
+
+            # Invalidate jsDelivr CDN cache so fallback endpoints get immediate updates
+            curl -s "https://purge.jsdelivr.net/gh/${REPO}@main/latest.json" || true
+            echo "jsDelivr CDN cache purged for latest.json"
+          else
+            echo "latest.json creation skipped or failed"
+          fi
+
+  release-android:
+    name: 'Build Android APK'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      ANDROID_HOME: /usr/local/lib/android/sdk
+      ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+      NDK_HOME: /usr/local/lib/android/sdk/ndk/26.1.10909125
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Accept Android SDK Licenses and Install NDK & Build Tools
+        run: |
+          export PATH="/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/build-tools/34.0.0:$PATH"
+          SDK_BIN=$(which sdkmanager || echo "/usr/local/lib/android/sdk/cmdline-tools/latest/bin/sdkmanager")
+          echo "Using sdkmanager at: $SDK_BIN"
+          yes | $SDK_BIN --licenses || true
+          $SDK_BIN --install "ndk;26.1.10909125" "platforms;android-34" "build-tools;34.0.0"
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
+
+      - name: Install frontend dependencies
+        run: npm ci || npm install --include=optional --force
+
+      - name: Build Vite Web Assets
+        run: npx vite build
+
+      - name: Initialize Android project and sync icons
+        run: |
+          # 1. Initialize Android project if not already present
+          npx tauri android init || true
+
+          # 2. Sync high-resolution Tankhor branded icons to Android res directories
+          node src-tauri/sync-android-icons.cjs
+
+      - name: Build Android Universal APK (Multi-Architecture)
+        run: |
+          export PATH="/usr/local/lib/android/sdk/cmdline-tools/latest/bin:/usr/local/lib/android/sdk/platform-tools:/usr/local/lib/android/sdk/build-tools/34.0.0:$PATH"
+          export NDK_HOME="/usr/local/lib/android/sdk/ndk/26.1.10909125"
+          
+          # Build target for aarch64 (modern 64-bit phones) and armv7 (32-bit compatibility)
+          npx tauri android build --apk --target aarch64 --target armv7 || npx tauri android build --apk --target aarch64
+
+      - name: Zipalign & Sign Single Universal Android APK
+        run: |
+          export PATH="/usr/local/lib/android/sdk/build-tools/34.0.0:$PATH"
+          mkdir -p release-apks
+
+          TAG_NAME="${{ github.ref_name }}"
+          VERSION="${TAG_NAME#v}"
+          if [ -z "$VERSION" ] || [ "$VERSION" = "${{ github.ref_name }}" ]; then
+            VERSION="1.1.0"
+          fi
+
+          echo "Preparing single Universal APK release signing for Tankhor v${VERSION}..."
+
+          # Prepare keystore: use secret if provided, or generate a valid 2048-bit RSA release keystore
+          KEYSTORE_FILE="tankhor-release.keystore"
+          KEY_ALIAS="tankhor"
+          KEY_PASS="tankhor123"
+
+          if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
+            echo "Using custom provided Android keystore from GitHub Secrets..."
+            echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_FILE"
+            KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'tankhor' }}"
+            KEY_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'tankhor123' }}"
+          else
+            echo "Generating production-compliant RSA release keystore..."
+            keytool -genkeypair -v -keystore "$KEYSTORE_FILE" \
+              -alias "$KEY_ALIAS" \
+              -keyalg RSA -keysize 2048 -validity 10000 \
+              -storepass "$KEY_PASS" -keypass "$KEY_PASS" \
+              -dname "CN=TANKHOR, OU=Mobile, O=TANKHOR, L=Tehran, ST=Tehran, C=IR"
+          fi
+
+          echo "Locating built APK files..."
+          # Locate all produced APK files in gen/android outputs (excluding unaligned and already final-signed)
+          RAW_APK_FILES=$(find src-tauri/gen/android -type f -name "*.apk" 2>/dev/null | grep -v "unaligned" | grep -v "\-signed\.apk" || true)
+          if [ -z "$RAW_APK_FILES" ]; then
+            RAW_APK_FILES=$(find src-tauri -type f -name "*.apk" 2>/dev/null | grep -v "unaligned" | grep -v "\-signed\.apk" || true)
+          fi
+
+          echo "Found candidate APKs:"
+          echo "$RAW_APK_FILES"
+
+          if [ -z "$RAW_APK_FILES" ]; then
+            echo "Error: No APK file was found to sign!"
+            echo "Inspecting build directory hierarchy:"
+            find src-tauri/gen/android/app/build -maxdepth 5 2>/dev/null || true
+            exit 1
+          fi
+
+          # Sort APKs by size descending safely using xargs -r
+          SORTED_APKS=$(echo "$RAW_APK_FILES" | xargs -r ls -S 2>/dev/null || echo "$RAW_APK_FILES")
+
+          # Select primary APK: prioritize universal release, then standard release, or largest APK
+          PRIMARY_APK=""
+          for candidate in $SORTED_APKS; do
+            if echo "$candidate" | grep -qi "universal.*release"; then
+              PRIMARY_APK="$candidate"
+              break
+            fi
+          done
+
+          if [ -z "$PRIMARY_APK" ]; then
+            for candidate in $SORTED_APKS; do
+              if echo "$candidate" | grep -qi "release"; then
+                PRIMARY_APK="$candidate"
+                break
+              fi
+            done
+          fi
+
+          if [ -z "$PRIMARY_APK" ]; then
+            PRIMARY_APK=$(echo "$SORTED_APKS" | head -n 1)
+          fi
+
+          echo "Selected primary Universal APK: $PRIMARY_APK"
+          TARGET_UNIVERSAL_APK="release-apks/TANKHOR-v${VERSION}-universal.apk"
+
+          # 1. Zipalign (4-byte alignment required by Android)
+          zipalign -v -p -f 4 "$PRIMARY_APK" "$TARGET_UNIVERSAL_APK"
+
+          # 2. Sign with apksigner (v1, v2 and v3 schemes for 100% Android 7.0 - 15+ compatibility)
+          apksigner sign --ks "$KEYSTORE_FILE" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEY_PASS" \
+            --key-pass "pass:$KEY_PASS" \
+            --v1-signing-enabled true \
+            --v2-signing-enabled true \
+            --v3-signing-enabled true \
+            "$TARGET_UNIVERSAL_APK"
+
+          # 3. Verify signature
+          echo "Verifying signature for $TARGET_UNIVERSAL_APK:"
+          apksigner verify --verbose "$TARGET_UNIVERSAL_APK"
+
+          # 4. Create standard alias name for easy direct download (TANKHOR.apk)
+          cp "$TARGET_UNIVERSAL_APK" "release-apks/TANKHOR-universal.apk"
+
+          echo "Universal Android APK successfully signed and prepared:"
+          ls -lh release-apks/
+
+      - name: Upload Android APK Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: tankhor-android-apk
+          path: release-apks/*.apk
+          if-no-files-found: error
+
+      - name: Attach APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release-apks/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

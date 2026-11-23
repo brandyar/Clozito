@@ -1,0 +1,1066 @@
+import { IStorageProvider, QueryParams, StorageMode, PaginatedResult } from './types';
+import { SqliteStorageBase, isTauriEnvironment } from './sqlite/sqliteBase';
+import { SqliteOrgStorage } from './sqlite/sqliteOrg';
+import { SqliteCatalogStorage } from './sqlite/sqliteCatalog';
+import { SqliteInventoryStorage } from './sqlite/sqliteInventory';
+import { SqliteSalesStorage } from './sqlite/sqliteSales';
+import { SqliteProcurementStorage } from './sqlite/sqliteProcurement';
+import { SqliteAccountingStorage } from './sqlite/sqliteAccounting';
+import { SqliteWooCommerceStorage } from './sqlite/sqliteWooCommerce';
+import { SqliteProductionStorage } from './sqlite/sqliteProduction';
+
+export { isTauriEnvironment };
+
+import {
+  Organization,
+  Category,
+  Collection,
+  Season,
+  Color,
+  SizeGroup,
+  Size,
+  Brand,
+  Product,
+  ProductVariant,
+  Warehouse,
+  WarehouseLocation,
+  InventoryItem,
+  InventoryMovement,
+  Supplier,
+  Customer,
+  Order,
+  OrderItem,
+  OrderReturn,
+  OrderReturnItem,
+  PurchaseOrder,
+  PurchaseOrderItem,
+  StockTransfer,
+  StockTransferItem,
+  Subscription,
+  SystemModule,
+  OrganizationModule,
+  OrganizationUser,
+  SizeGuideTemplate,
+  SizeGuideMeasurement,
+  SizeGuideValue,
+  ExpenseCategory,
+  Expense,
+  PersonTransaction,
+  FinancialAccount,
+  TreasuryTransaction,
+  Cheque,
+  ChequeStatus,
+  LandedCost,
+  LandedCostAllocation,
+  PosShift,
+  PosShiftStatus,
+  ProfitLossSummary,
+  VatReportSummary,
+  WooCommerceSettings,
+  WooCommerceLog,
+  IntegrationMapping,
+  Feedback,
+  RawMaterial,
+  BillOfMaterials,
+  BomItem,
+  Contractor,
+  ProductionOrder,
+  ProductionOrderItem,
+  ProductionStage,
+} from '../types';
+
+export class SqliteStorageAdapter implements IStorageProvider {
+  public mode: StorageMode = 'local_offline';
+
+  private base: SqliteStorageBase;
+  private orgStorage: SqliteOrgStorage;
+  private catalogStorage: SqliteCatalogStorage;
+  private inventoryStorage: SqliteInventoryStorage;
+  private salesStorage: SqliteSalesStorage;
+  private procurementStorage: SqliteProcurementStorage;
+  private accountingStorage: SqliteAccountingStorage;
+  private wooCommerceStorage: SqliteWooCommerceStorage;
+  private productionStorage: SqliteProductionStorage;
+
+  constructor() {
+    this.base = new SqliteStorageBase();
+    this.orgStorage = new SqliteOrgStorage(this.base);
+    this.catalogStorage = new SqliteCatalogStorage(this.base);
+    this.inventoryStorage = new SqliteInventoryStorage(this.base);
+    this.salesStorage = new SqliteSalesStorage(this.base);
+    this.procurementStorage = new SqliteProcurementStorage(this.base);
+    this.accountingStorage = new SqliteAccountingStorage(this.base);
+    this.wooCommerceStorage = new SqliteWooCommerceStorage(this.base);
+    this.productionStorage = new SqliteProductionStorage(this.base);
+  }
+
+  // ==========================================
+  // Lifecycle & Low-Level Bridge Methods
+  // ==========================================
+  async init(): Promise<void> {
+    return this.base.init();
+  }
+
+  isInitialized(): boolean {
+    return this.base.isInitialized();
+  }
+
+  getItems<T>(collection: string, orgId?: number): Promise<T[]> {
+    return this.base.getItems<T>(collection, orgId);
+  }
+
+  getItemById<T extends { id?: number | string }>(collection: string, id: number | string): Promise<T | null> {
+    return this.base.getItemById<T>(collection, id);
+  }
+
+  saveItem<T extends { id?: number | string }>(collection: string, item: T): Promise<T> {
+    return this.base.saveItem<T>(collection, item);
+  }
+
+  deleteItem(collection: string, id: number | string): Promise<boolean> {
+    return this.base.deleteItem(collection, id);
+  }
+
+  generateUniqueId(items: { id?: number | string }[]): number {
+    return this.base.generateUniqueId(items);
+  }
+
+  getActiveOrgId(params?: QueryParams): number | undefined {
+    return this.base.getActiveOrgId(params);
+  }
+
+  // ==========================================
+  // Organizations & Users
+  // ==========================================
+  getOrganizations(): Promise<Organization[]> {
+    return this.orgStorage.getOrganizations();
+  }
+
+  getOrganizationById(id: number): Promise<Organization | null> {
+    return this.orgStorage.getOrganizationById(id);
+  }
+
+  saveOrganization(org: Partial<Organization>): Promise<Organization> {
+    return this.orgStorage.saveOrganization(org);
+  }
+
+  getOrganizationUsers(params?: QueryParams): Promise<OrganizationUser[]> {
+    return this.orgStorage.getOrganizationUsers(params);
+  }
+
+  saveOrganizationUser(ouData: Partial<OrganizationUser>): Promise<OrganizationUser> {
+    return this.orgStorage.saveOrganizationUser(ouData);
+  }
+
+  deleteOrganizationUser(id: number): Promise<boolean> {
+    return this.orgStorage.deleteOrganizationUser(id);
+  }
+
+  // ==========================================
+  // Subscriptions & System Modules
+  // ==========================================
+  getSubscriptions(params?: QueryParams): Promise<Subscription[]> {
+    return this.orgStorage.getSubscriptions(params);
+  }
+
+  getActiveSubscription(organizationId: number): Promise<Subscription | null> {
+    return this.orgStorage.getActiveSubscription(organizationId);
+  }
+
+  saveSubscription(sub: Partial<Subscription>): Promise<Subscription> {
+    return this.orgStorage.saveSubscription(sub);
+  }
+
+  getSystemModules(params?: QueryParams): Promise<SystemModule[]> {
+    return this.orgStorage.getSystemModules(params);
+  }
+
+  getOrganizationModules(params?: QueryParams): Promise<OrganizationModule[]> {
+    return this.orgStorage.getOrganizationModules(params);
+  }
+
+  saveOrganizationModule(mod: Partial<OrganizationModule>): Promise<OrganizationModule> {
+    return this.orgStorage.saveOrganizationModule(mod);
+  }
+
+  deleteOrganizationModule(id: number): Promise<boolean> {
+    return this.orgStorage.deleteOrganizationModule(id);
+  }
+
+  // ==========================================
+  // Catalog & Products
+  // ==========================================
+  getProducts(params?: QueryParams): Promise<Product[]> {
+    return this.catalogStorage.getProducts(params);
+  }
+
+  async getPaginatedProducts(params: QueryParams): Promise<PaginatedResult<Product>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.catalogStorage.getProducts(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getProductById(id: number): Promise<Product | null> {
+    return this.catalogStorage.getProductById(id);
+  }
+
+  saveProduct(product: Partial<Product>): Promise<Product> {
+    return this.catalogStorage.saveProduct(product);
+  }
+
+  deleteProduct(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteProduct(id);
+  }
+
+  getVariants(params?: QueryParams): Promise<ProductVariant[]> {
+    return this.catalogStorage.getVariants(params);
+  }
+
+  getVariantsByProductId(productId: number): Promise<ProductVariant[]> {
+    return this.catalogStorage.getVariantsByProductId(productId);
+  }
+
+  saveVariant(variant: Partial<ProductVariant>, warehouseId?: number, locationId?: number): Promise<ProductVariant> {
+    return this.catalogStorage.saveVariant(variant, warehouseId, locationId);
+  }
+
+  deleteVariant(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteVariant(id);
+  }
+
+  getCategories(params?: QueryParams): Promise<Category[]> {
+    return this.catalogStorage.getCategories(params);
+  }
+
+  saveCategory(category: Partial<Category>): Promise<Category> {
+    return this.catalogStorage.saveCategory(category);
+  }
+
+  deleteCategory(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteCategory(id);
+  }
+
+  getCollections(params?: QueryParams): Promise<Collection[]> {
+    return this.catalogStorage.getCollections(params);
+  }
+
+  saveCollection(collection: Partial<Collection>): Promise<Collection> {
+    return this.catalogStorage.saveCollection(collection);
+  }
+
+  deleteCollection(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteCollection(id);
+  }
+
+  getBrands(params?: QueryParams): Promise<Brand[]> {
+    return this.catalogStorage.getBrands(params);
+  }
+
+  saveBrand(brand: Partial<Brand>): Promise<Brand> {
+    return this.catalogStorage.saveBrand(brand);
+  }
+
+  deleteBrand(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteBrand(id);
+  }
+
+  getSeasons(params?: QueryParams): Promise<Season[]> {
+    return this.catalogStorage.getSeasons(params);
+  }
+
+  saveSeason(season: Partial<Season>): Promise<Season> {
+    return this.catalogStorage.saveSeason(season);
+  }
+
+  deleteSeason(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteSeason(id);
+  }
+
+  getColors(params?: QueryParams): Promise<Color[]> {
+    return this.catalogStorage.getColors(params);
+  }
+
+  saveColor(color: Partial<Color>): Promise<Color> {
+    return this.catalogStorage.saveColor(color);
+  }
+
+  deleteColor(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteColor(id);
+  }
+
+  getSizeGroups(params?: QueryParams): Promise<SizeGroup[]> {
+    return this.catalogStorage.getSizeGroups(params);
+  }
+
+  saveSizeGroup(group: Partial<SizeGroup>): Promise<SizeGroup> {
+    return this.catalogStorage.saveSizeGroup(group);
+  }
+
+  deleteSizeGroup(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteSizeGroup(id);
+  }
+
+  getSizes(params?: QueryParams): Promise<Size[]> {
+    return this.catalogStorage.getSizes(params);
+  }
+
+  saveSize(size: Partial<Size>): Promise<Size> {
+    return this.catalogStorage.saveSize(size);
+  }
+
+  deleteSize(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteSize(id);
+  }
+
+  // ==========================================
+  // Size Guides
+  // ==========================================
+  getSizeGuideTemplates(params?: QueryParams): Promise<SizeGuideTemplate[]> {
+    return this.catalogStorage.getSizeGuideTemplates(params);
+  }
+
+  getSizeGuideTemplateById(id: number): Promise<SizeGuideTemplate | null> {
+    return this.catalogStorage.getSizeGuideTemplateById(id);
+  }
+
+  saveSizeGuideTemplate(template: Partial<SizeGuideTemplate>): Promise<SizeGuideTemplate> {
+    return this.catalogStorage.saveSizeGuideTemplate(template);
+  }
+
+  deleteSizeGuideTemplate(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteSizeGuideTemplate(id);
+  }
+
+  getSizeGuideMeasurements(templateId?: number): Promise<SizeGuideMeasurement[]> {
+    return this.catalogStorage.getSizeGuideMeasurements(templateId);
+  }
+
+  saveSizeGuideMeasurement(measurement: Partial<SizeGuideMeasurement>): Promise<SizeGuideMeasurement> {
+    return this.catalogStorage.saveSizeGuideMeasurement(measurement);
+  }
+
+  deleteSizeGuideMeasurement(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteSizeGuideMeasurement(id);
+  }
+
+  getSizeGuideValues(templateId?: number): Promise<SizeGuideValue[]> {
+    return this.catalogStorage.getSizeGuideValues(templateId);
+  }
+
+  saveSizeGuideValue(val: Partial<SizeGuideValue>): Promise<SizeGuideValue> {
+    return this.catalogStorage.saveSizeGuideValue(val);
+  }
+
+  deleteSizeGuideValue(id: number): Promise<boolean> {
+    return this.catalogStorage.deleteSizeGuideValue(id);
+  }
+
+  // ==========================================
+  // Inventory & Warehouses
+  // ==========================================
+  getWarehouses(params?: QueryParams): Promise<Warehouse[]> {
+    return this.inventoryStorage.getWarehouses(params);
+  }
+
+  getWarehouseById(id: number): Promise<Warehouse | null> {
+    return this.inventoryStorage.getWarehouseById(id);
+  }
+
+  saveWarehouse(warehouse: Partial<Warehouse>): Promise<Warehouse> {
+    return this.inventoryStorage.saveWarehouse(warehouse);
+  }
+
+  deleteWarehouse(id: number): Promise<boolean> {
+    return this.inventoryStorage.deleteWarehouse(id);
+  }
+
+  getWarehouseLocations(params?: QueryParams): Promise<WarehouseLocation[]> {
+    return this.inventoryStorage.getWarehouseLocations(params);
+  }
+
+  getLocations(params?: QueryParams): Promise<WarehouseLocation[]> {
+    return this.inventoryStorage.getLocations(params);
+  }
+
+  getLocationsByWarehouseId(warehouseId: number): Promise<WarehouseLocation[]> {
+    return this.inventoryStorage.getLocationsByWarehouseId(warehouseId);
+  }
+
+  saveWarehouseLocation(location: Partial<WarehouseLocation>): Promise<WarehouseLocation> {
+    return this.inventoryStorage.saveWarehouseLocation(location);
+  }
+
+  saveLocation(loc: Partial<WarehouseLocation>): Promise<WarehouseLocation> {
+    return this.inventoryStorage.saveLocation(loc);
+  }
+
+  deleteWarehouseLocation(id: number): Promise<boolean> {
+    return this.inventoryStorage.deleteWarehouseLocation(id);
+  }
+
+  deleteLocation(id: number): Promise<boolean> {
+    return this.inventoryStorage.deleteLocation(id);
+  }
+
+  getInventoryItems(params?: QueryParams): Promise<InventoryItem[]> {
+    return this.inventoryStorage.getInventoryItems(params);
+  }
+
+  async getPaginatedInventoryItems(params: QueryParams): Promise<PaginatedResult<InventoryItem>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.inventoryStorage.getInventoryItems(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getInventoryItem(variantId: number, warehouseId: number): Promise<InventoryItem | null> {
+    return this.inventoryStorage.getInventoryItem(variantId, warehouseId);
+  }
+
+  saveInventoryItem(item: Partial<InventoryItem>): Promise<InventoryItem> {
+    return this.inventoryStorage.saveInventoryItem(item);
+  }
+
+  deleteInventoryItem(id: number): Promise<boolean> {
+    return this.inventoryStorage.deleteInventoryItem(id);
+  }
+
+  getInventoryMovements(params?: QueryParams): Promise<InventoryMovement[]> {
+    return this.inventoryStorage.getInventoryMovements(params);
+  }
+
+  async getPaginatedInventoryMovements(params: QueryParams): Promise<PaginatedResult<InventoryMovement>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.inventoryStorage.getInventoryMovements(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  saveInventoryMovement(movement: Partial<InventoryMovement>): Promise<InventoryMovement> {
+    return this.inventoryStorage.saveInventoryMovement(movement);
+  }
+
+  recordMovement(movement: Partial<InventoryMovement>): Promise<InventoryMovement> {
+    return this.inventoryStorage.recordMovement(movement);
+  }
+
+  getStockTransfers(params?: QueryParams): Promise<StockTransfer[]> {
+    return this.inventoryStorage.getStockTransfers(params);
+  }
+
+  getStockTransferById(id: number): Promise<StockTransfer | null> {
+    return this.inventoryStorage.getStockTransferById(id);
+  }
+
+  getStockTransferItems(transferId: number): Promise<StockTransferItem[]> {
+    return this.inventoryStorage.getStockTransferItems(transferId);
+  }
+
+  saveStockTransfer(transfer: Partial<StockTransfer>, items?: Partial<StockTransferItem>[]): Promise<StockTransfer> {
+    return this.inventoryStorage.saveStockTransfer(transfer, items);
+  }
+
+  deleteStockTransfer(id: number): Promise<boolean> {
+    return this.inventoryStorage.deleteStockTransfer(id);
+  }
+
+  // ==========================================
+  // Customers & Sales
+  // ==========================================
+  getCustomers(params?: QueryParams): Promise<Customer[]> {
+    return this.salesStorage.getCustomers(params);
+  }
+
+  async getPaginatedCustomers(params: QueryParams): Promise<PaginatedResult<Customer>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.salesStorage.getCustomers(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getCustomerById(id: number): Promise<Customer | null> {
+    return this.salesStorage.getCustomerById(id);
+  }
+
+  saveCustomer(cust: Partial<Customer>): Promise<Customer> {
+    return this.salesStorage.saveCustomer(cust);
+  }
+
+  deleteCustomer(id: number): Promise<boolean> {
+    return this.salesStorage.deleteCustomer(id);
+  }
+
+  getOrders(params?: QueryParams): Promise<Order[]> {
+    return this.salesStorage.getOrders(params);
+  }
+
+  async getPaginatedOrders(params: QueryParams): Promise<PaginatedResult<Order>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.salesStorage.getOrders(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getOrderById(id: number): Promise<Order | null> {
+    return this.salesStorage.getOrderById(id);
+  }
+
+  getOrderItems(orderId: number): Promise<OrderItem[]> {
+    return this.salesStorage.getOrderItems(orderId);
+  }
+
+  saveOrder(order: Partial<Order>, items?: Partial<OrderItem>[]): Promise<Order> {
+    return this.salesStorage.saveOrder(order, items);
+  }
+
+  deleteOrder(id: number): Promise<boolean> {
+    return this.salesStorage.deleteOrder(id);
+  }
+
+  saveOrderItem(item: Partial<OrderItem>): Promise<OrderItem> {
+    return this.salesStorage.saveOrderItem(item);
+  }
+
+  getOrderReturns(params?: QueryParams & { order_id?: number; reason?: string }): Promise<OrderReturn[]> {
+    return this.salesStorage.getOrderReturns(params);
+  }
+
+  async getPaginatedOrderReturns(
+    params: QueryParams & { order_id?: number; reason?: string }
+  ): Promise<PaginatedResult<OrderReturn>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.salesStorage.getOrderReturns(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getOrderReturnItems(returnId?: number): Promise<OrderReturnItem[]> {
+    return this.salesStorage.getOrderReturnItems(returnId);
+  }
+
+  saveOrderReturn(ret: Partial<OrderReturn>, items?: Partial<OrderReturnItem>[]): Promise<OrderReturn> {
+    return this.salesStorage.saveOrderReturn(ret, items);
+  }
+
+  deleteOrderReturn(id: number): Promise<boolean> {
+    return this.salesStorage.deleteOrderReturn(id);
+  }
+
+  reconcileOrdersWithTreasury(targetOrgId?: number): Promise<void> {
+    return this.salesStorage.reconcileOrdersWithTreasury(targetOrgId);
+  }
+
+  // ==========================================
+  // Suppliers & Procurement
+  // ==========================================
+  getSuppliers(params?: QueryParams): Promise<Supplier[]> {
+    return this.procurementStorage.getSuppliers(params);
+  }
+
+  async getPaginatedSuppliers(params: QueryParams): Promise<PaginatedResult<Supplier>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.procurementStorage.getSuppliers(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getSupplierById(id: number): Promise<Supplier | null> {
+    return this.procurementStorage.getSupplierById(id);
+  }
+
+  saveSupplier(sup: Partial<Supplier>): Promise<Supplier> {
+    return this.procurementStorage.saveSupplier(sup);
+  }
+
+  deleteSupplier(id: number): Promise<boolean> {
+    return this.procurementStorage.deleteSupplier(id);
+  }
+
+  getPurchaseOrders(params?: QueryParams): Promise<PurchaseOrder[]> {
+    return this.procurementStorage.getPurchaseOrders(params);
+  }
+
+  async getPaginatedPurchaseOrders(params: QueryParams): Promise<PaginatedResult<PurchaseOrder>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.procurementStorage.getPurchaseOrders(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getPurchaseOrderById(id: number): Promise<PurchaseOrder | null> {
+    return this.procurementStorage.getPurchaseOrderById(id);
+  }
+
+  getPurchaseOrderItems(purchaseOrderId?: number): Promise<PurchaseOrderItem[]> {
+    return this.procurementStorage.getPurchaseOrderItems(purchaseOrderId);
+  }
+
+  savePurchaseOrderItem(item: Partial<PurchaseOrderItem>): Promise<PurchaseOrderItem> {
+    return this.procurementStorage.savePurchaseOrderItem(item);
+  }
+
+  deletePurchaseOrderItem(id: number): Promise<boolean> {
+    return this.procurementStorage.deletePurchaseOrderItem(id);
+  }
+
+  savePurchaseOrder(po: Partial<PurchaseOrder>, items?: Partial<PurchaseOrderItem>[]): Promise<PurchaseOrder> {
+    return this.procurementStorage.savePurchaseOrder(po, items);
+  }
+
+  deletePurchaseOrder(id: number): Promise<boolean> {
+    return this.procurementStorage.deletePurchaseOrder(id);
+  }
+
+  // ==========================================
+  // Accounting & Financials
+  // ==========================================
+  getDefaultExpenseCategories(orgId: number): ExpenseCategory[] {
+    return this.accountingStorage.getDefaultExpenseCategories(orgId);
+  }
+
+  getExpenseCategories(params?: QueryParams): Promise<ExpenseCategory[]> {
+    return this.accountingStorage.getExpenseCategories(params);
+  }
+
+  saveExpenseCategory(cat: Partial<ExpenseCategory>): Promise<ExpenseCategory> {
+    return this.accountingStorage.saveExpenseCategory(cat);
+  }
+
+  deleteExpenseCategory(id: number): Promise<boolean> {
+    return this.accountingStorage.deleteExpenseCategory(id);
+  }
+
+  getExpenses(params?: QueryParams): Promise<Expense[]> {
+    return this.accountingStorage.getExpenses(params);
+  }
+
+  async getPaginatedExpenses(params: QueryParams): Promise<PaginatedResult<Expense>> {
+    const page = params.page || 1;
+    const pageSize = params.limit || 25;
+    const all = await this.accountingStorage.getExpenses(params);
+    const start = (page - 1) * pageSize;
+    return {
+      items: all.slice(start, start + pageSize),
+      totalCount: all.length,
+      page,
+      pageSize,
+      totalPages: Math.ceil(all.length / pageSize) || 1,
+    };
+  }
+
+  getExpenseById(id: number): Promise<Expense | null> {
+    return this.accountingStorage.getExpenseById(id);
+  }
+
+  saveExpense(exp: Partial<Expense>): Promise<Expense> {
+    return this.accountingStorage.saveExpense(exp);
+  }
+
+  deleteExpense(id: number): Promise<boolean> {
+    return this.accountingStorage.deleteExpense(id);
+  }
+
+  getPersonTransactions(params?: QueryParams): Promise<PersonTransaction[]> {
+    return this.accountingStorage.getPersonTransactions(params);
+  }
+
+  getPersonTransactionById(id: number): Promise<PersonTransaction | null> {
+    return this.accountingStorage.getPersonTransactionById(id);
+  }
+
+  savePersonTransaction(tx: Partial<PersonTransaction>): Promise<PersonTransaction> {
+    return this.accountingStorage.savePersonTransaction(tx);
+  }
+
+  deletePersonTransaction(id: number): Promise<boolean> {
+    return this.accountingStorage.deletePersonTransaction(id);
+  }
+
+  getProfitAndLoss(params?: QueryParams): Promise<ProfitLossSummary> {
+    return this.accountingStorage.getProfitAndLoss(params);
+  }
+
+  getProfitLossSummary(params?: QueryParams): Promise<ProfitLossSummary> {
+    return this.accountingStorage.getProfitAndLoss(params);
+  }
+
+  getDefaultFinancialAccounts(orgId: number): FinancialAccount[] {
+    return this.accountingStorage.getDefaultFinancialAccounts(orgId);
+  }
+
+  getFinancialAccounts(params?: QueryParams): Promise<FinancialAccount[]> {
+    return this.accountingStorage.getFinancialAccounts(params);
+  }
+
+  getFinancialAccountById(id: number): Promise<FinancialAccount | null> {
+    return this.accountingStorage.getFinancialAccountById(id);
+  }
+
+  saveFinancialAccount(account: Partial<FinancialAccount>): Promise<FinancialAccount> {
+    return this.accountingStorage.saveFinancialAccount(account);
+  }
+
+  deleteFinancialAccount(id: number): Promise<boolean> {
+    return this.accountingStorage.deleteFinancialAccount(id);
+  }
+
+  getTreasuryTransactions(params?: QueryParams): Promise<TreasuryTransaction[]> {
+    return this.accountingStorage.getTreasuryTransactions(params);
+  }
+
+  saveTreasuryTransaction(tx: Partial<TreasuryTransaction>): Promise<TreasuryTransaction> {
+    return this.accountingStorage.saveTreasuryTransaction(tx);
+  }
+
+  deleteTreasuryTransaction(id: number): Promise<boolean> {
+    return this.accountingStorage.deleteTreasuryTransaction(id);
+  }
+
+  getCheques(params?: QueryParams): Promise<Cheque[]> {
+    return this.accountingStorage.getCheques(params);
+  }
+
+  getChequeById(id: number): Promise<Cheque | null> {
+    return this.accountingStorage.getChequeById(id);
+  }
+
+  saveCheque(cheque: Partial<Cheque>): Promise<Cheque> {
+    return this.accountingStorage.saveCheque(cheque);
+  }
+
+  deleteCheque(id: number): Promise<boolean> {
+    return this.accountingStorage.deleteCheque(id);
+  }
+
+  updateChequeStatus(id: number, status: ChequeStatus, targetAccountId?: number): Promise<Cheque> {
+    return this.accountingStorage.updateChequeStatus(id, status, targetAccountId);
+  }
+
+  getLandedCosts(params?: QueryParams): Promise<LandedCost[]> {
+    return this.accountingStorage.getLandedCosts(params);
+  }
+
+  getLandedCostById(id: number): Promise<LandedCost | null> {
+    return this.accountingStorage.getLandedCostById(id);
+  }
+
+  saveLandedCost(cost: Partial<LandedCost>, allocations?: Partial<LandedCostAllocation>[]): Promise<LandedCost> {
+    return this.accountingStorage.saveLandedCost(cost, allocations);
+  }
+
+  deleteLandedCost(id: number): Promise<boolean> {
+    return this.accountingStorage.deleteLandedCost(id);
+  }
+
+  getLandedCostAllocations(landedCostId?: number, purchaseOrderId?: number): Promise<LandedCostAllocation[]> {
+    return this.accountingStorage.getLandedCostAllocations(landedCostId, purchaseOrderId);
+  }
+
+  saveLandedCostAllocation(allocation: Partial<LandedCostAllocation>): Promise<LandedCostAllocation> {
+    return this.accountingStorage.saveLandedCostAllocation(allocation);
+  }
+
+  applyLandedCostToVariants(landedCostId: number): Promise<{ updatedVariantsCount: number }> {
+    return this.accountingStorage.applyLandedCostToVariants(landedCostId);
+  }
+
+  getVatReport(params?: { organizationId?: number; year?: number; quarter?: 1 | 2 | 3 | 4 }): Promise<VatReportSummary> {
+    return this.accountingStorage.getVatReport(params);
+  }
+
+  getPosShifts(params?: QueryParams & { user_id?: string; status?: PosShiftStatus; warehouse_id?: number }): Promise<PosShift[]> {
+    return this.accountingStorage.getPosShifts(params);
+  }
+
+  getActivePosShift(userId?: string, warehouseId?: number): Promise<PosShift | null> {
+    return this.accountingStorage.getActivePosShift(userId, warehouseId);
+  }
+
+  savePosShift(shiftData: Partial<PosShift>): Promise<PosShift> {
+    return this.accountingStorage.savePosShift(shiftData);
+  }
+
+  closePosShift(id: number, closingBalance: number | string, notes?: string): Promise<PosShift> {
+    return this.accountingStorage.closePosShift(id, closingBalance, notes);
+  }
+
+  deletePosShift(id: number): Promise<boolean> {
+    return this.accountingStorage.deletePosShift(id);
+  }
+
+  // ==========================================
+  // WooCommerce Integration
+  // ==========================================
+  getWooCommerceSettings(params?: QueryParams): Promise<WooCommerceSettings | null> {
+    return this.wooCommerceStorage.getWooCommerceSettings(params);
+  }
+
+  saveWooCommerceSettings(settings: Partial<WooCommerceSettings>): Promise<WooCommerceSettings> {
+    return this.wooCommerceStorage.saveWooCommerceSettings(settings);
+  }
+
+  getWooCommerceLogs(params?: QueryParams & { limit?: number }): Promise<WooCommerceLog[]> {
+    return this.wooCommerceStorage.getWooCommerceLogs(params);
+  }
+
+  addWooCommerceLog(log: Partial<WooCommerceLog>): Promise<WooCommerceLog> {
+    return this.wooCommerceStorage.addWooCommerceLog(log);
+  }
+
+  getIntegrationMappings(params?: QueryParams & { entity_type?: string }): Promise<IntegrationMapping[]> {
+    return this.wooCommerceStorage.getIntegrationMappings(params);
+  }
+
+  saveIntegrationMapping(mapping: Partial<IntegrationMapping>): Promise<IntegrationMapping> {
+    return this.wooCommerceStorage.saveIntegrationMapping(mapping);
+  }
+
+  // ==========================================
+  // Feedback & Feature Suggestions
+  // ==========================================
+  getFeedbacks(params?: QueryParams): Promise<Feedback[]> {
+    return this.orgStorage.getFeedbacks(params);
+  }
+
+  submitFeedback(feedback: Partial<Feedback>): Promise<Feedback> {
+    return this.orgStorage.submitFeedback(feedback);
+  }
+
+  // ==========================================
+  // Production Module
+  // ==========================================
+  getRawMaterials(params?: QueryParams): Promise<RawMaterial[]> {
+    return this.productionStorage.getRawMaterials(params);
+  }
+
+  getRawMaterialById(id: number): Promise<RawMaterial | null> {
+    return this.productionStorage.getRawMaterialById(id);
+  }
+
+  saveRawMaterial(material: Partial<RawMaterial>): Promise<RawMaterial> {
+    return this.productionStorage.saveRawMaterial(material);
+  }
+
+  deleteRawMaterial(id: number): Promise<boolean> {
+    return this.productionStorage.deleteRawMaterial(id);
+  }
+
+  getBillOfMaterials(params?: QueryParams): Promise<BillOfMaterials[]> {
+    return this.productionStorage.getBillOfMaterials(params);
+  }
+
+  getBomByProductId(productId: number): Promise<BillOfMaterials | null> {
+    return this.productionStorage.getBomByProductId(productId);
+  }
+
+  saveBillOfMaterials(bom: Partial<BillOfMaterials>, items?: Partial<BomItem>[]): Promise<BillOfMaterials> {
+    return this.productionStorage.saveBillOfMaterials(bom, items);
+  }
+
+  deleteBillOfMaterials(id: number): Promise<boolean> {
+    return this.productionStorage.deleteBillOfMaterials(id);
+  }
+
+  getContractors(params?: QueryParams): Promise<Contractor[]> {
+    return this.productionStorage.getContractors(params);
+  }
+
+  getContractorById(id: number): Promise<Contractor | null> {
+    return this.productionStorage.getContractorById(id);
+  }
+
+  saveContractor(contractor: Partial<Contractor>): Promise<Contractor> {
+    return this.productionStorage.saveContractor(contractor);
+  }
+
+  deleteContractor(id: number): Promise<boolean> {
+    return this.productionStorage.deleteContractor(id);
+  }
+
+  getProductionOrders(params?: QueryParams): Promise<ProductionOrder[]> {
+    return this.productionStorage.getProductionOrders(params);
+  }
+
+  getProductionOrderById(id: number): Promise<ProductionOrder | null> {
+    return this.productionStorage.getProductionOrderById(id);
+  }
+
+  saveProductionOrder(
+    order: Partial<ProductionOrder>,
+    items?: Partial<ProductionOrderItem>[],
+    stages?: Partial<ProductionStage>[]
+  ): Promise<ProductionOrder> {
+    return this.productionStorage.saveProductionOrder(order, items, stages);
+  }
+
+  deleteProductionOrder(id: number): Promise<boolean> {
+    return this.productionStorage.deleteProductionOrder(id);
+  }
+
+  async getDashboardSummary(organizationId: number): Promise<any> {
+    const orgId = Number(organizationId);
+    const [products, variants, invItems, orders, movements, categories, warehouses] = await Promise.all([
+      this.getProducts({ organization_id: orgId }),
+      this.getVariants({ organization_id: orgId }),
+      this.getInventoryItems({ organization_id: orgId }),
+      this.getOrders({ organization_id: orgId }),
+      this.getInventoryMovements({ organization_id: orgId }),
+      this.getCategories({ organization_id: orgId }),
+      this.getWarehouses({ organization_id: orgId }),
+    ]);
+
+    const totalStockCount = invItems.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
+    const totalAvailableStock = invItems.reduce((acc, i) => acc + (Number(i.available_quantity) || Number(i.quantity) || 0), 0);
+    const totalReservedStock = invItems.reduce((acc, i) => acc + (Number(i.reserved_quantity) || 0), 0);
+    const totalDamagedStock = invItems.reduce((acc, i) => acc + (Number(i.damaged_quantity) || 0), 0);
+    const lowStockCount = invItems.filter((i) => (Number(i.quantity) || 0) > 0 && (Number(i.quantity) || 0) <= (i.reorder_point || 5)).length;
+    const outOfStockCount = invItems.filter((i) => (Number(i.quantity) || 0) <= 0).length;
+
+    const totalOrdersCount = orders.length;
+    const totalSalesRevenue = orders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
+    const averageOrderValue = totalOrdersCount > 0 ? Math.round(totalSalesRevenue / totalOrdersCount) : 0;
+
+    return {
+      totalProducts: products.length,
+      totalVariants: variants.length,
+      totalStockCount,
+      totalAvailableStock,
+      totalReservedStock,
+      totalDamagedStock,
+      lowStockCount,
+      outOfStockCount,
+      totalOrdersCount,
+      totalSalesRevenue,
+      averageOrderValue,
+      recentOrders: orders.slice(0, 10),
+      recentMovements: movements.slice(0, 10),
+      categories,
+      warehouses,
+    };
+  }
+
+  async getInventorySummary(organizationId: number, warehouseId?: number): Promise<any> {
+    const orgId = Number(organizationId);
+    let items = await this.getInventoryItems({ organization_id: orgId });
+    if (warehouseId) {
+      items = items.filter((i) => (typeof i.warehouse_id === 'number' ? i.warehouse_id : (i.warehouse_id as any)?.id) === Number(warehouseId));
+    }
+
+    const totalQuantity = items.reduce((acc, i) => acc + (Number(i.quantity) || 0), 0);
+    const totalAvailable = items.reduce((acc, i) => acc + (Number(i.available_quantity) || Number(i.quantity) || 0), 0);
+    const totalReserved = items.reduce((acc, i) => acc + (Number(i.reserved_quantity) || 0), 0);
+    const totalDamaged = items.reduce((acc, i) => acc + (Number(i.damaged_quantity) || 0), 0);
+    const lowStockCount = items.filter((i) => (Number(i.quantity) || 0) <= (i.reorder_point || 5) || (Number(i.quantity) || 0) <= (i.safety_stock || 2)).length;
+
+    return {
+      totalItems: items.length,
+      totalQuantity,
+      totalAvailable,
+      totalReserved,
+      totalDamaged,
+      lowStockCount,
+    };
+  }
+
+  async getPosInitData(organizationId: number): Promise<any> {
+    const orgId = Number(organizationId);
+    const [customers, warehouses, categories, variants, products, inventoryItems, accounts] = await Promise.all([
+      this.getCustomers({ organization_id: orgId }),
+      this.getWarehouses({ organization_id: orgId }),
+      this.getCategories({ organization_id: orgId }),
+      this.getVariants({ organization_id: orgId }),
+      this.getProducts({ organization_id: orgId }),
+      this.getInventoryItems({ organization_id: orgId }),
+      this.getFinancialAccounts({ organization_id: orgId }),
+    ]);
+
+    return {
+      customers,
+      warehouses,
+      categories,
+      variants,
+      products,
+      inventoryItems,
+      financialAccounts: accounts,
+    };
+  }
+
+  async getBarcodeInitData(organizationId: number): Promise<any> {
+    const orgId = Number(organizationId);
+    const [variants, products, colors, sizes, brands, categories] = await Promise.all([
+      this.getVariants({ organization_id: orgId }),
+      this.getProducts({ organization_id: orgId }),
+      this.getColors({ organization_id: orgId }),
+      this.getSizes({ organization_id: orgId }),
+      this.getBrands({ organization_id: orgId }),
+      this.getCategories({ organization_id: orgId }),
+    ]);
+
+    return {
+      variants,
+      products,
+      colors,
+      sizes,
+      brands,
+      categories,
+    };
+  }
+}
+

@@ -1,0 +1,72 @@
+import express from 'express';
+import http from 'http';
+import path from 'path';
+import dotenv from 'dotenv';
+import { createServer as createViteServer } from 'vite';
+import { authRouter } from './server/auth';
+import { proxyRouter } from './server/proxy';
+import { paymentRouter } from './server/payment';
+import { woocommerceRouter } from './server/woocommerce';
+
+dotenv.config();
+
+async function startServer() {
+  const app = express();
+  const PORT = 3000;
+  const server = http.createServer(app);
+
+  // CORS configuration for web, desktop (Tauri/Electron), and preview clients
+  app.use((req, res, next) => {
+    res.header('Access-Control-Allow-Origin', '*');
+    res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, PATCH, DELETE, OPTIONS');
+    res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
+    if (req.method === 'OPTIONS') {
+      return res.sendStatus(204);
+    }
+    next();
+  });
+
+  // Body parsers (preserve rawBody Buffer for Stripe webhook signature verification)
+  app.use(
+    express.json({
+      limit: '10mb',
+      verify: (req, _res, buf) => {
+        (req as any).rawBody = buf;
+      },
+    })
+  );
+  app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+  // API Routes (Mounted FIRST)
+  app.use('/api/auth', authRouter);
+  app.use('/api/payment', paymentRouter);
+  app.use('/api/woocommerce', woocommerceRouter);
+  app.use('/api', proxyRouter);
+
+  // Vite middleware in dev or static serving in production
+  if (process.env.NODE_ENV !== 'production') {
+    const isHmrDisabled = process.env.DISABLE_HMR === 'true';
+    const vite = await createViteServer({
+      server: {
+        middlewareMode: true,
+        hmr: isHmrDisabled ? false : { server },
+      },
+      appType: 'spa',
+    });
+    app.use(vite.middlewares);
+  } else {
+    const distPath = path.join(process.cwd(), 'dist');
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  }
+
+  server.listen(PORT, '0.0.0.0', () => {
+    console.log(`[Clozito BFF] Server running on http://0.0.0.0:${PORT}`);
+  });
+}
+
+startServer().catch((err) => {
+  console.error('[Clozito BFF] Failed to start server:', err);
+});

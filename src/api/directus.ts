@@ -1,0 +1,1123 @@
+/**
+ * Tankhor Backend API Gateway Client (BFF Proxy)
+ * Connects securely to the Node.js API Gateway which handles Directus Admin and Tenant Isolation.
+ */
+
+import { SystemModule } from '../types';
+import { swrCache } from './swrCache';
+import { safeSaveCachedUserProfile, safeSetLocalStorageItem } from '../utils/profileCache';
+
+export interface DirectusConfig {
+  baseUrl: string;
+  token?: string | null;
+}
+
+class DirectusClient {
+  private baseUrl: string;
+  private token: string | null = null;
+
+  constructor(baseUrl?: string) {
+    if (baseUrl) {
+      this.baseUrl = baseUrl.replace(/\/+$/, '');
+    } else if (typeof window !== 'undefined') {
+      const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+      const customApiUrl = metaEnv?.VITE_API_URL || metaEnv?.VITE_GATEWAY_URL;
+      const isTauri =
+        window.location.protocol.includes('tauri') ||
+        Boolean((window as any).__TAURI__) ||
+        window.location.hostname === 'tauri.localhost';
+
+      if (customApiUrl) {
+        this.baseUrl = customApiUrl.replace(/\/+$/, '');
+      } else if (isTauri) {
+        // Desktop BFF Gateway: Route auth, registration, and cloud proxy requests through the secure BFF Gateway
+        const desktopGateway = metaEnv?.VITE_GATEWAY_URL || metaEnv?.VITE_API_URL || 'https://my.tankhor.com/api';
+        this.baseUrl = desktopGateway.replace(/\/+$/, '');
+      } else {
+        // In browser / web preview / production Cloud Run, all requests go through the same-origin Express BFF proxy at /api
+        this.baseUrl = '/api';
+      }
+    } else {
+      this.baseUrl = '/api';
+    }
+    this.token = typeof window !== 'undefined' ? localStorage.getItem('tankhor_directus_token') : null;
+  }
+
+  public setToken(token: string | null, refreshToken?: string | null) {
+    this.token = token;
+    if (typeof window !== 'undefined') {
+      if (token) {
+        safeSetLocalStorageItem('tankhor_directus_token', token);
+      } else {
+        localStorage.removeItem('tankhor_directus_token');
+      }
+      if (refreshToken) {
+        safeSetLocalStorageItem('tankhor_directus_refresh_token', refreshToken);
+      } else if (refreshToken === null) {
+        localStorage.removeItem('tankhor_directus_refresh_token');
+      }
+    }
+  }
+
+  public getToken(): string | null {
+    if (this.token) return this.token;
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('tankhor_directus_token');
+    }
+    return null;
+  }
+
+  public getRefreshToken(): string | null {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('tankhor_directus_refresh_token');
+    }
+    return null;
+  }
+
+  private refreshPromise: Promise<string | null> | null = null;
+  private lastWarmupAt = 0;
+
+  private decodeJwtPayload(token: string): { exp?: number; iat?: number } | null {
+    try {
+      const parts = token.split('.');
+      if (parts.length !== 3) return null;
+      const base64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+      const padded = base64.padEnd(base64.length + ((4 - (base64.length % 4)) % 4), '=');
+      const json = atob(padded);
+      return JSON.parse(json);
+    } catch {
+      return null;
+    }
+  }
+
+  public isTokenNearExpiryOrStale(maxAgeSeconds = 6 * 60 * 60, renewBeforeExpirySeconds = 7 * 24 * 60 * 60): boolean {
+    const token = this.getToken();
+    if (!token) return false;
+    const payload = this.decodeJwtPayload(token);
+    if (!payload) return false;
+    const nowSec = Math.floor(Date.now() / 1000);
+    if (payload.exp && payload.exp - nowSec < renewBeforeExpirySeconds) {
+      return true;
+    }
+    if (payload.iat && nowSec - payload.iat > maxAgeSeconds) {
+      return true;
+    }
+    return false;
+  }
+
+  public async warmupConnection(): Promise<void> {
+    if (typeof window === 'undefined') return;
+    const now = Date.now();
+    if (now - this.lastWarmupAt < 30000) return;
+    this.lastWarmupAt = now;
+    try {
+      await fetch(`${this.getBaseUrl()}/warmup`, { method: 'GET' });
+    } catch {
+      // Non-blocking warmup ping
+    }
+  }
+
+  public async ensureFreshTokenIfNeeded(): Promise<void> {
+    if (!this.getToken()) return;
+    if (this.isTokenNearExpiryOrStale()) {
+      await this.refreshAccessToken();
+    }
+  }
+
+  private async refreshAccessToken(): Promise<string | null> {
+    if (this.refreshPromise) {
+      return this.refreshPromise;
+    }
+
+    const currentToken = this.getToken();
+    const rToken = this.getRefreshToken() || currentToken;
+    if (!rToken) return null;
+
+    this.refreshPromise = (async () => {
+      try {
+        const url = `${this.getBaseUrl()}/auth/refresh`;
+        const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+        if (currentToken) {
+          headers['Authorization'] = `Bearer ${currentToken}`;
+        }
+        const response = await fetch(url, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({ refresh_token: rToken, mode: 'json' }),
+        });
+
+        if (response.status === 401 || response.status === 403) {
+          this.setToken(null, null);
+          return null;
+        }
+
+        if (!response.ok) {
+          // Transient 5xx/rate-limit: preserve existing session token rather than logging out
+          return null;
+        }
+
+        const json = await response.json();
+        const resData = json.data || json;
+        const newToken = resData.access_token || resData.token;
+        const newRefreshToken = resData.refresh_token || newToken || rToken;
+
+        if (newToken) {
+          this.setToken(newToken, newRefreshToken);
+          return newToken;
+        }
+        return null;
+      } catch {
+        // Network error: preserve existing cached session
+        return null;
+      } finally {
+        this.refreshPromise = null;
+      }
+    })();
+
+    return this.refreshPromise;
+  }
+
+  public getBaseUrl(): string {
+    return this.baseUrl || '/api';
+  }
+
+  private isAuthPublicEndpoint(endpoint: string): boolean {
+    const clean = endpoint.toLowerCase().trim();
+    return (
+      clean.startsWith('/auth/login') ||
+      clean.startsWith('/auth/register') ||
+      clean.startsWith('/auth/refresh') ||
+      clean === '/users' ||
+      clean === '/users/'
+    );
+  }
+
+  private getHeaders(options?: RequestInit & { skipAuth?: boolean }, endpoint?: string): HeadersInit {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    const skip = options?.skipAuth || (endpoint && this.isAuthPublicEndpoint(endpoint));
+    if (!skip) {
+      const token = this.getToken();
+      if (token) {
+        headers['Authorization'] = `Bearer ${token}`;
+      }
+    }
+    return headers;
+  }
+
+  public async request<T = any>(
+    endpoint: string,
+    options: RequestInit & { skipAuth?: boolean; preserveMeta?: boolean; bypassCache?: boolean } = {}
+  ): Promise<T> {
+    const cleanEndpoint = endpoint.startsWith('/') ? endpoint : `/${endpoint}`;
+    const method = (options.method || 'GET').toUpperCase();
+
+    if (method === 'GET' && !options.bypassCache) {
+      return swrCache.fetchWithSWR<T>(
+        cleanEndpoint,
+        () => this.executeRequest<T>(cleanEndpoint, options),
+        { preserveMeta: options.preserveMeta, bypassCache: options.bypassCache }
+      );
+    }
+
+    const result = await this.executeRequest<T>(cleanEndpoint, options);
+    if (method !== 'GET') {
+      swrCache.invalidateByMutation(cleanEndpoint);
+    }
+    return result;
+  }
+
+  private async executeRequest<T = any>(
+    cleanEndpoint: string,
+    options: RequestInit & { skipAuth?: boolean; preserveMeta?: boolean; bypassCache?: boolean } = {}
+  ): Promise<T> {
+    const url = `${this.getBaseUrl()}${cleanEndpoint}`;
+
+    try {
+      const response = await fetch(url, {
+        ...options,
+        headers: {
+          ...this.getHeaders(options, cleanEndpoint),
+          ...(options.headers || {}),
+        },
+      });
+
+      if (response.status === 204) {
+        return {} as T;
+      }
+
+      const text = await response.text();
+      let data: any = {};
+      if (text && text.trim()) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: text };
+        }
+      }
+
+      if (!response.ok) {
+        const errorMsg = data.errors?.[0]?.message || data.error || data.message || `Request failed with status ${response.status}`;
+        
+        // Handle transient 503 Under Pressure or 429 Rate Limit from server
+        const isPressureOrRateLimit =
+          response.status === 503 ||
+          response.status === 429 ||
+          errorMsg.toLowerCase().includes('under pressure') ||
+          errorMsg.toLowerCase().includes('service_unavailable');
+
+        const retryCount = (options as any)._retryCount || 0;
+        if (isPressureOrRateLimit && retryCount < 2) {
+          const delayMs = (retryCount + 1) * 600;
+          console.warn(`[API Client] Server pressure on ${cleanEndpoint}, retrying in ${delayMs}ms (attempt ${retryCount + 1}/2)...`);
+          await new Promise((res) => setTimeout(res, delayMs));
+          return this.executeRequest<T>(cleanEndpoint, {
+            ...options,
+            _retryCount: retryCount + 1,
+          } as any);
+        }
+
+        const isExpiredOrUnauthorized =
+          response.status === 401 ||
+          errorMsg.toLowerCase().includes('token expired') ||
+          errorMsg.toLowerCase().includes('invalid token') ||
+          errorMsg.includes('TOKEN_EXPIRED') ||
+          errorMsg.includes('INVALID_TOKEN');
+
+        const alreadyRetriedAuth = Boolean((options as any)._authRetried);
+        if (isExpiredOrUnauthorized && !alreadyRetriedAuth && !this.isAuthPublicEndpoint(cleanEndpoint)) {
+          const newToken = await this.refreshAccessToken();
+          if (newToken) {
+            return this.executeRequest<T>(cleanEndpoint, {
+              ...options,
+              _authRetried: true,
+            } as any);
+          } else if (!this.getToken()) {
+            swrCache.clearAll();
+            if (typeof window !== 'undefined') {
+              localStorage.removeItem('tankhor_cached_user_profile');
+            }
+          }
+        } else if (isExpiredOrUnauthorized) {
+          this.setToken(null, null);
+          swrCache.clearAll();
+          if (typeof window !== 'undefined') {
+            localStorage.removeItem('tankhor_cached_user_profile');
+          }
+        }
+
+        throw new Error(errorMsg);
+      }
+
+      return (options.preserveMeta && data.meta !== undefined
+        ? data
+        : (data.data !== undefined ? data.data : (data as T)));
+    } catch (err: any) {
+      console.warn(`[API Client] Request failed for ${cleanEndpoint}:`, err.message);
+      throw err;
+    }
+  }
+
+  // Auth methods
+  public async login(email: string, password: string): Promise<{ access_token: string; user: any; activeOrganization: any; organizations: any[] }> {
+    const cleanEmail = email.toLowerCase().trim();
+    const res = await this.request('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({ email: cleanEmail, password, mode: 'json' }),
+    });
+
+    const token = res.token || res.access_token;
+    const refreshToken = res.refresh_token;
+    if (token) {
+      this.setToken(token, refreshToken);
+    }
+
+    let user = res.user;
+    let activeOrg = res.activeOrganization || res.active_organization;
+    let orgs = res.organizations;
+
+    if (!user || !activeOrg || !Array.isArray(orgs) || orgs.length === 0) {
+      const meData = await this.getMe().catch(() => null);
+      if (meData) {
+        user = user || meData;
+        activeOrg = activeOrg || meData.activeOrganization || meData.active_organization;
+        orgs = orgs || meData.organizations;
+      }
+    }
+
+    if (!Array.isArray(orgs) || orgs.length === 0) {
+      const verifiedOrgs = await this.getOrganizations().catch(() => []);
+      if (verifiedOrgs.length > 0) {
+        orgs = verifiedOrgs;
+        if (!activeOrg) activeOrg = verifiedOrgs[0];
+      }
+    }
+
+    if (activeOrg?.id && typeof window !== 'undefined') {
+      safeSetLocalStorageItem('tankhor_active_org_id', String(activeOrg.id));
+    }
+
+    const finalOrgs = Array.isArray(orgs) && orgs.length > 0 ? orgs : (activeOrg ? [activeOrg] : []);
+    const finalActiveOrg = activeOrg || (finalOrgs.length > 0 ? finalOrgs[0] : null);
+
+    return {
+      access_token: token,
+      user: {
+        ...(user || {}),
+        email: cleanEmail,
+        activeOrganization: finalActiveOrg,
+        active_organization: finalActiveOrg,
+        organizations: finalOrgs,
+      },
+      activeOrganization: finalActiveOrg,
+      organizations: finalOrgs,
+    };
+  }
+
+  public async logout(): Promise<void> {
+    this.setToken(null, null);
+    swrCache.clearAll();
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem('tankhor_cached_user_profile');
+      localStorage.removeItem('tankhor_active_org_id');
+      localStorage.removeItem('tankhor_storage_mode');
+    }
+  }
+
+  public async getMe(): Promise<any> {
+    let meData: any;
+    try {
+      meData = await this.request('/auth/me');
+    } catch {
+      meData = await this.request('/users/me');
+    }
+
+    if (meData && meData.data) {
+      meData = meData.data;
+    }
+
+    if (meData && (meData.id || meData.email)) {
+      if (!Array.isArray(meData.organizations) || meData.organizations.length === 0) {
+        const orgs = await this.resolveUserOrganizations(meData).catch(() => []);
+        if (orgs.length > 0) {
+          meData.organizations = orgs;
+          if (!meData.activeOrganization && !meData.active_organization) {
+            meData.activeOrganization = orgs[0];
+            meData.active_organization = orgs[0];
+          }
+        }
+      }
+    }
+    return meData;
+  }
+
+  public async updateMe(data: {
+    first_name?: string;
+    last_name?: string;
+    title?: string;
+    avatar?: string;
+    password?: string;
+    current_password?: string;
+  }): Promise<any> {
+    try {
+      const res = await this.request('/auth/me', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+      return res.user || res;
+    } catch (err: any) {
+      // Fallback directly to Directus users endpoint if BFF /auth/me throws
+      const res = await this.request('/users/me', {
+        method: 'PATCH',
+        body: JSON.stringify(data),
+      });
+      return res.data || res;
+    }
+  }
+
+  public async getOrganizations(): Promise<any[]> {
+    try {
+      const me = await this.getMe().catch(() => null);
+      if (me && Array.isArray(me.organizations) && me.organizations.length > 0) {
+        return me.organizations;
+      }
+      if (me && (me.activeOrganization || me.active_organization)) {
+        return [me.activeOrganization || me.active_organization];
+      }
+
+      // If connecting directly to Directus, query organization_users strictly for current user
+      if (me && (me.id || me.email)) {
+        return await this.resolveUserOrganizations(me);
+      }
+
+      // Security: Never fall back to returning all organizations across tenants!
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  private async resolveUserOrganizations(user: { id?: string; email?: string }): Promise<any[]> {
+    if (!user || (!user.id && !user.email)) return [];
+
+    let memberships: any[] = [];
+    if (user.id) {
+      try {
+        memberships = await this.getItems<any>('organization_users', {
+          filter: { user_id: { _eq: user.id } },
+          fields: ['id', 'role', 'status', 'organization_id.*', 'organization_id'],
+        });
+      } catch {}
+    }
+
+    if ((!memberships || memberships.length === 0) && user.id) {
+      try {
+        memberships = await this.getItems<any>('organization_users', {
+          filter: { user_id: { id: { _eq: user.id } } },
+          fields: ['id', 'role', 'status', 'organization_id.*', 'organization_id'],
+        });
+      } catch {}
+    }
+
+    if ((!memberships || memberships.length === 0) && user.email) {
+      try {
+        memberships = await this.getItems<any>('organization_users', {
+          filter: { user_id: { email: { _eq: user.email.toLowerCase().trim() } } },
+          fields: ['id', 'role', 'status', 'organization_id.*', 'organization_id'],
+        });
+      } catch {}
+    }
+
+    if (Array.isArray(memberships) && memberships.length > 0) {
+      const orgs: any[] = [];
+      for (const m of memberships) {
+        if (m.organization_id && typeof m.organization_id === 'object' && m.organization_id.id && m.organization_id.name) {
+          orgs.push({ ...m.organization_id, user_role: m.role || 'viewer' });
+        } else if (m.organization_id) {
+          const orgId = Number(typeof m.organization_id === 'object' ? m.organization_id.id : m.organization_id);
+          if (orgId && !isNaN(orgId)) {
+            const org = await this.getItemById<any>('organizations', orgId).catch(() => null);
+            if (org && typeof org === 'object' && org.id && org.name) {
+              orgs.push({ ...org, user_role: m.role || 'viewer' });
+            }
+          }
+        }
+      }
+
+      if (orgs.length > 0) {
+        const seen = new Set<number>();
+        return orgs.filter((o) => {
+          const numId = Number(o.id);
+          if (!numId || seen.has(numId)) return false;
+          seen.add(numId);
+          return true;
+        });
+      }
+    }
+    return [];
+  }
+
+  public async register(data: {
+    email: string;
+    password: string;
+    first_name?: string;
+    last_name?: string;
+    user_phone?: string;
+    org_name?: string;
+    org_slug?: string;
+    currency?: string;
+    locale?: 'en' | 'it';
+    initial_category_name?: string;
+    initial_warehouse_name?: string;
+  }): Promise<any> {
+    const cleanEmail = data.email.toLowerCase().trim();
+    let res: any;
+
+    try {
+      res = await this.request('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ ...data, email: cleanEmail }),
+      });
+      const token = res.token || res.access_token;
+      const refreshToken = res.refresh_token;
+      if (token) {
+        this.setToken(token, refreshToken);
+      }
+      const orgId = res.activeOrganization?.id || res.organization?.id;
+      if (orgId && typeof window !== 'undefined') {
+        safeSetLocalStorageItem('tankhor_active_org_id', String(orgId));
+      }
+      return res;
+    } catch (err: any) {
+      // If we are calling the BFF server gateway (/api) or if the server gave an explicit error message, rethrow directly
+      const baseUrl = this.getBaseUrl();
+      if (baseUrl === '/api' || baseUrl === '' || !baseUrl.startsWith('http')) {
+        throw err;
+      }
+
+      // Direct directus fallback (only when directly connected to Directus instance)
+      try {
+        const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
+        const tenantRoleId =
+          metaEnv?.VITE_DIRECTUS_USER_ROLE_ID ||
+          metaEnv?.VITE_DIRECTUS_TENANT_ROLE_ID ||
+          '5cd02fe5-1738-4029-b95b-babf6d7fb7be';
+        let newUser: any = null;
+        try {
+          const userRaw = await this.request('/users', {
+            method: 'POST',
+            body: JSON.stringify({
+              email: cleanEmail,
+              password: data.password,
+              first_name: data.first_name || '',
+              last_name: data.last_name || '',
+              user_phone: data.user_phone || '',
+              status: 'active',
+              role: tenantRoleId,
+            }),
+          });
+          newUser = userRaw?.data || userRaw;
+        } catch (uErr: any) {
+          // If user creation failed because email exists, try searching for existing user
+          const existing = await this.request(`/users?filter[email][_eq]=${encodeURIComponent(cleanEmail)}`).catch(() => null);
+          const existingList = Array.isArray(existing) ? existing : (Array.isArray(existing?.data) ? existing.data : []);
+          if (existingList.length > 0) {
+            newUser = existingList[0];
+          } else {
+            throw uErr;
+          }
+        }
+
+        const loginRes = await this.login(cleanEmail, data.password);
+        const userId = newUser?.id || loginRes?.user?.id;
+
+        // 1. Create Organization in cloud
+        const orgName = data.org_name || (data.first_name ? `${data.first_name} ${data.last_name || ''} Studio`.trim() : 'My Store');
+        const orgSlug = data.org_slug || `org-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 5)}`;
+        
+        let createdOrg: any = null;
+        try {
+          const orgRaw = await this.request('/items/organizations', {
+            method: 'POST',
+            body: JSON.stringify({
+              name: orgName,
+              slug: orgSlug,
+              currency: data.currency || 'EUR',
+              timezone: 'Europe/Rome',
+              plan: 'free',
+              status: 'active',
+            }),
+          });
+          createdOrg = orgRaw?.data || orgRaw;
+        } catch (orgErr: any) {
+          console.warn('[directusClient] Directus fallback organization creation notice:', orgErr?.message);
+        }
+
+        const orgId = createdOrg?.id;
+
+        // 2. Create organization_users entry in Directus
+        if (orgId && userId) {
+          try {
+            await this.request('/items/organization_users', {
+              method: 'POST',
+              body: JSON.stringify({
+                organization_id: orgId,
+                user_id: userId,
+                role: 'owner',
+                status: 'active',
+                date_joined: new Date().toISOString(),
+              }),
+            });
+            console.log(`[directusClient] Linked organization_users: org ${orgId} -> user ${userId}`);
+          } catch (ouErr: any) {
+            console.warn('[directusClient] Directus fallback organization_users creation notice:', ouErr?.message);
+          }
+
+          // 3. Create initial category & warehouse
+          try {
+            await this.request('/items/categories', {
+              method: 'POST',
+              body: JSON.stringify({
+                organization_id: orgId,
+                name: data.initial_category_name || 'General Apparel',
+                slug: `cat-${Date.now().toString(36)}`,
+                status: 'active',
+              }),
+            }).catch(() => {});
+
+            await this.request('/items/warehouses', {
+              method: 'POST',
+              body: JSON.stringify({
+                organization_id: orgId,
+                name: data.initial_warehouse_name || 'Main Warehouse',
+                code: 'WH-MAIN',
+                is_default: true,
+                status: 'active',
+              }),
+            }).catch(() => {});
+          } catch {}
+        }
+
+        const activeOrg = createdOrg ? { ...createdOrg, id: orgId, user_role: 'owner', plan: createdOrg.plan || 'free' } : loginRes.activeOrganization;
+        const orgsList = activeOrg ? [activeOrg] : (loginRes.organizations || []);
+
+        if (activeOrg?.id && typeof window !== 'undefined') {
+          safeSetLocalStorageItem('tankhor_active_org_id', String(activeOrg.id));
+        }
+
+        const finalUser = {
+          ...(newUser || loginRes.user || {}),
+          id: userId,
+          email: cleanEmail,
+          activeOrganization: activeOrg,
+          active_organization: activeOrg,
+          organizations: orgsList,
+        };
+
+        safeSaveCachedUserProfile(finalUser);
+
+        return {
+          success: true,
+          user: finalUser,
+          token: loginRes.access_token,
+          activeOrganization: activeOrg,
+          organization: activeOrg,
+          organizations: orgsList,
+        };
+      } catch (directusErr: any) {
+        throw new Error(directusErr.message || err.message || 'Registration failed on cloud server.');
+      }
+    }
+
+    const token = res.token || res.access_token;
+    const refreshToken = res.refresh_token;
+    if (token) {
+      this.setToken(token, refreshToken);
+    }
+    const orgId = res.activeOrganization?.id || res.organization?.id;
+    if (orgId && typeof window !== 'undefined') {
+      safeSetLocalStorageItem('tankhor_active_org_id', String(orgId));
+    }
+    return res;
+  }
+
+  public async switchOrganization(targetOrganizationId: number): Promise<any> {
+    const res = await this.request('/auth/switch-org', {
+      method: 'POST',
+      body: JSON.stringify({ targetOrganizationId }),
+    });
+    swrCache.clearAll();
+    if (res.token) {
+      this.setToken(res.token, res.refresh_token);
+    }
+    const orgId = res.activeOrganization?.id || targetOrganizationId;
+    if (orgId && typeof window !== 'undefined') {
+      safeSetLocalStorageItem('tankhor_active_org_id', String(orgId));
+    }
+    return res;
+  }
+
+  public async createOrganization(data: {
+    name: string;
+    slug?: string;
+    currency?: string;
+    timezone?: string;
+    plan?: string;
+  }): Promise<any> {
+    const res = await this.request('/auth/create-org', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    swrCache.clearAll();
+    if (res.token) {
+      this.setToken(res.token, res.refresh_token);
+    }
+    const orgId = res.activeOrganization?.id || res.organization?.id;
+    if (orgId && typeof window !== 'undefined') {
+      safeSetLocalStorageItem('tankhor_active_org_id', String(orgId));
+    }
+    return res.organization || res.activeOrganization;
+  }
+
+  public async checkOrganizationPlan(organizationId?: number): Promise<{
+    success: boolean;
+    organizationId: number;
+    plan: 'free' | 'pro';
+    isPro: boolean;
+    isTrial?: boolean;
+    trialDaysRemaining?: number;
+    trialEndsAt?: string | null;
+    hasUsedTrial?: boolean;
+    trialExpired?: boolean;
+    organization: any;
+    activeOrganization: any;
+    organizations: any[];
+  }> {
+    const qs = organizationId ? `?organization_id=${organizationId}` : '';
+    const res = await this.request<any>(`/auth/check-plan${qs}`);
+    if (res && res.activeOrganization) {
+      // Update cached user profile in localStorage
+      if (typeof window !== 'undefined') {
+        const cachedRaw = localStorage.getItem('tankhor_cached_user_profile');
+        if (cachedRaw) {
+          try {
+            const cached = JSON.parse(cachedRaw);
+            cached.activeOrganization = res.activeOrganization;
+            cached.active_organization = res.activeOrganization;
+            if (Array.isArray(res.organizations) && res.organizations.length > 0) {
+              cached.organizations = res.organizations;
+            }
+            safeSaveCachedUserProfile(cached);
+          } catch {}
+        }
+      }
+    }
+    return res;
+  }
+
+  public async startFreeTrial(organizationId?: number): Promise<{
+    success: boolean;
+    message: string;
+    plan: 'pro';
+    isPro: boolean;
+    isTrial: boolean;
+    trialDaysRemaining: number;
+    trialEndsAt: string;
+    organization: any;
+    activeOrganization?: any;
+    subscription?: any;
+  }> {
+    const res = await this.request<any>('/payment/start-trial', {
+      method: 'POST',
+      body: JSON.stringify({ organizationId }),
+    });
+    if (res && res.organization) {
+      if (typeof window !== 'undefined') {
+        const cachedRaw = localStorage.getItem('tankhor_cached_user_profile');
+        if (cachedRaw) {
+          try {
+            const cached = JSON.parse(cachedRaw);
+            cached.activeOrganization = res.organization;
+            cached.active_organization = res.organization;
+            if (Array.isArray(cached.organizations)) {
+              const idx = cached.organizations.findIndex((o: any) => o.id === res.organization.id);
+              if (idx !== -1) {
+                cached.organizations[idx] = res.organization;
+              }
+            }
+            safeSaveCachedUserProfile(cached);
+          } catch {}
+        }
+      }
+    }
+    return res;
+  }
+
+  public async getSubscriptionPlans(): Promise<any> {
+    return await this.request('/payment/plans', { skipAuth: true });
+  }
+
+  public async getSystemModules(query?: Record<string, any>): Promise<SystemModule[]> {
+    try {
+      let qs = '';
+      if (query) {
+        const params = new URLSearchParams();
+        if (query.filter) params.append('filter', typeof query.filter === 'string' ? query.filter : JSON.stringify(query.filter));
+        if (query.sort) params.append('sort', query.sort);
+        if (query.limit) params.append('limit', String(query.limit));
+        qs = `?${params.toString()}`;
+      }
+      // 1. Try dedicated public proxy endpoint /system-modules
+      const res: any = await this.request(`/system-modules${qs}`, { skipAuth: true }).catch(() => null);
+      if (res) {
+        if (Array.isArray(res.data) && res.data.length > 0) return res.data;
+        if (Array.isArray(res) && res.length > 0) return res;
+      }
+      // 2. Directus collection endpoint fallback
+      const items = await this.getItems<SystemModule>('system_modules', query).catch(() => []);
+      if (items && items.length > 0) {
+        return items;
+      }
+      return [];
+    } catch {
+      return [];
+    }
+  }
+
+  public async requestPayment(data: {
+    organizationId: number;
+    durationMonths: number;
+    simulate?: boolean;
+    mobile?: string;
+  }): Promise<{
+    success: boolean;
+    sessionId?: string;
+    trackId?: string | number;
+    orderId?: string;
+    amountEur?: number;
+    currency?: string;
+    paymentUrl: string;
+    error?: string;
+  }> {
+    return await this.request('/payment/request', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async requestModulePayment(data: {
+    organizationId: number;
+    moduleSlug: string;
+    hardwareId?: string;
+    simulate?: boolean;
+    mobile?: string;
+  }): Promise<{
+    success: boolean;
+    sessionId?: string;
+    trackId?: string | number;
+    orderId?: string;
+    amountEur?: number;
+    currency?: string;
+    paymentUrl: string;
+    error?: string;
+  }> {
+    return await this.request('/payment/request-module', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async testActivateModule(data: {
+    organizationId: number;
+    moduleSlug: string;
+    hardwareId?: string;
+  }): Promise<any> {
+    return await this.request('/payment/test-activate-module', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async testActivateSubscription(data: {
+    organizationId: number;
+    durationMonths: number;
+  }): Promise<any> {
+    const res = await this.request('/payment/test-activate', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+    if (res && res.activeOrganization) {
+      if (typeof window !== 'undefined') {
+        const cachedRaw = localStorage.getItem('tankhor_cached_user_profile');
+        if (cachedRaw) {
+          try {
+            const cached = JSON.parse(cachedRaw);
+            cached.activeOrganization = res.activeOrganization;
+            cached.active_organization = res.activeOrganization;
+            if (Array.isArray(res.organizations) && res.organizations.length > 0) {
+              cached.organizations = res.organizations;
+            }
+            safeSaveCachedUserProfile(cached);
+          } catch {}
+        }
+      }
+    }
+    return res;
+  }
+
+  public async getSubscriptions(organizationId?: number): Promise<{
+    subscriptions: any[];
+    activeSubscription: any;
+    isPro: boolean;
+    remainingDays: number;
+  }> {
+    const qs = organizationId ? `?organization_id=${organizationId}` : '';
+    return await this.request(`/payment/subscriptions${qs}`);
+  }
+
+  // Generic collection helpers
+  public async getItems<T>(collection: string, query?: Record<string, any>): Promise<T[]> {
+    let queryString = '';
+    const params = new URLSearchParams();
+    if (query?.filter) params.append('filter', typeof query.filter === 'string' ? query.filter : JSON.stringify(query.filter));
+    if (query?.sort) params.append('sort', query.sort);
+    if (query?.limit !== undefined) {
+      params.append('limit', String(query.limit));
+    } else {
+      params.append('limit', '-1');
+    }
+    if (query?.page) params.append('page', String(query.page));
+    if (query?.fields) params.append('fields', Array.isArray(query.fields) ? query.fields.join(',') : query.fields);
+    if (query?.search) params.append('search', query.search);
+    queryString = `?${params.toString()}`;
+    const result = await this.request<any>(`/items/${collection}${queryString}`);
+    if (Array.isArray(result)) return result;
+    if (Array.isArray(result?.data)) return result.data;
+    return [];
+  }
+
+  public async getPaginatedItems<T>(
+    collection: string,
+    query?: Record<string, any>
+  ): Promise<{ data: T[]; meta: { total_count: number; filter_count: number } }> {
+    const params = new URLSearchParams();
+    if (query?.filter) params.append('filter', typeof query.filter === 'string' ? query.filter : JSON.stringify(query.filter));
+    if (query?.sort) params.append('sort', query.sort);
+    params.append('limit', String(query?.limit !== undefined ? query.limit : 25));
+    if (query?.page) params.append('page', String(query.page));
+    if (query?.fields) params.append('fields', Array.isArray(query.fields) ? query.fields.join(',') : query.fields);
+    if (query?.search) params.append('search', query.search);
+    params.append('meta', 'total_count,filter_count');
+
+    const result = await this.request<any>(`/items/${collection}?${params.toString()}`, { preserveMeta: true });
+    const data = Array.isArray(result?.data) ? result.data : (Array.isArray(result) ? result : []);
+    const meta = result?.meta || {};
+    return {
+      data,
+      meta: {
+        total_count: Number(meta.total_count ?? data.length),
+        filter_count: Number(meta.filter_count ?? meta.total_count ?? data.length),
+      },
+    };
+  }
+
+  public async getItemById<T>(collection: string, id: number | string, fields?: string | string[]): Promise<T> {
+    const fieldsQuery = fields
+      ? `?fields=${Array.isArray(fields) ? fields.join(',') : fields}`
+      : '';
+    const res = await this.request<any>(`/items/${collection}/${id}${fieldsQuery}`);
+    return res?.data || res;
+  }
+
+  public async createItem<T>(collection: string, item: Partial<T>): Promise<T> {
+    const res = await this.request<any>(`/items/${collection}`, {
+      method: 'POST',
+      body: JSON.stringify(item),
+    });
+    return res?.data || res;
+  }
+
+  public async updateItem<T>(collection: string, id: number | string, item: Partial<T>): Promise<T> {
+    const res = await this.request<any>(`/items/${collection}/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(item),
+    });
+    return res?.data || res;
+  }
+
+  public async deleteItem(collection: string, id: number | string): Promise<boolean> {
+    await this.request(`/items/${collection}/${id}`, {
+      method: 'DELETE',
+    });
+    return true;
+  }
+
+  public async uploadFile(file: File): Promise<{ id: string; title: string; filename_download: string }> {
+    const formData = new FormData();
+    formData.append('file', file);
+
+    const url = `${this.getBaseUrl()}/files`;
+    const headers: Record<string, string> = {};
+    const token = this.getToken();
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    const response = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => ({ message: response.statusText }));
+      throw new Error(errorData.error || errorData.message || 'File upload failed');
+    }
+
+    const json = await response.json();
+    return json.data || json;
+  }
+
+  public getAssetUrl(fileId?: string | null): string {
+    if (!fileId) return '';
+    const safeId = typeof fileId === 'string' ? fileId.trim() : (fileId as any)?.id ? String((fileId as any).id).trim() : '';
+    if (!safeId) return '';
+    if (safeId.startsWith('data:') || safeId.startsWith('http://') || safeId.startsWith('https://')) {
+      return safeId;
+    }
+    const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(safeId);
+    if (!isUuid) return '';
+
+    // Route through BFF proxy /api/assets/:id so admin authentication & CORS are seamlessly handled
+    return `${this.getBaseUrl()}/assets/${safeId}`;
+  }
+
+  public async getProjectSettings(): Promise<{
+    windows_setup?: string | null;
+    macos_setup?: string | null;
+    adnroid_setup?: string | null;
+    android_setup?: string | null;
+  }> {
+    try {
+      const res = await fetch(`${this.getBaseUrl()}/project-settings`);
+      if (res.ok) {
+        return await res.json();
+      }
+    } catch (e) {
+      console.warn('Failed to fetch project settings:', e);
+    }
+    return {
+      windows_setup: null,
+      macos_setup: null,
+      adnroid_setup: null,
+      android_setup: null,
+    };
+  }
+
+  public async submitFeedback(feedback: {
+    subject: string;
+    message: string;
+    user_id?: string | null;
+  }): Promise<any> {
+    try {
+      // 1. Try sending via BFF proxy endpoint /feedback
+      return await this.request('/feedback', {
+        method: 'POST',
+        body: JSON.stringify(feedback),
+      });
+    } catch (err: any) {
+      console.warn('[DirectusClient] /feedback BFF endpoint failed, attempting direct Directus submission:', err?.message);
+      // 2. Direct fallback to live Directus API (https://api.tankhor.com/items/feedbacks)
+      try {
+        const directUrl = 'https://api.tankhor.com/items/feedbacks';
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/json',
+        };
+        const token = this.getToken();
+        if (token) {
+          headers['Authorization'] = `Bearer ${token}`;
+        }
+        const response = await fetch(directUrl, {
+          method: 'POST',
+          headers,
+          body: JSON.stringify({
+            subject: feedback.subject,
+            message: feedback.message,
+            user_id: feedback.user_id || undefined,
+            status: 'unread',
+          }),
+        });
+        if (response.ok) {
+          const json = await response.json();
+          return json?.data || json;
+        }
+      } catch (directErr: any) {
+        console.warn('[DirectusClient] Direct fallback also failed:', directErr?.message);
+      }
+      throw err;
+    }
+  }
+}
+
+export const directusClient = new DirectusClient();

@@ -1,0 +1,539 @@
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from '../../i18n';
+import { useOrganization } from '../../context/OrganizationContext';
+import { storageManager } from '../../storage';
+import { ProductVariant, Product, Color, Size } from '../../types';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Badge } from '../../components/ui/Badge';
+import { Modal } from '../../components/ui/Modal';
+import { DataTable, Column } from '../../components/ui/DataTable';
+import { Pagination } from '../../components/ui/Pagination';
+import { ProductImage } from '../../components/ui/ProductImage';
+import { ImageUpload } from '../../components/ui/ImageUpload';
+import { WebcamScanButton } from '../../components/ui/WebcamScanButton';
+import { WebcamBarcodeScannerModal } from '../../components/modals/WebcamBarcodeScannerModal';
+import { formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { confirmAction } from '../../utils/confirm';
+import { Search, Shirt, Barcode as BarcodeIcon, Tag, Trash2, Edit, Save, Plus } from 'lucide-react';
+import { useSwrRefresh } from '../../hooks/useSwrRefresh';
+
+export const VariantsView: React.FC = () => {
+  const { t, locale } = useTranslation();
+  const { activeOrganization } = useOrganization();
+
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [colors, setColors] = useState<Color[]>([]);
+  const [sizes, setSizes] = useState<Size[]>([]);
+  const [search, setSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Edit Variant Modal
+  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
+  const [editingVariant, setEditingVariant] = useState<ProductVariant | null>(null);
+  const [editSku, setEditSku] = useState('');
+  const [editBarcode, setEditBarcode] = useState('');
+  const [editPrice, setEditPrice] = useState<number | ''>('');
+  const [editCost, setEditCost] = useState<number | ''>('');
+  const [editStock, setEditStock] = useState<number | ''>('');
+  const [editColorId, setEditColorId] = useState<number | ''>('');
+  const [editSizeId, setEditSizeId] = useState<number | ''>('');
+  const [editImage, setEditImage] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const [scannerTarget, setScannerTarget] = useState<'search' | 'edit' | null>(null);
+
+  const isPersian = false;
+
+  const loadVariants = async (silent: boolean | unknown = false) => {
+    if (silent !== true) setIsLoading(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id;
+      const [vList, cList, sList] = await Promise.all([
+        adapter.getVariants({ organization_id: orgId }),
+        adapter.getColors({ organization_id: orgId }),
+        adapter.getSizes({ organization_id: orgId }),
+      ]);
+
+      let filtered = vList;
+      if (search.trim()) {
+        const term = search.toLowerCase();
+        filtered = vList.filter(
+          (v) =>
+            v.sku.toLowerCase().includes(term) ||
+            (v.barcode && v.barcode.includes(term)) ||
+            (v.product_title && v.product_title.toLowerCase().includes(term))
+        );
+      }
+
+      setVariants(filtered);
+      setColors(cList);
+      setSizes(sList);
+    } catch (err) {
+      console.error('[VariantsView] Error loading variants:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadVariants();
+  }, [activeOrganization, search]);
+
+  useSwrRefresh(['product_variants', 'products', 'colors', 'sizes'], () => {
+    loadVariants(true);
+  });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search]);
+
+  const totalVariantsCount = variants.length;
+  const totalPages = Math.ceil(totalVariantsCount / pageSize) || 1;
+  const paginatedVariants = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return variants.slice(start, start + pageSize);
+  }, [variants, currentPage, pageSize]);
+
+  const handleOpenEdit = (v: ProductVariant) => {
+    setEditingVariant(v);
+    setEditSku(v.sku || '');
+    setEditBarcode(v.barcode || '');
+    setEditPrice(v.price !== undefined ? v.price : '');
+    setEditCost(v.cost !== undefined ? v.cost : ((v as any).cost_price !== undefined ? (v as any).cost_price : ''));
+    setEditStock(v.stock_quantity !== undefined ? v.stock_quantity : '');
+    setEditImage(v.image || '');
+    const cId = typeof v.color_id === 'number' ? v.color_id : (v.color_id as any)?.id || '';
+    const sId = typeof v.size_id === 'number' ? v.size_id : (v.size_id as any)?.id || '';
+    setEditColorId(cId);
+    setEditSizeId(sId);
+    setIsEditModalOpen(true);
+  };
+
+  const handleSaveVariant = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingVariant) return;
+    setIsSaving(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      await adapter.saveVariant({
+        id: editingVariant.id,
+        organization_id: editingVariant.organization_id || activeOrganization?.id || 1,
+        product_id: editingVariant.product_id,
+        sku: editSku.trim() || editingVariant.sku,
+        barcode: editBarcode.trim(),
+        price: editPrice !== '' ? Number(editPrice) : 0,
+        cost: editCost !== '' ? Number(editCost) : 0,
+        stock_quantity: editStock !== '' ? Number(editStock) : 0,
+        color_id: editColorId ? Number(editColorId) : undefined,
+        size_id: editSizeId ? Number(editSizeId) : undefined,
+        image: editImage ? editImage.trim() : undefined,
+      });
+
+      setIsEditModalOpen(false);
+      await loadVariants();
+    } catch (err) {
+      console.error('[VariantsView] Error saving variant:', err);
+      alert(t('products.errorSavingProductAndVariants'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDeleteVariant = async (id: number) => {
+    if (await confirmAction(t('common.confirmDeleteMessage'))) {
+      const adapter = storageManager.getAdapter();
+      await adapter.deleteVariant(id);
+      await loadVariants();
+    }
+  };
+
+  const columns: Column<ProductVariant>[] = [
+    {
+      key: 'image',
+      header: t('products.variantRowImage'),
+      className: 'w-14 text-center',
+      render: (v) => (
+        <ProductImage
+          src={v.image}
+          alt={v.sku}
+          containerClassName="w-10 h-10 rounded-lg overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center mx-auto border border-neutral-200 dark:border-neutral-700"
+        />
+      ),
+    },
+    {
+      key: 'sku',
+      header: t('products.skuHeader'),
+      render: (v) => (
+        <div>
+          <p className="font-extrabold text-neutral-900 dark:text-neutral-100 font-mono text-xs tracking-wider">{v.sku}</p>
+          <p className="text-[11px] text-neutral-500 dark:text-neutral-400 mt-0.5">{v.product_title}</p>
+        </div>
+      ),
+    },
+    {
+      key: 'color_id',
+      header: t('products.colorAndSizeHeader'),
+      render: (v) => {
+        const color = colors.find((c) => c.id === (typeof v.color_id === 'number' ? v.color_id : (v.color_id as any)?.id));
+        const size = sizes.find((s) => s.id === (typeof v.size_id === 'number' ? v.size_id : (v.size_id as any)?.id));
+        return (
+          <div className="flex items-center gap-2">
+            {color && (
+              <span
+                className="w-3.5 h-3.5 rounded-full border border-neutral-300 dark:border-neutral-600 shadow-2xs"
+                style={{ backgroundColor: color.hex || '#000000' }}
+                title={color.name}
+              />
+            )}
+            <span className="font-semibold text-neutral-900 dark:text-neutral-100 text-xs">
+              {v.color_name || color?.name || '-'} / {v.size_name || size?.name || '-'}
+            </span>
+          </div>
+        );
+      },
+    },
+    {
+      key: 'barcode',
+      header: t('products.barcodeHeader'),
+      render: (v) => (
+        <span className="inline-flex items-center gap-1 font-mono text-xs text-neutral-600 dark:text-neutral-300 bg-neutral-100/80 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 px-2 py-0.5 rounded-md">
+          <BarcodeIcon className="w-3 h-3 text-neutral-400 dark:text-neutral-500" />
+          {isPersian ? toPersianDigits(v.barcode || '-') : (v.barcode || '-')}
+        </span>
+      ),
+    },
+    {
+      key: 'price',
+      header: t('products.sellingPrice'),
+      render: (v) => (
+        <span className="font-extrabold text-slate-900 dark:text-neutral-100">
+          {formatCurrency(v.price, activeOrganization?.currency, isPersian)}
+        </span>
+      ),
+    },
+    {
+      key: 'cost',
+      header: t('products.costPrice'),
+      render: (v) => (
+        <span className="text-slate-500 dark:text-neutral-400 font-medium">
+          {formatCurrency(v.cost !== undefined ? v.cost : (v as any).cost_price, activeOrganization?.currency, isPersian)}
+        </span>
+      ),
+    },
+    {
+      key: 'stock_quantity',
+      header: t('products.stockHeader'),
+      render: (v) => (
+        <Badge variant={(v.stock_quantity || 0) > 0 ? 'success' : 'danger'}>
+          {isPersian ? toPersianDigits(v.stock_quantity || 0) : (v.stock_quantity || 0)} {t('products.unitItems')}
+        </Badge>
+      ),
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={t('products.variantsTitle')}
+        subtitle={t('products.variantsSubtitle')}
+      />
+
+      <Card className="border-0 sm:border bg-transparent sm:bg-white dark:sm:bg-[#181a20] shadow-none sm:shadow-sm p-0 sm:p-5 md:p-6">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-4">
+          <div className="w-full sm:w-80 flex items-center gap-1.5">
+            <Input
+              placeholder={t('products.searchVariants')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              icon={<Search className="w-4 h-4" />}
+            />
+            <WebcamScanButton
+              size="md"
+              onClick={() => setScannerTarget('search')}
+            />
+          </div>
+        </div>
+
+        {/* 1. Desktop Tabular View */}
+        <div className="hidden md:block">
+          <DataTable
+            columns={columns}
+            data={paginatedVariants}
+            keyExtractor={(v) => v.id}
+            isLoading={isLoading}
+            actions={(v) => (
+              <div className="flex items-center gap-1">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-neutral-600 hover:text-neutral-900 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  onClick={() => handleOpenEdit(v)}
+                  title={t('products.editVariantTitle')}
+                >
+                  <Edit className="w-4 h-4" />
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                  onClick={() => handleDeleteVariant(v.id)}
+                  title={t('common.delete')}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              </div>
+            )}
+          />
+        </div>
+
+        {/* 2. Mobile Responsive Cards View */}
+        <div className="block md:hidden space-y-3">
+          {isLoading ? (
+            <div className="py-12 text-center text-slate-400 dark:text-neutral-500 text-sm">
+              {t('common.loading')}
+            </div>
+          ) : paginatedVariants.length === 0 ? (
+            <div className="py-12 text-center text-slate-400 dark:text-neutral-500 text-sm">
+              {t('common.noData')}
+            </div>
+          ) : (
+            paginatedVariants.map((v) => {
+              const color = colors.find((c) => c.id === (typeof v.color_id === 'number' ? v.color_id : (v.color_id as any)?.id));
+              const size = sizes.find((s) => s.id === (typeof v.size_id === 'number' ? v.size_id : (v.size_id as any)?.id));
+
+              return (
+                <div
+                  key={`mob_var_${v.id}`}
+                  className="rounded-2xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-[#13151a] p-4 shadow-sm space-y-3 transition-all"
+                >
+                  {/* Top: Image + Title + SKU + Stock Badge */}
+                  <div className="flex items-start gap-3">
+                    <ProductImage
+                      src={v.image}
+                      alt={v.sku}
+                      fallbackText={v.sku}
+                      containerClassName="w-12 h-12 rounded-xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0 border border-neutral-200 dark:border-neutral-700 shadow-2xs"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-extrabold text-neutral-900 dark:text-neutral-100 font-mono text-xs tracking-wider">
+                            {v.sku}
+                          </p>
+                          <p className="text-xs text-neutral-600 dark:text-neutral-300 font-medium mt-0.5 line-clamp-1">
+                            {v.product_title || '-'}
+                          </p>
+                        </div>
+                        <Badge variant={(v.stock_quantity || 0) > 0 ? 'success' : 'danger'} className="shrink-0 text-[10px]">
+                          {isPersian ? toPersianDigits(v.stock_quantity || 0) : (v.stock_quantity || 0)} {t('products.unitItems')}
+                        </Badge>
+                      </div>
+
+                      {/* Color & Size Pills */}
+                      <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                        {(v.color_name || color) && (
+                          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 text-xs font-semibold text-neutral-800 dark:text-neutral-200">
+                            {color && (
+                              <span
+                                className="w-2.5 h-2.5 rounded-full border border-neutral-300 dark:border-neutral-600 shrink-0"
+                                style={{ backgroundColor: color.hex || '#000000' }}
+                              />
+                            )}
+                            <span>{v.color_name || color?.name}</span>
+                          </span>
+                        )}
+
+                        {(v.size_name || size) && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200/70 dark:border-indigo-800/60 text-xs font-bold text-indigo-700 dark:text-indigo-300 font-mono">
+                            {v.size_name || size?.name}
+                          </span>
+                        )}
+
+                        {v.barcode && (
+                          <span className="inline-flex items-center gap-1 font-mono text-[11px] text-neutral-500 dark:text-neutral-400 bg-neutral-50 dark:bg-neutral-900 px-1.5 py-0.5 rounded border border-neutral-200 dark:border-neutral-800">
+                            <BarcodeIcon className="w-2.5 h-2.5 text-neutral-400" />
+                            {isPersian ? toPersianDigits(v.barcode) : v.barcode}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financial & Stock Details Row */}
+                  <div className="flex items-center justify-between pt-2 border-t border-neutral-100 dark:border-neutral-800 text-xs">
+                    <div>
+                      <span className="text-[11px] text-neutral-400 block">{t('products.sellingPrice')}:</span>
+                      <span className="font-extrabold text-slate-900 dark:text-neutral-100 text-sm">
+                        {formatCurrency(v.price, activeOrganization?.currency, isPersian)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 px-2.5 py-1 h-8"
+                        onClick={() => handleOpenEdit(v)}
+                        icon={<Edit className="w-3.5 h-3.5" />}
+                      >
+                        {t('common.edit')}
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40 px-2 py-1 h-8"
+                        onClick={() => handleDeleteVariant(v.id)}
+                        icon={<Trash2 className="w-3.5 h-3.5" />}
+                      />
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* Universal Pagination */}
+        <Pagination
+          currentPage={currentPage}
+          totalPages={totalPages}
+          totalItems={totalVariantsCount}
+          pageSize={pageSize}
+          onPageChange={setCurrentPage}
+          onPageSizeChange={setPageSize}
+          className="mt-4"
+        />
+      </Card>
+
+      {/* Edit Variant Modal */}
+      <Modal
+        isOpen={isEditModalOpen}
+        onClose={() => setIsEditModalOpen(false)}
+        title={`${t('products.editVariantTitle')}: ${editingVariant?.sku || ''}`}
+        maxWidth="lg"
+      >
+        <form onSubmit={handleSaveVariant} className="space-y-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">{t('products.variantSku')}</label>
+              <Input
+                value={editSku}
+                onChange={(e) => setEditSku(e.target.value)}
+                placeholder="SKU..."
+                required
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">{t('products.variantBarcode')}</label>
+              <div className="flex items-center gap-1.5">
+                <Input
+                  value={editBarcode}
+                  onChange={(e) => setEditBarcode(e.target.value)}
+                  placeholder="EAN / Barcode..."
+                />
+                <WebcamScanButton
+                  size="md"
+                  onClick={() => setScannerTarget('edit')}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <ImageUpload
+              label={t('products.variantImage')}
+              value={editImage}
+              onChange={setEditImage}
+              productId={editingVariant?.product_id ? Number(editingVariant.product_id) : undefined}
+              helperText={t('products.variantImageHelper')}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">{t('products.variantColor')}</label>
+              <Select
+                value={editColorId}
+                onChange={(e) => setEditColorId(e.target.value ? Number(e.target.value) : '')}
+                options={[
+                  { value: '', label: t('products.noColorSelected') },
+                  ...colors.map((c) => ({ value: c.id, label: c.name })),
+                ]}
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">{t('products.variantSize')}</label>
+              <Select
+                value={editSizeId}
+                onChange={(e) => setEditSizeId(e.target.value ? Number(e.target.value) : '')}
+                options={[
+                  { value: '', label: t('products.noSizeSelected') },
+                  ...sizes.map((s) => ({ value: s.id, label: s.name })),
+                ]}
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">{t('products.sellingPriceLabel')}</label>
+              <Input
+                type="number"
+                value={editPrice}
+                onChange={(e) => setEditPrice(e.target.value ? Number(e.target.value) : '')}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">{t('products.costPriceLabel')}</label>
+              <Input
+                type="number"
+                value={editCost}
+                onChange={(e) => setEditCost(e.target.value ? Number(e.target.value) : '')}
+                placeholder="0"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">{t('products.stockQuantityLabel')}</label>
+              <Input
+                type="number"
+                value={editStock}
+                onChange={(e) => setEditStock(e.target.value ? Number(e.target.value) : '')}
+                placeholder="0"
+              />
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100 dark:border-neutral-800">
+            <Button type="button" variant="outline" size="sm" onClick={() => setIsEditModalOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" size="sm" isLoading={isSaving} icon={<Save className="w-4 h-4" />}>
+              {t('products.saveChanges')}
+            </Button>
+          </div>
+        </form>
+      </Modal>
+
+      <WebcamBarcodeScannerModal
+        isOpen={scannerTarget !== null}
+        onClose={() => setScannerTarget(null)}
+        onScan={(code) => {
+          if (scannerTarget === 'search') {
+            setSearch(code);
+          } else if (scannerTarget === 'edit') {
+            setEditBarcode(code);
+          }
+        }}
+      />
+    </div>
+  );
+};

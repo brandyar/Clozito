@@ -1,0 +1,862 @@
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from '../../i18n';
+import { useOrganization } from '../../context/OrganizationContext';
+import { storageManager } from '../../storage';
+import {
+  StockTransfer,
+  StockTransferItem,
+  Warehouse,
+  ProductVariant,
+  Product,
+  TransferStatus,
+} from '../../types';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { SearchableVariantSelect } from '../../components/ui/SearchableVariantSelect';
+import { Badge } from '../../components/ui/Badge';
+import { Modal } from '../../components/ui/Modal';
+import { DataTable } from '../../components/ui/DataTable';
+import { Pagination } from '../../components/ui/Pagination';
+import { formatDate } from '../../utils/formatters';
+import { confirmAction } from '../../utils/confirm';
+import {
+  ArrowLeftRight,
+  Plus,
+  Search,
+  CheckCircle2,
+  Truck,
+  XCircle,
+  Eye,
+  Building2,
+  Package,
+  Layers,
+  Calendar,
+  AlertCircle,
+  FileText,
+  Trash2,
+} from 'lucide-react';
+
+export const TransfersView: React.FC = () => {
+  const { t, locale } = useTranslation();
+  const { activeOrganization } = useOrganization();
+  const isPersian = false;
+
+  const [transfers, setTransfers] = useState<StockTransfer[]>([]);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+
+  // Create Transfer Modal State
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [fromWhId, setFromWhId] = useState<number>(0);
+  const [toWhId, setToWhId] = useState<number>(0);
+  const [notes, setNotes] = useState('');
+  const [selectedItems, setSelectedItems] = useState<{ variant_id: number; quantity: number }[]>([]);
+  const [itemVariantId, setItemVariantId] = useState<number>(0);
+  const [itemQty, setItemQty] = useState<number>(1);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formError, setFormError] = useState<string | null>(null);
+
+  // Detail Modal State
+  const [selectedTransfer, setSelectedTransfer] = useState<StockTransfer | null>(null);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
+  const [selectedTransferItems, setSelectedTransferItems] = useState<StockTransferItem[]>([]);
+  const [isLoadingItems, setIsLoadingItems] = useState(false);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id;
+      const [trfList, whList, varList, prodList] = await Promise.all([
+        adapter.getStockTransfers({ organization_id: orgId }),
+        adapter.getWarehouses({ organization_id: orgId }),
+        adapter.getVariants({ organization_id: orgId }),
+        adapter.getProducts({ organization_id: orgId }),
+      ]);
+
+      // Enrich transfers with warehouse names if missing
+      const enriched = trfList.map((trf) => {
+        const fromWh = whList.find((w) => w.id === (typeof trf.from_warehouse_id === 'object' ? trf.from_warehouse_id.id : trf.from_warehouse_id));
+        const toWh = whList.find((w) => w.id === (typeof trf.to_warehouse_id === 'object' ? trf.to_warehouse_id.id : trf.to_warehouse_id));
+        return {
+          ...trf,
+          from_warehouse_name: fromWh ? fromWh.name : t('inventory.sourceWarehouse'),
+          to_warehouse_name: toWh ? toWh.name : t('inventory.destinationWarehouse'),
+        };
+      });
+
+      setTransfers(enriched);
+      setWarehouses(whList);
+      setVariants(varList);
+      setProducts(prodList);
+
+      if (whList.length >= 2) {
+        setFromWhId(whList[0].id);
+        setToWhId(whList[1].id);
+      } else if (whList.length === 1) {
+        setFromWhId(whList[0].id);
+      }
+    } catch (err) {
+      console.error('[TransfersView] Error loading transfers:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, [activeOrganization]);
+
+  const handleOpenDetails = async (trf: StockTransfer) => {
+    setSelectedTransfer(trf);
+    setIsDetailModalOpen(true);
+    setIsLoadingItems(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const items = await adapter.getStockTransferItems(trf.id);
+      setSelectedTransferItems(items);
+    } catch (err) {
+      console.error('[TransfersView] Error loading transfer items:', err);
+      setSelectedTransferItems([]);
+    } finally {
+      setIsLoadingItems(false);
+    }
+  };
+
+  const handleAddItem = () => {
+    if (!itemVariantId || itemQty <= 0) return;
+    const existingIdx = selectedItems.findIndex((i) => i.variant_id === itemVariantId);
+    if (existingIdx !== -1) {
+      const updated = [...selectedItems];
+      updated[existingIdx].quantity += itemQty;
+      setSelectedItems(updated);
+    } else {
+      setSelectedItems([...selectedItems, { variant_id: itemVariantId, quantity: itemQty }]);
+    }
+    setItemQty(1);
+    setItemVariantId(0);
+  };
+
+  const handleRemoveItem = (variantId: number) => {
+    setSelectedItems(selectedItems.filter((i) => i.variant_id !== variantId));
+  };
+
+  const handleCreateTransfer = async (status: TransferStatus = 'draft') => {
+    setFormError(null);
+    if (!fromWhId || !toWhId) {
+      setFormError(t('inventory.selectSourceAndDestWarehouseError'));
+      return;
+    }
+    if (fromWhId === toWhId) {
+      setFormError(t('inventory.sameWarehouseError'));
+      return;
+    }
+    if (selectedItems.length === 0) {
+      setFormError(t('inventory.addAtLeastOneItemError'));
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id || 1;
+
+      const transferData: Partial<StockTransfer> = {
+        organization_id: orgId,
+        from_warehouse_id: fromWhId,
+        to_warehouse_id: toWhId,
+        transfer_number: `TRF-${Math.floor(100000 + Math.random() * 900000)}`,
+        status,
+        notes,
+      };
+
+      const transferItems: Partial<StockTransferItem>[] = selectedItems.map((item) => ({
+        organization_id: orgId,
+        variant_id: item.variant_id,
+        quantity: item.quantity,
+      }));
+
+      const savedTransfer = await adapter.saveStockTransfer(transferData, transferItems);
+
+      // Record movement depending on status
+      if (status === 'in_transit') {
+        // Send transfer: subtract from origin warehouse
+        for (const item of selectedItems) {
+          await adapter.recordMovement({
+            organization_id: orgId,
+            variant_id: item.variant_id,
+            warehouse_id: fromWhId,
+            type: 'transfer_out',
+            quantity: item.quantity,
+            reference_type: 'transfer',
+            reference_id: String(savedTransfer.id),
+            note: `${t('inventory.typeTransferOut')} -> ${toWhId}`,
+          });
+        }
+      } else if (status === 'completed') {
+        // Completed transfer directly: subtract from origin and add to destination
+        for (const item of selectedItems) {
+          await adapter.recordMovement({
+            organization_id: orgId,
+            variant_id: item.variant_id,
+            warehouse_id: fromWhId,
+            type: 'transfer_out',
+            quantity: item.quantity,
+            reference_type: 'transfer',
+            reference_id: String(savedTransfer.id),
+            note: `${t('inventory.typeTransferOut')} -> ${toWhId}`,
+          });
+          await adapter.recordMovement({
+            organization_id: orgId,
+            variant_id: item.variant_id,
+            warehouse_id: toWhId,
+            type: 'transfer_in',
+            quantity: item.quantity,
+            reference_type: 'transfer',
+            reference_id: String(savedTransfer.id),
+            note: `${t('inventory.typeTransferIn')} <- ${fromWhId}`,
+          });
+        }
+      }
+
+      setIsCreateModalOpen(false);
+      setSelectedItems([]);
+      setNotes('');
+      await loadData();
+    } catch (err) {
+      console.error('[TransfersView] Error saving stock transfer:', err);
+      setFormError(t('inventory.transferSaveError'));
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleUpdateStatus = async (transfer: StockTransfer, newStatus: TransferStatus) => {
+    try {
+      const adapter = storageManager.getAdapter();
+      const fromId = typeof transfer.from_warehouse_id === 'object' ? (transfer.from_warehouse_id as any)?.id : transfer.from_warehouse_id;
+      const toId = typeof transfer.to_warehouse_id === 'object' ? (transfer.to_warehouse_id as any)?.id : transfer.to_warehouse_id;
+      const orgId = activeOrganization?.id || transfer.organization_id || 1;
+
+      // Fetch actual items belonging to this specific transfer
+      const transferItems = await adapter.getStockTransferItems(transfer.id);
+
+      // Check current status before updating
+      const prevStatus = transfer.status;
+
+      await adapter.saveStockTransfer({
+        id: transfer.id,
+        status: newStatus,
+      });
+
+      if (newStatus === 'in_transit' && prevStatus === 'draft') {
+        // Leaving source warehouse
+        for (const itm of transferItems) {
+          const vId = typeof itm.variant_id === 'object' ? (itm.variant_id as any)?.id : itm.variant_id;
+          await adapter.recordMovement({
+            organization_id: orgId,
+            variant_id: vId,
+            warehouse_id: fromId,
+            type: 'transfer_out',
+            quantity: Number(itm.quantity) || 1,
+            reference_type: 'transfer',
+            reference_id: String(transfer.id),
+            note: `${t('inventory.typeTransferOut')} -> ${transfer.to_warehouse_name || toId}`,
+          });
+        }
+      } else if (newStatus === 'completed') {
+        if (prevStatus === 'draft') {
+          // Both transfer_out and transfer_in needed
+          for (const itm of transferItems) {
+            const vId = typeof itm.variant_id === 'object' ? (itm.variant_id as any)?.id : itm.variant_id;
+            await adapter.recordMovement({
+              organization_id: orgId,
+              variant_id: vId,
+              warehouse_id: fromId,
+              type: 'transfer_out',
+              quantity: Number(itm.quantity) || 1,
+              reference_type: 'transfer',
+              reference_id: String(transfer.id),
+              note: `${t('inventory.typeTransferOut')} -> ${transfer.to_warehouse_name || toId}`,
+            });
+            await adapter.recordMovement({
+              organization_id: orgId,
+              variant_id: vId,
+              warehouse_id: toId,
+              type: 'transfer_in',
+              quantity: Number(itm.quantity) || 1,
+              reference_type: 'transfer',
+              reference_id: String(transfer.id),
+              note: `${t('inventory.typeTransferIn')} <- ${transfer.from_warehouse_name || fromId}`,
+            });
+          }
+        } else if (prevStatus === 'in_transit') {
+          // Only transfer_in to destination warehouse!
+          for (const itm of transferItems) {
+            const vId = typeof itm.variant_id === 'object' ? (itm.variant_id as any)?.id : itm.variant_id;
+            await adapter.recordMovement({
+              organization_id: orgId,
+              variant_id: vId,
+              warehouse_id: toId,
+              type: 'transfer_in',
+              quantity: Number(itm.quantity) || 1,
+              reference_type: 'transfer',
+              reference_id: String(transfer.id),
+              note: `${t('inventory.typeTransferIn')} <- ${transfer.from_warehouse_name || fromId}`,
+            });
+          }
+        }
+      }
+
+      await loadData();
+    } catch (err) {
+      console.error('[TransfersView] Error updating transfer status:', err);
+    }
+  };
+
+  const handleDeleteTransfer = async (trf: StockTransfer) => {
+    if (!trf.id) return;
+    const isConfirmed = await confirmAction(t('inventory.confirmDeleteTransfer'));
+    if (!isConfirmed) return;
+
+    try {
+      const adapter = storageManager.getAdapter();
+      await adapter.deleteStockTransfer(trf.id);
+      if (selectedTransfer?.id === trf.id) {
+        setIsDetailModalOpen(false);
+        setSelectedTransfer(null);
+        setSelectedTransferItems([]);
+      }
+      await loadData();
+    } catch (err) {
+      console.error('[TransfersView] Error deleting transfer:', err);
+    }
+  };
+
+  const getStatusBadge = (status: TransferStatus) => {
+    switch (status) {
+      case 'draft':
+        return <Badge variant="neutral">{t('inventory.transferStatusDraft')}</Badge>;
+      case 'in_transit':
+        return <Badge variant="warning">{t('inventory.transferStatusInTransit')}</Badge>;
+      case 'completed':
+        return <Badge variant="success">{t('inventory.transferStatusCompleted')}</Badge>;
+      case 'cancelled':
+        return <Badge variant="error">{t('inventory.transferStatusCancelled')}</Badge>;
+      default:
+        return <Badge variant="neutral">{status}</Badge>;
+    }
+  };
+
+  const getVariantLabel = (v: ProductVariant) => {
+    const prod = products.find((p) => p.id === (typeof v.product_id === 'object' ? v.product_id.id : v.product_id));
+    return `${prod ? prod.title : t('products.product')} - SKU: ${v.sku}`;
+  };
+
+  const filteredTransfers = transfers.filter((trf) => {
+    const matchesSearch =
+      trf.transfer_number.toLowerCase().includes(search.toLowerCase()) ||
+      (trf.from_warehouse_name && trf.from_warehouse_name.toLowerCase().includes(search.toLowerCase())) ||
+      (trf.to_warehouse_name && trf.to_warehouse_name.toLowerCase().includes(search.toLowerCase()));
+    const matchesStatus = statusFilter === 'all' || trf.status === statusFilter;
+    return matchesSearch && matchesStatus;
+  });
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [search, statusFilter]);
+
+  const totalTransfersCount = filteredTransfers.length;
+  const totalPages = Math.ceil(totalTransfersCount / pageSize) || 1;
+  const paginatedTransfers = React.useMemo(() => {
+    const start = (currentPage - 1) * pageSize;
+    return filteredTransfers.slice(start, start + pageSize);
+  }, [filteredTransfers, currentPage, pageSize]);
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={t('inventory.transfersViewTitle')}
+        subtitle={t('inventory.transfersViewSubtitle')}
+        action={
+          <Button
+            onClick={() => setIsCreateModalOpen(true)}
+            icon={<Plus className="w-4 h-4" />}
+          >
+            {t('inventory.createTransferBtn')}
+          </Button>
+        }
+      />
+
+      {/* Filter Toolbar */}
+      <Card className="border-0 sm:border bg-transparent sm:bg-white dark:sm:bg-[#181a20] shadow-none sm:shadow-sm p-0 sm:p-4">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="w-full sm:w-72">
+            <Input
+              placeholder={t('inventory.searchTransferPlaceholder')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              icon={<Search className="w-4 h-4" />}
+            />
+          </div>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <Select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              options={[
+                { value: 'all', label: t('inventory.allStatuses') },
+                { value: 'draft', label: t('inventory.transferStatusDraft') },
+                { value: 'in_transit', label: t('inventory.transferStatusInTransit') },
+                { value: 'completed', label: t('inventory.transferStatusCompleted') },
+                { value: 'cancelled', label: t('inventory.transferStatusCancelled') },
+              ]}
+            />
+          </div>
+        </div>
+      </Card>
+
+      {/* Data Table & Mobile Cards */}
+      <div className="border-0 sm:border border-neutral-200 dark:border-neutral-800 rounded-2xl bg-transparent sm:bg-white dark:sm:bg-[#181a20] shadow-none sm:shadow-sm overflow-hidden">
+        {/* 1. Desktop Tabular View */}
+        <div className="hidden md:block">
+          <DataTable<StockTransfer>
+            data={paginatedTransfers}
+            keyExtractor={(trf) => trf.id}
+            isLoading={isLoading}
+            emptyMessage={t('inventory.noTransfersFound')}
+            columns={[
+              {
+                key: 'transfer_number',
+                header: t('inventory.transferNumber'),
+                render: (trf) => (
+                  <div>
+                    <span className="font-mono font-bold text-slate-900 dark:text-neutral-100 text-xs sm:text-sm">
+                      {trf.transfer_number}
+                    </span>
+                    <div className="text-[10px] text-slate-400 dark:text-neutral-400 font-mono mt-0.5">
+                      {formatDate(trf.date_created, isPersian)}
+                    </div>
+                  </div>
+                ),
+              },
+              {
+                key: 'from_warehouse_id',
+                header: t('inventory.sourceWarehouseSender'),
+                render: (trf) => (
+                  <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-neutral-200 text-xs">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-400" />
+                    {trf.from_warehouse_name}
+                  </div>
+                ),
+              },
+              {
+                key: 'to_warehouse_id',
+                header: t('inventory.destWarehouseReceiver'),
+                render: (trf) => (
+                  <div className="flex items-center gap-1.5 font-medium text-slate-800 dark:text-neutral-200 text-xs">
+                    <Building2 className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-400" />
+                    {trf.to_warehouse_name}
+                  </div>
+                ),
+              },
+              {
+                key: 'status',
+                header: t('common.status'),
+                render: (trf) => getStatusBadge(trf.status),
+              },
+            ]}
+            actions={(trf) => (
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleOpenDetails(trf)}
+                  icon={<Eye className="w-3.5 h-3.5" />}
+                >
+                  {t('common.details')}
+                </Button>
+
+                {trf.status === 'draft' && (
+                  <Button
+                    variant="secondary"
+                    size="sm"
+                    onClick={() => handleUpdateStatus(trf, 'in_transit')}
+                    icon={<Truck className="w-3.5 h-3.5 text-amber-600" />}
+                  >
+                    {t('inventory.confirmAndSend')}
+                  </Button>
+                )}
+
+                {trf.status === 'in_transit' && (
+                  <Button
+                    variant="primary"
+                    size="sm"
+                    onClick={() => handleUpdateStatus(trf, 'completed')}
+                    icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                  >
+                    {t('inventory.confirmDelivery')}
+                  </Button>
+                )}
+
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="text-rose-600 hover:bg-rose-50"
+                  onClick={() => handleDeleteTransfer(trf)}
+                  icon={<Trash2 className="w-3.5 h-3.5" />}
+                >
+                  {t('common.delete')}
+                </Button>
+              </div>
+            )}
+          />
+        </div>
+
+        {/* 2. Mobile Clean Card View */}
+        <div className="block md:hidden">
+          {isLoading ? (
+            <div className="w-full py-12 flex flex-col items-center justify-center text-neutral-400">
+              <div className="w-7 h-7 border-2 border-neutral-900 dark:border-neutral-100 border-t-transparent rounded-full animate-spin mb-3" />
+              <span className="text-xs font-mono text-neutral-500">{t('common.loadingData')}</span>
+            </div>
+          ) : paginatedTransfers.length === 0 ? (
+            <div className="w-full py-12 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl flex flex-col items-center justify-center text-neutral-500 dark:text-neutral-400 bg-neutral-50/50 dark:bg-neutral-900/40 p-6 text-center">
+              <Package className="w-8 h-8 text-neutral-400 mb-2 stroke-1" />
+              <p className="text-xs font-medium text-neutral-600 dark:text-neutral-300">{t('inventory.noTransfersFound')}</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {paginatedTransfers.map((trf) => (
+                <div
+                  key={`mob_trf_${trf.id}`}
+                  className="rounded-2xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-[#13151a] p-4 shadow-sm space-y-3 transition-all"
+                >
+                  {/* Top Row: Transfer Number & Date <---> Status Badge */}
+                  <div className="flex items-center justify-between gap-2">
+                    <div>
+                      <span className="font-mono text-xs sm:text-sm font-bold text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-2.5 py-1 rounded-lg border border-neutral-200 dark:border-neutral-700">
+                        {trf.transfer_number}
+                      </span>
+                      <div className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono mt-1">
+                        {formatDate(trf.date_created, isPersian)}
+                      </div>
+                    </div>
+
+                    <div className="shrink-0">
+                      {getStatusBadge(trf.status)}
+                    </div>
+                  </div>
+
+                  {/* Middle Row: Route (Stacked 2-tier so long warehouse names never truncate) */}
+                  <div className="space-y-2 p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800/90 border border-neutral-200 dark:border-neutral-700 text-xs">
+                    <div className="flex items-start gap-2 min-w-0">
+                      <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 whitespace-nowrap shrink-0 mt-0.5">
+                        مبدأ:
+                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <Building2 className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 shrink-0" />
+                        <span className="font-semibold text-neutral-900 dark:text-neutral-100 leading-snug break-words">
+                          {trf.from_warehouse_name}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-2 min-w-0 pt-1.5 border-t border-neutral-200 dark:border-neutral-700">
+                      <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap shrink-0 mt-0.5">
+                        مقصد:
+                      </span>
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <Building2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />
+                        <span className="font-semibold text-neutral-900 dark:text-neutral-100 leading-snug break-words">
+                          {trf.to_warehouse_name}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bottom Row: Actions */}
+                  <div className="flex items-center justify-between gap-2 pt-2 border-t border-neutral-100 dark:border-neutral-800/80">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleOpenDetails(trf)}
+                      icon={<Eye className="w-3.5 h-3.5" />}
+                    >
+                      {t('common.details')}
+                    </Button>
+
+                    <div className="flex items-center gap-1.5">
+                      {trf.status === 'draft' && (
+                        <Button
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => handleUpdateStatus(trf, 'in_transit')}
+                          icon={<Truck className="w-3.5 h-3.5 text-amber-600" />}
+                        >
+                          {t('inventory.confirmAndSend')}
+                        </Button>
+                      )}
+
+                      {trf.status === 'in_transit' && (
+                        <Button
+                          variant="primary"
+                          size="sm"
+                          onClick={() => handleUpdateStatus(trf, 'completed')}
+                          icon={<CheckCircle2 className="w-3.5 h-3.5" />}
+                        >
+                          {t('inventory.confirmDelivery')}
+                        </Button>
+                      )}
+
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/40 p-2"
+                        onClick={() => handleDeleteTransfer(trf)}
+                        icon={<Trash2 className="w-3.5 h-3.5" />}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Universal Pagination */}
+      <Pagination
+        currentPage={currentPage}
+        totalPages={totalPages}
+        totalItems={totalTransfersCount}
+        pageSize={pageSize}
+        onPageChange={setCurrentPage}
+        onPageSizeChange={setPageSize}
+        className="mt-4"
+      />
+
+      {/* Modal: Create Stock Transfer */}
+      <Modal
+        isOpen={isCreateModalOpen}
+        onClose={() => setIsCreateModalOpen(false)}
+        title={t('inventory.createTransferModalTitle')}
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          {formError && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-red-700 dark:text-red-300 rounded-xl text-xs flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              {formError}
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Select
+              label={t('inventory.sourceWarehouseSender')}
+              value={fromWhId}
+              onChange={(e) => setFromWhId(Number(e.target.value))}
+              options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
+            />
+
+            <Select
+              label={t('inventory.destWarehouseReceiver')}
+              value={toWhId}
+              onChange={(e) => setToWhId(Number(e.target.value))}
+              options={warehouses.map((w) => ({ value: w.id, label: w.name }))}
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold text-slate-700 dark:text-neutral-300 mb-1">{t('inventory.transferNotesLabel')}</label>
+            <textarea
+              rows={2}
+              placeholder={t('inventory.transferNotesPlaceholder')}
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              className="w-full p-2.5 text-xs rounded-xl border border-slate-200 dark:border-neutral-700 bg-white dark:bg-[#181a20] text-slate-900 dark:text-neutral-100 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none"
+            />
+          </div>
+
+          {/* Add Item Section */}
+          <div className="p-3.5 sm:p-4 bg-slate-50 dark:bg-neutral-800/60 border border-slate-200/80 dark:border-neutral-700 rounded-xl space-y-3">
+            <h4 className="text-xs font-bold text-slate-800 dark:text-neutral-200 flex items-center gap-1.5">
+              <Package className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+              {t('inventory.addItemsToTransfer')}
+            </h4>
+
+            {/* 1. Full-Width Product Selection Field */}
+            <div className="w-full">
+              <SearchableVariantSelect
+                label={t('inventory.selectItemVariantSku')}
+                value={itemVariantId || ''}
+                onChange={(variantId) => setItemVariantId(variantId)}
+                variants={variants}
+                products={products}
+                placeholder={t('inventory.selectOrSearchVariant')}
+              />
+            </div>
+
+            {/* 2. Compact Quantity Input & Add Button */}
+            <div className="flex items-end gap-3 pt-1">
+              <div className="w-24 sm:w-28 shrink-0">
+                <Input
+                  label={t('inventory.quantity')}
+                  type="number"
+                  min={1}
+                  value={itemQty}
+                  onChange={(e) => setItemQty(Number(e.target.value))}
+                />
+              </div>
+
+              <div className="flex-1 sm:flex-initial">
+                <Button
+                  variant="secondary"
+                  onClick={handleAddItem}
+                  disabled={!itemVariantId || itemQty <= 0}
+                  icon={<Plus className="w-4 h-4" />}
+                  className="h-[42px] px-4 w-full sm:w-auto"
+                >
+                  {t('inventory.addBtn')}
+                </Button>
+              </div>
+            </div>
+
+            {/* Selected Items List */}
+            {selectedItems.length > 0 && (
+              <div className="divide-y divide-slate-200 dark:divide-neutral-700 bg-white dark:bg-[#181a20] border border-slate-200 dark:border-neutral-700 rounded-lg overflow-hidden">
+                {selectedItems.map((item, index) => {
+                  const v = variants.find((varObj) => varObj.id === item.variant_id);
+                  return (
+                    <div key={`trf_sel_${item.variant_id}_${index}`} className="p-2.5 flex items-center justify-between text-xs">
+                      <div>
+                        <span className="font-bold text-slate-900 dark:text-neutral-100">{v ? getVariantLabel(v) : `${t('products.variant')} #${item.variant_id}`}</span>
+                        <span className="mr-3 text-indigo-600 dark:text-indigo-400 font-mono font-bold">{t('inventory.quantity')}: {item.quantity}</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveItem(item.variant_id)}
+                        className="text-red-500 hover:text-red-700 text-xs p-1 cursor-pointer"
+                      >
+                        {t('common.delete')}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          <div className="flex items-center justify-end gap-2 pt-4 border-t border-slate-100 dark:border-neutral-800">
+            <Button variant="outline" onClick={() => setIsCreateModalOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button variant="secondary" onClick={() => handleCreateTransfer('draft')} isLoading={isSaving}>
+              {t('inventory.saveDraft')}
+            </Button>
+            <Button variant="primary" onClick={() => handleCreateTransfer('in_transit')} isLoading={isSaving}>
+              {t('inventory.sendTransferInTransit')}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: Transfer Details */}
+      {selectedTransfer && (
+        <Modal
+          isOpen={isDetailModalOpen}
+          onClose={() => setIsDetailModalOpen(false)}
+          title={`${t('inventory.transferDetailsTitle')} ${selectedTransfer.transfer_number}`}
+        >
+          <div className="space-y-4 text-xs">
+            <div className="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-neutral-800/60 rounded-xl border border-slate-200/80 dark:border-neutral-700">
+              <div>
+                <span className="text-slate-500 dark:text-neutral-400 block">{t('inventory.sourceWarehouseSender')}:</span>
+                <span className="font-bold text-slate-900 dark:text-neutral-100">{selectedTransfer.from_warehouse_name}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 dark:text-neutral-400 block">{t('inventory.destWarehouseReceiver')}:</span>
+                <span className="font-bold text-slate-900 dark:text-neutral-100">{selectedTransfer.to_warehouse_name}</span>
+              </div>
+              <div>
+                <span className="text-slate-500 dark:text-neutral-400 block">{t('common.status')}:</span>
+                <div>{getStatusBadge(selectedTransfer.status)}</div>
+              </div>
+              <div>
+                <span className="text-slate-500 dark:text-neutral-400 block">{t('inventory.dateTime')}:</span>
+                <span className="font-mono text-slate-800 dark:text-neutral-200">{formatDate(selectedTransfer.date_created, isPersian)}</span>
+              </div>
+            </div>
+
+            {/* Transfer Items List */}
+            <div className="space-y-2">
+              <h4 className="font-bold text-slate-800 dark:text-neutral-200 flex items-center gap-1.5 text-xs">
+                <Package className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                {t('inventory.transferItems')}
+              </h4>
+
+              {isLoadingItems ? (
+                <div className="p-4 text-center text-slate-400 dark:text-neutral-500">
+                  {t('common.loading')}
+                </div>
+              ) : selectedTransferItems.length === 0 ? (
+                <div className="p-3 text-center text-slate-400 dark:text-neutral-500 bg-slate-50 dark:bg-neutral-800/40 rounded-xl border border-slate-200/60 dark:border-neutral-700">
+                  {t('inventory.noItemsInTransfer')}
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100 dark:divide-neutral-800 border border-slate-200 dark:border-neutral-700 rounded-xl overflow-hidden bg-white dark:bg-[#181a20]">
+                  {selectedTransferItems.map((item, idx) => {
+                    const vId = typeof item.variant_id === 'object' ? (item.variant_id as any)?.id : item.variant_id;
+                    const v = variants.find((variantObj) => variantObj.id === vId);
+                    return (
+                      <div key={`modal_trf_item_${item.id || idx}`} className="p-2.5 flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <span className="w-5 h-5 rounded-md bg-indigo-50 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-[10px]">
+                            {idx + 1}
+                          </span>
+                          <span className="font-medium text-slate-800 dark:text-neutral-200">
+                            {v ? getVariantLabel(v) : `${t('products.variant')} #${vId}`}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-slate-500 dark:text-neutral-400">{t('inventory.quantity')}:</span>
+                          <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/50 px-2 py-0.5 rounded text-xs">
+                            {item.quantity}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {selectedTransfer.notes && (
+              <div className="p-3 bg-amber-50/60 dark:bg-amber-950/40 border border-amber-200/60 dark:border-amber-800/60 rounded-xl text-amber-900 dark:text-amber-200">
+                <span className="font-bold block mb-1">{t('inventory.transferNotesLabel')}:</span>
+                <p>{selectedTransfer.notes}</p>
+              </div>
+            )}
+
+            <div className="flex justify-end pt-3">
+              <Button variant="outline" onClick={() => setIsDetailModalOpen(false)}>
+                {t('common.close')}
+              </Button>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+};

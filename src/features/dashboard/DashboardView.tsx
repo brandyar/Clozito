@@ -1,0 +1,587 @@
+import React, { useEffect, useState, useMemo } from 'react';
+import { useTranslation } from '../../i18n';
+import { useOrganization } from '../../context/OrganizationContext';
+import { storageManager } from '../../storage';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Badge } from '../../components/ui/Badge';
+import { DataTable, Column } from '../../components/ui/DataTable';
+import { formatCurrency, formatDate, toPersianDigits } from '../../utils/formatters';
+import {
+  ShoppingBag, Shirt, DollarSign, AlertTriangle,
+  Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, CheckCircle2,
+  Calendar, BarChart3, TrendingUp, Sparkles, HardDriveDownload, HardDriveUpload,
+  ShoppingCart, PackagePlus, FileText, Truck, ArrowLeft, ArrowRight,
+  Compass, HelpCircle
+} from 'lucide-react';
+import { BackupManager } from '../../storage/backupManager';
+import {
+  Product, ProductVariant, InventoryMovement, Order, Category, Warehouse
+} from '../../types';
+import {
+  TimeRange, computeSalesTrend, computeInventoryFlow, computeCategoryStock,
+  computeStockHealth, computeWarehouseDistribution, computeTopProducts
+} from './dashboardUtils';
+import { DashboardMetricsRibbon } from './DashboardMetricsRibbon';
+import { DashboardAnalyticsCharts } from './DashboardAnalyticsCharts';
+import { DashboardStockAlerts } from './DashboardStockAlerts';
+import { useOnboardingTour } from '../onboarding';
+import { useSwrRefresh } from '../../hooks/useSwrRefresh';
+
+interface DashboardViewProps {
+  onNavigate: (route: string) => void;
+}
+
+export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
+  const { t, locale } = useTranslation();
+  const { activeOrganization, permissions, refreshOrganizations } = useOrganization();
+
+  // Initialize Onboarding Tour with auto-start for first-time users
+  const { startTour } = useOnboardingTour({
+    autoStartTour: 'dashboard',
+    autoStartDelayMs: 900,
+  });
+
+  const [summary, setSummary] = useState<any>(() => {
+    if (typeof window !== 'undefined' && activeOrganization?.id) {
+      try {
+        const cached = sessionStorage.getItem(`tankhor_dash_summary_${activeOrganization.id}`);
+        if (cached) return JSON.parse(cached);
+      } catch {}
+    }
+    return null;
+  });
+
+  const [products, setProducts] = useState<Product[]>([]);
+  const [variants, setVariants] = useState<ProductVariant[]>([]);
+  const [movements, setMovements] = useState<InventoryMovement[]>(() => summary?.recentMovements || []);
+  const [orders, setOrders] = useState<Order[]>(() => summary?.recentOrders || []);
+  const [categories, setCategories] = useState<Category[]>(() => summary?.categories || []);
+  const [warehouses, setWarehouses] = useState<Warehouse[]>(() => summary?.warehouses || []);
+  const [isLoading, setIsLoading] = useState(!summary);
+  const [isSeedingDemo, setIsSeedingDemo] = useState(false);
+  const [timeRange, setTimeRange] = useState<TimeRange>('30d');
+
+  const isPersian = false;
+
+  const loadDashboardData = async () => {
+    const orgId = activeOrganization?.id;
+    if (!orgId) {
+      setSummary(null);
+      setProducts([]);
+      setVariants([]);
+      setMovements([]);
+      setOrders([]);
+      setCategories([]);
+      setWarehouses([]);
+      setIsLoading(false);
+      return;
+    }
+
+    // Only show full loading spinner if we don't have cached data yet
+    if (!summary) {
+      setIsLoading(true);
+    }
+
+    try {
+      const adapter = storageManager.getAdapter();
+
+      // 1. FAST PATH: Fetch pre-aggregated summary in 1 single call (<150ms)
+      if (adapter.getDashboardSummary) {
+        const sumData = await adapter.getDashboardSummary(orgId);
+        if (sumData) {
+          setSummary(sumData);
+          setIsLoading(false);
+          try {
+            sessionStorage.setItem(`tankhor_dash_summary_${orgId}`, JSON.stringify(sumData));
+          } catch {}
+          if (sumData.recentMovements && sumData.recentMovements.length > 0) setMovements(sumData.recentMovements);
+          if (sumData.recentOrders && sumData.recentOrders.length > 0) setOrders(sumData.recentOrders);
+          if (sumData.categories && sumData.categories.length > 0) setCategories(sumData.categories);
+          if (sumData.warehouses && sumData.warehouses.length > 0) setWarehouses(sumData.warehouses);
+        }
+      }
+
+      // 2. BACKGROUND PATH: Load remaining datasets for detailed charts
+      const [pList, vList, mList, oList, cList, wList] = await Promise.all([
+        adapter.getProducts({ organization_id: orgId }).catch(() => []),
+        adapter.getVariants({ organization_id: orgId }).catch(() => []),
+        adapter.getInventoryMovements({ organization_id: orgId }).catch(() => []),
+        adapter.getOrders({ organization_id: orgId }).catch(() => []),
+        adapter.getCategories({ organization_id: orgId }).catch(() => []),
+        adapter.getWarehouses({ organization_id: orgId }).catch(() => []),
+      ]);
+
+      setProducts(pList);
+      setVariants(vList);
+      if (mList && mList.length > 0) setMovements(mList);
+      if (oList && oList.length > 0) setOrders(oList);
+      if (cList && cList.length > 0) setCategories(cList);
+      if (wList && wList.length > 0) setWarehouses(wList);
+    } catch (err) {
+      console.error('[DashboardData] Error loading metrics:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeOrganization?.id) {
+      loadDashboardData();
+    } else {
+      setSummary(null);
+      setProducts([]);
+      setVariants([]);
+      setMovements([]);
+      setOrders([]);
+      setCategories([]);
+      setWarehouses([]);
+      setIsLoading(false);
+    }
+
+    const handleDataRestored = () => {
+      if (activeOrganization?.id) {
+        loadDashboardData();
+      }
+    };
+    window.addEventListener('tankhor_data_restored', handleDataRestored);
+    return () => {
+      window.removeEventListener('tankhor_data_restored', handleDataRestored);
+    };
+  }, [activeOrganization?.id]);
+
+  useSwrRefresh(
+    ['dashboard_summary', 'products', 'product_variants', 'inventory_movements', 'orders', 'categories', 'warehouses'],
+    () => {
+      if (activeOrganization?.id) {
+        loadDashboardData();
+      }
+    }
+  );
+
+  // Overall Aggregations - Unified with InventoryView
+  const totalStockCount = summary?.totalStockCount ?? variants.reduce((acc, v) => acc + (v.stock_quantity || 0), 0);
+  const totalProductsCount = summary?.totalProducts ?? products.length;
+  const totalVariantsCount = summary?.totalVariants ?? variants.length;
+  const totalValue = variants.reduce((acc, v) => acc + (v.stock_quantity || 0) * (v.price || 0), 0);
+  const lowStockVariants = useMemo(
+    () => variants.filter((v) => (v.stock_quantity || 0) <= 5),
+    [variants]
+  );
+  const lowStockCount = summary?.lowStockCount ?? (variants.filter((v) => (v.stock_quantity || 0) > 0 && (v.stock_quantity || 0) <= 5).length);
+  const outOfStockCount = summary?.outOfStockCount ?? (variants.filter((v) => (v.stock_quantity || 0) <= 0).length);
+
+  const totalOrdersCount = summary?.totalOrdersCount ?? orders.length;
+  const totalSalesRevenue = summary?.totalSalesRevenue ?? orders.reduce((acc, o) => acc + Number(o.total || 0), 0);
+
+  const averageOrderValue = summary?.averageOrderValue ?? (totalOrdersCount > 0 ? Math.round(totalSalesRevenue / totalOrdersCount) : 0);
+
+  // Analytical Computed Data for Charts
+  const salesData = useMemo(
+    () => computeSalesTrend(orders, timeRange, isPersian),
+    [orders, timeRange, isPersian]
+  );
+
+  const inventoryFlowData = useMemo(
+    () => computeInventoryFlow(movements, timeRange, isPersian),
+    [movements, timeRange, isPersian]
+  );
+
+  const categoryStockData = useMemo(
+    () => computeCategoryStock(categories, products, variants, isPersian),
+    [categories, products, variants, isPersian]
+  );
+
+  const stockHealthData = useMemo(
+    () => computeStockHealth(variants, isPersian),
+    [variants, isPersian]
+  );
+
+  const warehouseStockData = useMemo(
+    () => computeWarehouseDistribution(warehouses, variants, isPersian),
+    [warehouses, variants, isPersian]
+  );
+
+  const topProducts = useMemo(
+    () => computeTopProducts(products, variants, categories, movements, isPersian),
+    [products, variants, categories, movements, isPersian]
+  );
+
+  const movementColumns: Column<InventoryMovement>[] = [
+    {
+      key: 'created_at',
+      header: t('common.date'),
+      render: (m) => <span className="text-slate-500 dark:text-neutral-400 font-mono text-[11px]">{formatDate(m.created_at, isPersian)}</span>,
+    },
+    {
+      key: 'sku',
+      header: t('common.sku'),
+      render: (m) => <span className="font-bold text-slate-800 dark:text-neutral-200 font-mono text-xs">{m.sku || 'TNK-SKU'}</span>,
+    },
+    {
+      key: 'type',
+      header: t('dashboard.movementType'),
+      render: (m) => {
+        const isIn = m.type === 'purchase' || m.type === 'transfer_in' || m.type === 'return';
+        let label: string = String(m.type);
+        if (m.type === 'purchase') label = t('dashboard.purchaseIn');
+        else if (m.type === 'sale') label = t('dashboard.saleOut');
+        else if (m.type === 'return') label = t('dashboard.returnIn');
+        else if (m.type === 'transfer_in') label = t('inventory.typeTransferIn');
+        else if (m.type === 'transfer_out') label = t('inventory.typeTransferOut');
+        else if (m.type === 'adjustment') label = t('inventory.stockAdjustment');
+
+        return (
+          <Badge variant={isIn ? 'success' : 'danger'}>
+            <span className="flex items-center gap-1 text-[11px]">
+              {isIn ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+              {label}
+            </span>
+          </Badge>
+        );
+      },
+    },
+    {
+      key: 'quantity',
+      header: t('orders.quantity'),
+      render: (m) => (
+        <span className="font-bold text-slate-900 dark:text-neutral-100 font-mono text-xs">
+          {isPersian ? toPersianDigits(m.quantity) : m.quantity} {t('dashboard.unitsCount')}
+        </span>
+      ),
+    },
+    {
+      key: 'reference_id',
+      header: t('dashboard.referenceNumber'),
+      render: (m) => <span className="text-slate-500 dark:text-neutral-400 font-mono text-xs">{m.reference_id || '-'}</span>,
+    },
+  ];
+
+  return (
+    <div className="space-y-6">
+      {/* Dashboard Header Bar with Minimalist Help Icon Trigger */}
+      <div className="flex items-center justify-between gap-3 flex-wrap">
+        <div>
+          <h1 className="text-lg sm:text-xl font-extrabold text-neutral-900 dark:text-neutral-100 tracking-tight">
+            {t('navigation.dashboard', 'پیشخوان')}
+          </h1>
+          <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 font-medium">
+            {activeOrganization?.name ? `${activeOrganization.name} · ${t('common.appSubtitle')}` : t('common.appSubtitle')}
+          </p>
+        </div>
+        <div className="hidden lg:flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => startTour('dashboard', { force: true })}
+            title={t('onboarding.startTour', 'تور راهنمای داشبورد')}
+            aria-label={t('onboarding.startTour', 'تور راهنمای داشبورد')}
+            className="w-9 h-9 rounded-xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-[#13151a] hover:bg-neutral-50 dark:hover:bg-neutral-800/80 text-neutral-500 hover:text-blue-600 dark:text-neutral-400 dark:hover:text-blue-400 flex items-center justify-center transition-all shadow-2xs cursor-pointer group"
+          >
+            <HelpCircle className="w-4 h-4 transition-transform group-hover:scale-110" />
+          </button>
+        </div>
+      </div>
+
+      {/* 1. Top Metric Ribbon (KPIs) */}
+      <div id="tour-dashboard-ribbon">
+        <DashboardMetricsRibbon
+          totalProducts={totalProductsCount}
+          totalVariants={totalVariantsCount}
+          totalStockCount={totalStockCount}
+          totalValue={totalValue}
+          lowStockCount={lowStockCount}
+          outOfStockCount={outOfStockCount}
+          totalOrdersCount={totalOrdersCount}
+          totalSalesRevenue={totalSalesRevenue}
+          averageOrderValue={averageOrderValue}
+          canViewFinancials={permissions.canViewFinancials}
+          activeOrganization={activeOrganization}
+          isPersian={isPersian}
+          onNavigate={onNavigate}
+        />
+      </div>
+
+      {/* 2. Four Operational Quick Access Blocks */}
+      <div id="tour-quick-actions" className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-5">
+        {/* Quick Action 1: Create Order (ثبت سفارش) */}
+        <button
+          type="button"
+          onClick={() => onNavigate('orders/create')}
+          disabled={!permissions.canCreateOrders}
+          className={`group relative overflow-hidden text-start p-3.5 sm:p-5 rounded-xl border bg-white dark:bg-[#13151a] transition-all shadow-xs ${
+            permissions.canCreateOrders
+              ? 'hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md cursor-pointer border-neutral-200/80 dark:border-neutral-800'
+              : 'opacity-60 cursor-not-allowed border-neutral-200/60 dark:border-neutral-800/60'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center shrink-0 border border-blue-100 dark:border-blue-900/60 group-hover:scale-105 group-hover:bg-blue-600 group-hover:text-white dark:group-hover:bg-blue-600 dark:group-hover:text-white transition-all">
+              <ShoppingCart className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />
+            </div>
+            <span className="p-1 sm:p-1.5 rounded-lg text-neutral-400 group-hover:text-blue-600 dark:group-hover:text-blue-400 group-hover:bg-blue-50 dark:group-hover:bg-blue-950/40 transition-colors">
+              {isPersian ? <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            </span>
+          </div>
+          <div className="mt-3 sm:mt-4">
+            <h3 className="text-xs sm:text-base font-bold text-neutral-900 dark:text-neutral-100 tracking-tight group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors line-clamp-1">
+              {t('dashboard.actionCreateOrder')}
+            </h3>
+            <p className="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1 leading-relaxed">
+              {t('dashboard.actionCreateOrderDesc')}
+            </p>
+          </div>
+        </button>
+
+        {/* Quick Action 2: Create Product (ایجاد محصول) */}
+        <button
+          type="button"
+          onClick={() => onNavigate('products/create')}
+          disabled={!permissions.canEditProducts}
+          className={`group relative overflow-hidden text-start p-3.5 sm:p-5 rounded-xl border bg-white dark:bg-[#13151a] transition-all shadow-xs ${
+            permissions.canEditProducts
+              ? 'hover:border-emerald-400 dark:hover:border-emerald-500 hover:shadow-md cursor-pointer border-neutral-200/80 dark:border-neutral-800'
+              : 'opacity-60 cursor-not-allowed border-neutral-200/60 dark:border-neutral-800/60'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-100 dark:border-emerald-900/60 group-hover:scale-105 group-hover:bg-emerald-600 group-hover:text-white dark:group-hover:bg-emerald-600 dark:group-hover:text-white transition-all">
+              <PackagePlus className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />
+            </div>
+            <span className="p-1 sm:p-1.5 rounded-lg text-neutral-400 group-hover:text-emerald-600 dark:group-hover:text-emerald-400 group-hover:bg-emerald-50 dark:group-hover:bg-emerald-950/40 transition-colors">
+              {isPersian ? <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            </span>
+          </div>
+          <div className="mt-3 sm:mt-4">
+            <h3 className="text-xs sm:text-base font-bold text-neutral-900 dark:text-neutral-100 tracking-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors line-clamp-1">
+              {t('dashboard.actionCreateProduct')}
+            </h3>
+            <p className="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1 leading-relaxed">
+              {t('dashboard.actionCreateProductDesc')}
+            </p>
+          </div>
+        </button>
+
+        {/* Quick Action 3: Orders List (لیست سفارشات) */}
+        <button
+          type="button"
+          onClick={() => onNavigate('orders/all')}
+          disabled={!permissions.canViewOrders}
+          className={`group relative overflow-hidden text-start p-3.5 sm:p-5 rounded-xl border bg-white dark:bg-[#13151a] transition-all shadow-xs ${
+            permissions.canViewOrders
+              ? 'hover:border-purple-400 dark:hover:border-purple-500 hover:shadow-md cursor-pointer border-neutral-200/80 dark:border-neutral-800'
+              : 'opacity-60 cursor-not-allowed border-neutral-200/60 dark:border-neutral-800/60'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-purple-50 dark:bg-purple-950/60 text-purple-600 dark:text-purple-400 flex items-center justify-center shrink-0 border border-purple-100 dark:border-purple-900/60 group-hover:scale-105 group-hover:bg-purple-600 group-hover:text-white dark:group-hover:bg-purple-600 dark:group-hover:text-white transition-all">
+              <FileText className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />
+            </div>
+            <span className="p-1 sm:p-1.5 rounded-lg text-neutral-400 group-hover:text-purple-600 dark:group-hover:text-purple-400 group-hover:bg-purple-50 dark:group-hover:bg-purple-950/40 transition-colors">
+              {isPersian ? <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            </span>
+          </div>
+          <div className="mt-3 sm:mt-4">
+            <h3 className="text-xs sm:text-base font-bold text-neutral-900 dark:text-neutral-100 tracking-tight group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors line-clamp-1">
+              {t('dashboard.actionOrdersList')}
+            </h3>
+            <p className="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1 leading-relaxed">
+              {t('dashboard.actionOrdersListDesc')}
+            </p>
+          </div>
+        </button>
+
+        {/* Quick Action 4: Purchase Order (ثبت سفارش خرید) */}
+        <button
+          type="button"
+          onClick={() => onNavigate('purchasing/orders/create')}
+          disabled={!permissions.canViewPurchasing}
+          className={`group relative overflow-hidden text-start p-3.5 sm:p-5 rounded-xl border bg-white dark:bg-[#13151a] transition-all shadow-xs ${
+            permissions.canViewPurchasing
+              ? 'hover:border-amber-400 dark:hover:border-amber-500 hover:shadow-md cursor-pointer border-neutral-200/80 dark:border-neutral-800'
+              : 'opacity-60 cursor-not-allowed border-neutral-200/60 dark:border-neutral-800/60'
+          }`}
+        >
+          <div className="flex items-start justify-between gap-2">
+            <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-lg sm:rounded-xl bg-amber-50 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-100 dark:border-amber-900/60 group-hover:scale-105 group-hover:bg-amber-600 group-hover:text-white dark:group-hover:bg-amber-600 dark:group-hover:text-white transition-all">
+              <Truck className="w-5 h-5 sm:w-6 sm:h-6 transition-colors" />
+            </div>
+            <span className="p-1 sm:p-1.5 rounded-lg text-neutral-400 group-hover:text-amber-600 dark:group-hover:text-amber-400 group-hover:bg-amber-50 dark:group-hover:bg-amber-950/40 transition-colors">
+              {isPersian ? <ArrowLeft className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <ArrowRight className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            </span>
+          </div>
+          <div className="mt-3 sm:mt-4">
+            <h3 className="text-xs sm:text-base font-bold text-neutral-900 dark:text-neutral-100 tracking-tight group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors line-clamp-1">
+              {t('dashboard.actionCreatePurchaseOrder')}
+            </h3>
+            <p className="text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-1 leading-relaxed">
+              {t('dashboard.actionCreatePurchaseOrderDesc')}
+            </p>
+          </div>
+        </button>
+      </div>
+
+      {/* Quick Start / Demo Data Banner if Database is Empty */}
+      {!isLoading && products.length === 0 && (
+        <div className="p-5 bg-gradient-to-r from-emerald-50 via-teal-50 to-blue-50 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-blue-950/40 rounded-2xl border border-emerald-200/80 dark:border-emerald-800/80 shadow-xs flex flex-col md:flex-row items-start md:items-center justify-between gap-4 animate-fade-in transition-colors">
+          <div className="flex items-start gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">{t('dashboard.emptyStateWelcome')}</h3>
+              <p className="text-xs text-neutral-600 dark:text-neutral-300 mt-1 leading-relaxed max-w-2xl">
+                {t('dashboard.emptyStateDesc')}
+              </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2.5 shrink-0 flex-wrap w-full md:w-auto justify-end">
+            <Button
+              variant="primary"
+              size="sm"
+              isLoading={isSeedingDemo}
+              onClick={async () => {
+                setIsSeedingDemo(true);
+                try {
+                  const targetOrgId = activeOrganization?.id ? Number(activeOrganization.id) : 1;
+                  const res = await BackupManager.seedFashionDemoData(targetOrgId);
+                  if (res.success) {
+                    await refreshOrganizations();
+                    await loadDashboardData();
+                  }
+                } catch (err) {
+                  console.error('Error seeding demo data:', err);
+                } finally {
+                  setIsSeedingDemo(false);
+                }
+              }}
+              icon={<Sparkles className="w-4 h-4" />}
+              className="bg-emerald-600 hover:bg-emerald-700 font-bold text-xs"
+            >
+              {t('dashboard.loadDemoData')}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onNavigate('settings/sync')}
+              icon={<HardDriveUpload className="w-4 h-4 text-blue-600" />}
+              className="text-xs font-bold border-neutral-300 hover:bg-white"
+            >
+              {t('dashboard.restoreFromBackup')}
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* 3. Recharts Analytics Suite (Trends, Inflow/Outflow, Donut Distribution, Warehouse Allocation) */}
+      <div id="tour-analytics-charts">
+        <DashboardAnalyticsCharts
+          timeRange={timeRange}
+          onTimeRangeChange={setTimeRange}
+          salesData={salesData}
+          inventoryFlowData={inventoryFlowData}
+          categoryStockData={categoryStockData}
+          stockHealthData={stockHealthData}
+          warehouseStockData={warehouseStockData}
+          canViewFinancials={permissions.canViewFinancials}
+          activeOrganization={activeOrganization}
+          isPersian={isPersian}
+        />
+      </div>
+
+      {/* 4. High-Demand Products & Critical Low-Stock Alerts */}
+      <DashboardStockAlerts
+        topProducts={topProducts}
+        lowStockVariants={lowStockVariants}
+        onNavigate={onNavigate}
+        canManageInventory={permissions.canManageInventory}
+        canCreateOrders={permissions.canCreateOrders}
+        canViewPurchasing={permissions.canViewPurchasing}
+        activeOrganization={activeOrganization}
+        isPersian={isPersian}
+      />
+
+      {/* 5. Bottom Row: Recent Movements */}
+      <div className="w-full space-y-4">
+        <Card
+          title={t('dashboard.recentMovements')}
+          subtitle={t('dashboard.recentMovementsSubtitle')}
+          action={
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate('inventory/movements')}
+            >
+              {t('dashboard.viewAll')}
+            </Button>
+          }
+        >
+          {/* Desktop Tabular View */}
+          <div className="hidden md:block">
+            <DataTable
+              columns={movementColumns}
+              data={movements.slice(0, 6)}
+              keyExtractor={(m) => m.id}
+              isLoading={isLoading}
+              emptyMessage={t('dashboard.noMovementsLogged')}
+            />
+          </div>
+
+          {/* Mobile Responsive Cards View */}
+          <div className="block md:hidden space-y-2.5">
+            {isLoading ? (
+              <div className="py-8 text-center text-xs text-neutral-400">
+                {t('common.loading')}
+              </div>
+            ) : movements.length === 0 ? (
+              <div className="py-8 text-center text-xs text-neutral-400">
+                {t('dashboard.noMovementsLogged')}
+              </div>
+            ) : (
+              movements.slice(0, 6).map((m) => {
+                const isIn = m.type === 'purchase' || m.type === 'transfer_in' || m.type === 'return';
+                let label: string = String(m.type);
+                if (m.type === 'purchase') label = t('dashboard.purchaseIn');
+                else if (m.type === 'sale') label = t('dashboard.saleOut');
+                else if (m.type === 'return') label = t('dashboard.returnIn');
+                else if (m.type === 'transfer_in') label = t('inventory.typeTransferIn');
+                else if (m.type === 'transfer_out') label = t('inventory.typeTransferOut');
+                else if (m.type === 'adjustment') label = t('inventory.stockAdjustment');
+
+                return (
+                  <div
+                    key={`mob_mov_${m.id}`}
+                    className="p-3 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-50/50 dark:bg-neutral-900/60 space-y-2 text-xs"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="font-mono font-bold text-neutral-900 dark:text-neutral-100 text-xs">
+                          {m.sku || 'TNK-SKU'}
+                        </span>
+                        <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
+                          {formatDate(m.created_at, isPersian)}
+                        </p>
+                      </div>
+                      <Badge variant={isIn ? 'success' : 'danger'}>
+                        <span className="flex items-center gap-1 text-[11px]">
+                          {isIn ? <ArrowDownLeft className="w-3 h-3" /> : <ArrowUpRight className="w-3 h-3" />}
+                          {label}
+                        </span>
+                      </Badge>
+                    </div>
+
+                    <div className="flex items-center justify-between text-xs pt-1 border-t border-neutral-100 dark:border-neutral-800">
+                      <span className="text-[11px] text-neutral-500 font-mono">{m.reference_id ? `#${m.reference_id}` : '-'}</span>
+                      <span className="font-mono font-bold text-neutral-900 dark:text-neutral-100">
+                        {isPersian ? toPersianDigits(m.quantity) : m.quantity} {t('dashboard.unitsCount')}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+};

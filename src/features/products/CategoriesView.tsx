@@ -1,0 +1,411 @@
+import React, { useState, useEffect } from 'react';
+import { useTranslation } from '../../i18n';
+import { useOrganization } from '../../context/OrganizationContext';
+import { storageManager } from '../../storage';
+import { Category } from '../../types';
+import { PageHeader } from '../../components/ui/PageHeader';
+import { Card } from '../../components/ui/Card';
+import { Button } from '../../components/ui/Button';
+import { Input } from '../../components/ui/Input';
+import { Select } from '../../components/ui/Select';
+import { Badge } from '../../components/ui/Badge';
+import { Modal } from '../../components/ui/Modal';
+import { ImageUpload } from '../../components/ui/ImageUpload';
+import { ProductImage } from '../../components/ui/ProductImage';
+import { directusClient } from '../../api/directus';
+import { confirmAction } from '../../utils/confirm';
+import {
+  FolderTree,
+  Plus,
+  Search,
+  Edit,
+  Trash2,
+  ChevronRight,
+  ChevronDown,
+  Folder,
+  FolderOpen,
+  Image as ImageIcon,
+} from 'lucide-react';
+
+export const CategoriesView: React.FC = () => {
+  const { t, locale } = useTranslation();
+  const isPersian = false;
+  const { activeOrganization } = useOrganization();
+
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [search, setSearch] = useState('');
+  const [isLoading, setIsLoading] = useState(true);
+  const [expandedNodes, setExpandedNodes] = useState<Record<number, boolean>>({});
+
+  // Modal State
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null);
+  const [name, setName] = useState('');
+  const [slug, setSlug] = useState('');
+  const [parentId, setParentId] = useState<number | ''>('');
+  const [image, setImage] = useState('');
+  const [description, setDescription] = useState('');
+  const [sort, setSort] = useState<number | ''>(0);
+  const [status, setStatus] = useState<'active' | 'inactive'>('active');
+  const [isSaving, setIsSaving] = useState(false);
+
+  const loadCategories = async () => {
+    setIsLoading(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const list = await adapter.getCategories({ organization_id: activeOrganization?.id });
+      setCategories(list);
+
+      // Auto expand root nodes
+      const initialExpand: Record<number, boolean> = {};
+      list.forEach((c) => {
+        initialExpand[c.id] = true;
+      });
+      setExpandedNodes(initialExpand);
+    } catch (err) {
+      console.error('[CategoriesView] Error loading categories:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCategories();
+  }, [activeOrganization]);
+
+  const handleOpenModal = (cat?: Category) => {
+    if (cat) {
+      setEditingCategory(cat);
+      setName(cat.name);
+      setSlug(cat.slug || '');
+      const pId = typeof cat.parent_id === 'number' ? cat.parent_id : cat.parent_id?.id || '';
+      setParentId(pId);
+      setImage(cat.image || '');
+      setDescription(cat.description || '');
+      setSort(cat.sort !== undefined ? cat.sort : 0);
+      setStatus(cat.status === 'inactive' ? 'inactive' : 'active');
+    } else {
+      setEditingCategory(null);
+      setName('');
+      setSlug('');
+      setParentId('');
+      setImage('');
+      setDescription('');
+      setSort(0);
+      setStatus('active');
+    }
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id || 1;
+      const generatedSlug = slug.trim() || name.toLowerCase().replace(/\s+/g, '-');
+
+      await adapter.saveCategory({
+        id: editingCategory?.id,
+        organization_id: orgId,
+        name,
+        slug: generatedSlug,
+        parent_id: parentId ? Number(parentId) : null,
+        image,
+        description,
+        sort: sort !== '' ? Number(sort) : 0,
+        status,
+      });
+
+      setIsModalOpen(false);
+      await loadCategories();
+    } catch (err) {
+      console.error('[CategoriesView] Error saving category:', err);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (await confirmAction(t('products.confirmDeleteCategory'))) {
+      const adapter = storageManager.getAdapter();
+      await adapter.deleteCategory(id);
+      await loadCategories();
+    }
+  };
+
+  const toggleExpand = (id: number) => {
+    setExpandedNodes((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  // Helper to build hierarchy
+  const getParentId = (cat: Category): number | null => {
+    if (!cat.parent_id) return null;
+    return typeof cat.parent_id === 'number' ? cat.parent_id : cat.parent_id.id;
+  };
+
+  const buildTree = (pId: number | null = null): Category[] => {
+    return categories
+      .filter((c) => getParentId(c) === pId)
+      .sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  };
+
+  const getParentSelectOptions = () => {
+    const options: { value: number; label: string }[] = [];
+    const traverse = (pId: number | null, prefix: string) => {
+      const children = buildTree(pId);
+      children.forEach((c) => {
+        // Prevent electing itself as parent
+        if (!editingCategory || c.id !== editingCategory.id) {
+          options.push({ value: c.id, label: `${prefix}${c.name}` });
+          traverse(c.id, `${prefix}${c.name} > `);
+        }
+      });
+    };
+    traverse(null, '');
+    return options;
+  };
+
+  const renderTreeNode = (node: Category, depth: number = 0, nodeIndex: number = 0) => {
+    const children = buildTree(node.id);
+    const hasChildren = children.length > 0;
+    const isExpanded = !!expandedNodes[node.id];
+
+    return (
+      <div key={`cat_node_${node.id || 'idx'}_${depth}_${nodeIndex}`} className="space-y-1">
+        <div
+          className={`group flex flex-col sm:flex-row sm:items-center justify-between p-3 rounded-2xl border transition-all duration-150 gap-2.5 ${
+            depth === 0
+              ? 'bg-white dark:bg-[#13151a] sm:bg-slate-50/80 sm:dark:bg-[#181a20] border-neutral-200/90 dark:border-neutral-800 hover:border-slate-300 dark:hover:border-neutral-700 shadow-sm sm:shadow-none'
+              : 'bg-white dark:bg-[#13151a] border-neutral-200/80 dark:border-neutral-800/80 hover:border-slate-200 dark:hover:border-neutral-700 shadow-2xs'
+          }`}
+          style={{ marginInlineStart: `${depth * 1}rem` }}
+        >
+          <div className="flex items-start sm:items-center gap-2.5 min-w-0 flex-1">
+            {hasChildren ? (
+              <button
+                type="button"
+                onClick={() => toggleExpand(node.id)}
+                className="p-1 hover:bg-slate-200/60 dark:hover:bg-neutral-800 rounded-lg text-slate-500 dark:text-neutral-400 cursor-pointer shrink-0 mt-0.5 sm:mt-0"
+              >
+                {isExpanded ? (
+                  <ChevronDown className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                ) : (
+                  <ChevronRight className="w-4 h-4 rtl:rotate-180" />
+                )}
+              </button>
+            ) : (
+              <span className="w-5 shrink-0" />
+            )}
+
+            {node.image ? (
+              <ProductImage
+                src={node.image}
+                alt={node.name}
+                fallbackText={node.name}
+                containerClassName="w-8 h-8 rounded-xl overflow-hidden shrink-0 border border-slate-200 dark:border-neutral-700"
+              />
+            ) : (
+              <div
+                className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 ${
+                  depth === 0
+                    ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400'
+                    : 'bg-slate-100 dark:bg-neutral-800 text-slate-500 dark:text-neutral-400'
+                }`}
+              >
+                {isExpanded && hasChildren ? (
+                  <FolderOpen className="w-4 h-4" />
+                ) : (
+                  <Folder className="w-4 h-4" />
+                )}
+              </div>
+            )}
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <span className="font-bold text-slate-900 dark:text-neutral-100 text-sm">{node.name}</span>
+                <span className="text-[11px] font-mono text-slate-400 dark:text-neutral-500">({node.slug})</span>
+              </div>
+              {node.description && (
+                <p className="text-xs text-slate-500 dark:text-neutral-400 line-clamp-1 mt-0.5">{node.description}</p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-neutral-100 dark:border-neutral-800">
+            <Badge variant={node.status === 'active' ? 'success' : 'neutral'} className="text-[10px]">
+              {node.status === 'active' ? t('products.statusActive') : t('products.statusInactive')}
+            </Badge>
+
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2"
+                onClick={() => handleOpenModal(node)}
+                icon={<Edit className="w-3.5 h-3.5 text-slate-600 dark:text-neutral-300" />}
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-8 px-2 text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950/40"
+                onClick={() => handleDelete(node.id)}
+                icon={<Trash2 className="w-3.5 h-3.5" />}
+              />
+            </div>
+          </div>
+        </div>
+
+        {hasChildren && isExpanded && (
+          <div className="space-y-1 relative ps-2 sm:ps-3 border-s-2 border-indigo-100 dark:border-indigo-900/50 ms-3 sm:ms-4">
+            {children.map((child, cIdx) => renderTreeNode(child, depth + 1, cIdx))}
+          </div>
+        )}
+      </div>
+    );
+  };
+
+  const rootNodes = buildTree(null);
+
+  const filteredCategories = search.trim()
+    ? categories.filter(
+        (c) =>
+          c.name.toLowerCase().includes(search.toLowerCase()) ||
+          (c.slug && c.slug.toLowerCase().includes(search.toLowerCase()))
+      )
+    : null;
+
+  return (
+    <div className="space-y-6">
+      <PageHeader
+        title={t('products.categoriesTitle')}
+        subtitle={t('products.categoriesSubtitle')}
+        actions={
+          <Button
+            onClick={() => handleOpenModal()}
+            icon={<Plus className="w-4 h-4" />}
+          >
+            {t('products.createCategory')}
+          </Button>
+        }
+      />
+
+      <Card className="border-0 sm:border bg-transparent sm:bg-white dark:sm:bg-[#181a20] shadow-none sm:shadow-sm p-0 sm:p-5 md:p-6">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4 mb-5">
+          <div className="w-full sm:w-80">
+            <Input
+              placeholder={t('products.searchCategories')}
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              icon={<Search className="w-4 h-4" />}
+            />
+          </div>
+        </div>
+
+        {isLoading ? (
+          <div className="py-12 text-center text-slate-400 dark:text-neutral-500 text-sm">{t('products.loadingCategories')}</div>
+        ) : filteredCategories ? (
+          <div className="space-y-2">
+            {filteredCategories.length === 0 ? (
+              <p className="py-8 text-center text-slate-400 dark:text-neutral-500 text-sm">{t('products.noCategoriesFound')}</p>
+            ) : (
+              filteredCategories.map((c, cIdx) => renderTreeNode(c, 0, cIdx))
+            )}
+          </div>
+        ) : rootNodes.length === 0 ? (
+          <div className="py-12 text-center text-slate-400 dark:text-neutral-500 text-sm">
+            {t('products.emptyCategories')}
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {rootNodes.map((rootNode, rIdx) => renderTreeNode(rootNode, 0, rIdx))}
+          </div>
+        )}
+      </Card>
+
+      {/* Modal for create/edit */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingCategory ? t('products.editCategory') : t('products.createCategory')}
+        maxWidth="md"
+        footer={
+          <>
+            <Button variant="outline" onClick={() => setIsModalOpen(false)}>
+              {t('common.cancel')}
+            </Button>
+            <Button type="submit" form="category-form" isLoading={isSaving}>
+              {t('common.save')}
+            </Button>
+          </>
+        }
+      >
+        <form id="category-form" onSubmit={handleSave} className="space-y-4">
+          <Input
+            label={`${t('products.categoryName', 'عنوان دسته‌بندی')} *`}
+            placeholder={isPersian ? "مثال: کت و کاپشن مردانه" : "e.g. Men's Jackets"}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            required
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label={t('products.slugHeader', 'شناسه یکتا (اسلاگ)')}
+              placeholder="men-jackets"
+              value={slug}
+              onChange={(e) => setSlug(e.target.value)}
+            />
+            <Select
+              label={t('products.parentCategory', 'دسته‌بندی والد')}
+              value={parentId}
+              onChange={(e) => setParentId(e.target.value ? Number(e.target.value) : '')}
+              options={[
+                { value: '', label: t('products.rootCategory', 'دسته‌بندی اصلی (سطح اول)') },
+                ...getParentSelectOptions(),
+              ]}
+            />
+          </div>
+
+          <ImageUpload
+            label={t('products.categoryImage')}
+            value={image}
+            onChange={setImage}
+            helperText={t('products.categoryImageHelper')}
+          />
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label={t('products.sizeOrder')}
+              type="number"
+              value={sort}
+              onChange={(e) => setSort(e.target.value ? Number(e.target.value) : '')}
+            />
+            <Select
+              label={t('products.productStatus')}
+              value={status}
+              onChange={(e) => setStatus(e.target.value as any)}
+              options={[
+                { value: 'active', label: t('products.statusActive') },
+                { value: 'inactive', label: t('products.statusInactive') },
+              ]}
+            />
+          </div>
+
+          <div className="space-y-1">
+            <label className="block text-xs font-semibold text-slate-700 dark:text-neutral-300">{t('products.description')}</label>
+            <textarea
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              rows={3}
+              className="w-full bg-white dark:bg-[#181a20] border border-slate-300 dark:border-neutral-700 rounded-xl text-slate-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 text-sm p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              placeholder="..."
+            />
+          </div>
+        </form>
+      </Modal>
+    </div>
+  );
+};
