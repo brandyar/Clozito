@@ -12,7 +12,7 @@ import {
   InventoryMovement,
   PersonTransaction,
 } from '../../types';
-import { normalizeId } from '../../utils/formatters';
+import { normalizeId, roundCurrency } from '../../utils/formatters';
 
 export class SqliteSalesStorage {
   constructor(private base: SqliteStorageBase) {}
@@ -33,7 +33,7 @@ export class SqliteSalesStorage {
     const list = await this.base.getItems<Customer>('customers');
     const validId = typeof cust.id === 'number' && cust.id > 0 ? cust.id : this.base.generateUniqueId(list);
     const saved: Customer = {
-      name: cust.name || 'مشتری جدید',
+      name: cust.name || 'New Customer',
       status: 'active',
       date_created: new Date().toISOString(),
       organization_id: cust.organization_id || 1,
@@ -80,7 +80,7 @@ export class SqliteSalesStorage {
       order_number: order.order_number || `ORD-${Math.floor(1000 + Math.random() * 9000)}`,
       status: order.status || 'draft',
       payment_status: order.payment_status || 'pending',
-      currency: 'TOMAN',
+      currency: 'EUR',
       subtotal: order.subtotal || 0,
       discount: order.discount || 0,
       tax: order.tax || 0,
@@ -574,7 +574,7 @@ export class SqliteSalesStorage {
           type: 'deposit',
           amount: ordTotal,
           tracking_code: `ORD-${orderNum}`,
-          description: `دریافت وجه فاکتور فروش #${orderNum} (همگام‌سازی خودکار)`,
+          description: `Sales invoice payment #${orderNum} (Auto-reconciled)`,
           transaction_date: txDate,
           date_created: txDate,
         };
@@ -600,7 +600,7 @@ export class SqliteSalesStorage {
           if (Number(srcId) === Number(acc.id)) balance -= amt;
         }
       });
-      acc.current_balance = balance;
+      acc.current_balance = roundCurrency(balance);
       await this.base.saveItem('financial_accounts', acc);
     }
   }

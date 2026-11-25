@@ -79,7 +79,7 @@ export const LocationsView: React.FC = () => {
       setName('');
       setCode(`LOC-${Math.floor(1000 + Math.random() * 9000)}`);
       setType('rack');
-      setBarcode(`626LOC${Date.now().toString().slice(-6)}`);
+      setBarcode(`LOC-${Date.now().toString().slice(-6)}`);
       setStatus('active');
     }
     setIsModalOpen(true);
@@ -376,7 +376,7 @@ export const LocationsView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label={t('inventory.locationBarcodeLabel')}
-              placeholder="626LOC..."
+              placeholder="LOC-123456"
               value={barcode}
               onChange={(e) => setBarcode(e.target.value)}
             />

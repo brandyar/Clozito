@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   Search,
-  Sparkles,
   Phone,
   MessageCircle,
   Share2,
@@ -9,9 +8,6 @@ import {
   Ruler,
   CheckCircle2,
   Package,
-  Layers,
-  ArrowLeft,
-  ExternalLink,
   Store,
   Send,
   Check,
@@ -28,8 +24,10 @@ import {
 } from '../../../types';
 import { storageManager } from '../../../storage';
 import { ProductImage } from '../../../components/ui/ProductImage';
-import { formatCurrency, toPersianDigits } from '../../../utils/formatters';
+import { formatCurrency, resolveCurrencyCode } from '../../../utils/formatters';
 import { SmartSizeFinderModal } from '../components/SmartSizeFinderModal';
+import { useTranslation } from '../../../i18n';
+import { BRAND } from '../../../config/brand';
 
 interface PublicCatalogViewProps {
   organizationSlug?: string;
@@ -42,6 +40,9 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
   previewOrg,
   onClosePreview,
 }) => {
+  const { locale } = useTranslation();
+  const isIt = locale === 'it';
+
   const [org, setOrg] = useState<Organization | null>(previewOrg || null);
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -76,6 +77,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
   const [copiedLink, setCopiedLink] = useState(false);
 
   const orgSettings = (org as any)?.settings || {};
+  const activeCurrency = resolveCurrencyCode(org?.currency);
 
   // Load catalog data
   useEffect(() => {
@@ -234,12 +236,17 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
 
   // WhatsApp order link generator
   const getWhatsAppLink = (prod: Product, chosenSize?: Size | null) => {
-    const phone = orgSettings.whatsapp_number || org?.phone || '989000000000';
+    const phone = orgSettings.whatsapp_number || org?.phone || '';
     const cleanPhone = phone.replace(/[^0-9]/g, '');
-    const sizeText = chosenSize ? ` با سایز ${chosenSize.name}` : '';
-    const text = encodeURIComponent(
-      `سلام وقت بخیر، من در ویترین آنلاین محصول «${prod.title}»${sizeText} را دیدم و قصد ثبت سفارش دارم.`
-    );
+    const sizeText = chosenSize
+      ? isIt
+        ? ` (Taglia ${chosenSize.name})`
+        : ` (Size ${chosenSize.name})`
+      : '';
+    const message = isIt
+      ? `Ciao, ho visto il prodotto "${prod.title}"${sizeText} nel vostro catalogo online e vorrei effettuare un ordine.`
+      : `Hello, I saw "${prod.title}"${sizeText} in your online catalog and would like to place an order.`;
+    const text = encodeURIComponent(message);
     return `https://wa.me/${cleanPhone}?text=${text}`;
   };
 
@@ -296,27 +303,29 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
           <Store className="w-5 h-5" />
         </div>
         <p className="text-xs font-semibold text-neutral-600 dark:text-neutral-400">
-          در حال بارگذاری کاتالوگ...
+          {isIt ? 'Caricamento catalogo...' : 'Loading catalog...'}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0c0d10] text-neutral-900 dark:text-neutral-100 font-sans pb-20 selection:bg-neutral-900 selection:text-white" dir="rtl">
+    <div className="min-h-screen bg-[#fafafa] dark:bg-[#0c0d10] text-neutral-900 dark:text-neutral-100 font-sans pb-20 selection:bg-neutral-900 selection:text-white" dir="ltr">
       {/* Top Banner when in Admin Preview Mode */}
       {previewOrg && (
         <div className="sticky top-0 z-50 bg-neutral-900 text-white px-4 py-2 flex items-center justify-between text-xs border-b border-neutral-800 shadow-sm">
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-emerald-400" />
-            <span className="font-medium">پیش‌نمایش زنده ویترین اینترنتی برند</span>
+            <span className="font-medium">
+              {isIt ? 'Anteprima live della vetrina online' : 'Live Online Storefront Preview'}
+            </span>
           </div>
           {onClosePreview && (
             <button
               onClick={onClosePreview}
               className="flex items-center gap-1 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-2.5 py-1 rounded-lg text-xs transition-colors cursor-pointer"
             >
-              <span>بازگشت به پنل مدیریت</span>
+              <span>{isIt ? 'Torna al pannello' : 'Back to Admin'}</span>
               <X className="w-3.5 h-3.5" />
             </button>
           )}
@@ -329,16 +338,19 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
           <div className="flex flex-col sm:flex-row items-center sm:items-start justify-between gap-4 text-center sm:text-start">
             <div className="flex flex-col sm:flex-row items-center gap-4">
               <div className="w-16 h-16 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 flex items-center justify-center text-xl font-bold border border-neutral-200 dark:border-neutral-800 shrink-0">
-                {org?.name ? org.name.charAt(0) : 'T'}
+                {org?.name ? org.name.charAt(0).toUpperCase() : BRAND.name.charAt(0)}
               </div>
               <div>
                 <div className="flex items-center justify-center sm:justify-start gap-2">
                   <h1 className="text-xl sm:text-2xl font-bold text-neutral-900 dark:text-white tracking-tight">
-                    {org?.name || 'کاتالوگ آنلاین'}
+                    {org?.name || (isIt ? 'Catalogo Online' : 'Online Catalog')}
                   </h1>
                 </div>
                 <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-1 max-w-lg leading-relaxed">
-                  {orgSettings.bio || 'کاتالوگ رسمی پوشاک و منسوجات، با قابلیت انتخاب هوشمند سایز'}
+                  {orgSettings.bio ||
+                    (isIt
+                      ? 'Catalogo ufficiale di abbigliamento e accessori con guida intelligente alle taglie'
+                      : 'Official apparel and fashion catalog with smart size recommendations')}
                 </p>
               </div>
             </div>
@@ -351,7 +363,11 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                 className="flex items-center gap-1.5 px-3 py-2 rounded-xl border border-neutral-200 dark:border-neutral-800 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 text-xs font-semibold hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Share2 className="w-3.5 h-3.5" />}
-                <span>{copiedLink ? 'لینک کپی شد' : 'اشتراک‌گذاری'}</span>
+                <span>
+                  {copiedLink
+                    ? isIt ? 'Link copiato' : 'Link Copied'
+                    : isIt ? 'Condividi' : 'Share'}
+                </span>
               </button>
 
               {(org?.phone || orgSettings.whatsapp_number) && (
@@ -360,7 +376,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                   className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-neutral-900 hover:bg-black dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-semibold transition-colors"
                 >
                   <Phone className="w-3.5 h-3.5" />
-                  <span>تماس با فروشگاه</span>
+                  <span>{isIt ? 'Contatta il negozio' : 'Contact Store'}</span>
                 </a>
               )}
             </div>
@@ -374,7 +390,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                 type="text"
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
-                placeholder="جستجوی مدل، نام پوشاک یا کد کالا..."
+                placeholder={isIt ? 'Cerca modello, prodotto o SKU...' : 'Search style, product name, or SKU...'}
                 className="w-full ps-10 pe-4 py-2.5 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 text-xs text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-hidden focus:border-neutral-400 dark:focus:border-neutral-600"
               />
               {search && (
@@ -388,7 +404,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
               )}
             </div>
 
-            {/* Category Filter Pills */}
+            {/* Category Filter Buttons */}
             <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
               <button
                 type="button"
@@ -399,7 +415,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                     : 'bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700'
                 }`}
               >
-                همه ({products.length})
+                {isIt ? `Tutti (${products.length})` : `All (${products.length})`}
               </button>
               {categories.map((cat) => (
                 <button
@@ -426,10 +442,12 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
           <div className="p-12 text-center bg-white dark:bg-[#12141a] rounded-2xl border border-neutral-200/80 dark:border-neutral-800">
             <Package className="w-10 h-10 text-neutral-300 dark:text-neutral-600 mx-auto mb-2" />
             <h3 className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-              کالایی با این مشخصات یافت نشد
+              {isIt ? 'Nessun prodotto trovato' : 'No matching products found'}
             </h3>
             <p className="text-[11px] text-neutral-400 mt-1">
-              لطفاً عنوان جستجو یا فیلتر دسته‌بندی را تغییر دهید.
+              {isIt
+                ? 'Prova a modificare la ricerca o il filtro di categoria.'
+                : 'Try adjusting your search query or category filter.'}
             </p>
           </div>
         ) : (
@@ -471,7 +489,9 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                             : 'bg-neutral-600/90 text-neutral-200'
                         }`}
                       >
-                        {hasStock ? 'موجود' : 'ناموجود'}
+                        {hasStock
+                          ? isIt ? 'Disponibile' : 'In Stock'
+                          : isIt ? 'Esaurito' : 'Out of Stock'}
                       </span>
                     </div>
 
@@ -480,7 +500,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                       <button
                         type="button"
                         onClick={(e) => handleOpenSmartSize(prod, e)}
-                        title="راهنمای هوشمند سایز"
+                        title={isIt ? 'Guida intelligente alle taglie' : 'Smart Size Finder'}
                         className="absolute bottom-2.5 end-2.5 p-2 rounded-xl bg-white/90 dark:bg-neutral-900/90 hover:bg-neutral-900 hover:text-white dark:hover:bg-white dark:hover:text-neutral-900 text-neutral-800 dark:text-neutral-200 transition-colors shadow-xs"
                       >
                         <Ruler className="w-3.5 h-3.5" />
@@ -496,17 +516,19 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                       </h3>
                       {firstVariant?.sku && (
                         <span className="text-[10px] font-mono text-neutral-400 block mt-0.5">
-                          کد: {firstVariant.sku}
+                          SKU: {firstVariant.sku}
                         </span>
                       )}
                     </div>
 
                     <div className="mt-3 pt-2.5 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between">
                       <span className="text-xs font-bold text-neutral-900 dark:text-white font-mono">
-                        {firstVariant?.price ? formatCurrency(firstVariant.price) : 'استعلام قیمت'}
+                        {firstVariant?.price
+                          ? formatCurrency(firstVariant.price, activeCurrency)
+                          : isIt ? 'Su richiesta' : 'Price on request'}
                       </span>
                       <span className="text-[11px] text-neutral-500 font-semibold group-hover:text-neutral-900 dark:group-hover:text-white transition-colors">
-                        مشاهده
+                        {isIt ? 'Dettagli' : 'View'}
                       </span>
                     </div>
                   </div>
@@ -550,7 +572,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                       </h2>
                       {selectedVariant?.sku && (
                         <p className="text-[11px] font-mono text-neutral-400 mt-0.5">
-                          کد کالا: {selectedVariant.sku}
+                          SKU: {selectedVariant.sku}
                         </p>
                       )}
                     </div>
@@ -565,7 +587,9 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
 
                   <div className="mt-3">
                     <span className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white font-mono">
-                      {selectedVariant?.price ? formatCurrency(selectedVariant.price) : 'تماس جهت استعلام'}
+                      {selectedVariant?.price
+                        ? formatCurrency(selectedVariant.price, activeCurrency)
+                        : isIt ? 'Contatta per il prezzo' : 'Contact for price'}
                     </span>
                   </div>
 
@@ -583,10 +607,10 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                           <Ruler className="w-4 h-4 text-neutral-700 dark:text-neutral-300 shrink-0" />
                           <div>
                             <p className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                              راهنمای هوشمند سایز
+                              {isIt ? 'Guida intelligente taglie' : 'Smart Size Guide'}
                             </p>
                             <p className="text-[10px] text-neutral-500">
-                              محاسبه دقیق بر اساس اندازه لباس
+                              {isIt ? 'Calcolo preciso sulle misure del capo' : 'Accurate fit from garment measurements'}
                             </p>
                           </div>
                         </div>
@@ -595,13 +619,15 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                           onClick={() => handleOpenSmartSize(selectedProduct)}
                           className="px-3 py-1.5 rounded-lg bg-neutral-900 hover:bg-black dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-bold transition-colors cursor-pointer shrink-0"
                         >
-                          یافتن سایز من
+                          {isIt ? 'Trova taglia' : 'Find My Size'}
                         </button>
                       </div>
 
                       {selectedSize && (
                         <div className="mt-2.5 pt-2 border-t border-neutral-200/60 dark:border-neutral-800 flex items-center justify-between text-xs">
-                          <span className="text-neutral-500 text-[11px]">سایز انتخابی شما:</span>
+                          <span className="text-neutral-500 text-[11px]">
+                            {isIt ? 'Taglia selezionata:' : 'Selected size:'}
+                          </span>
                           <span className="font-bold text-neutral-900 dark:text-neutral-100 font-mono">
                             {selectedSize.name}
                           </span>
@@ -620,7 +646,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-2xs transition-colors cursor-pointer"
                   >
                     <MessageCircle className="w-4 h-4" />
-                    <span>سفارش در واتس‌اپ</span>
+                    <span>{isIt ? 'Ordina su WhatsApp' : 'Order via WhatsApp'}</span>
                   </a>
 
                   <button
@@ -629,7 +655,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                     className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 hover:bg-neutral-50 dark:hover:bg-neutral-700 text-neutral-900 dark:text-neutral-100 font-bold text-xs transition-colors cursor-pointer"
                   >
                     <Send className="w-3.5 h-3.5" />
-                    <span>ثبت درخواست خرید</span>
+                    <span>{isIt ? 'Invia richiesta di acquisto' : 'Submit Order Inquiry'}</span>
                   </button>
                 </div>
               </div>
@@ -652,7 +678,7 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
           >
             <div className="flex items-center justify-between pb-3 border-b border-neutral-100 dark:border-neutral-800">
               <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                درخواست خرید «{selectedProduct.title}»
+                {isIt ? `Richiesta per "${selectedProduct.title}"` : `Order Inquiry: "${selectedProduct.title}"`}
               </h3>
               <button
                 type="button"
@@ -667,58 +693,62 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
               <div className="py-8 text-center animate-in zoom-in-95">
                 <CheckCircle2 className="w-10 h-10 text-emerald-600 mx-auto mb-2" />
                 <h4 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                  درخواست شما با موفقیت ثبت شد
+                  {isIt ? 'Richiesta inviata con successo' : 'Inquiry Submitted Successfully'}
                 </h4>
                 <p className="text-xs text-neutral-500 mt-1">
-                  فروشگاه در اسرع وقت جهت هماهنگی با شما تماس خواهد گرفت.
+                  {isIt
+                    ? 'Il negozio ti contatterà al più presto per confermare il tuo ordine.'
+                    : 'The store will contact you shortly to confirm your order.'}
                 </p>
               </div>
             ) : (
               <form onSubmit={handleSubmitInquiry} className="mt-4 space-y-3">
                 <div>
                   <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                    نام و نام خانوادگی
+                    {isIt ? 'Nome e cognome' : 'Full Name'}
                   </label>
                   <input
                     type="text"
                     required
                     value={customerName}
                     onChange={(e) => setCustomerName(e.target.value)}
-                    placeholder="مثال: علی محمدی"
+                    placeholder={isIt ? 'es. Marco Rossi' : 'e.g. Marco Rossi'}
                     className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#1a1d24]"
                   />
                 </div>
 
                 <div>
                   <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                    شماره تماس همراه
+                    {isIt ? 'Numero di telefono' : 'Phone Number'}
                   </label>
                   <input
                     type="tel"
                     required
                     value={customerPhone}
                     onChange={(e) => setCustomerPhone(e.target.value)}
-                    placeholder="۰۹۱۲۳۴۵۶۷۸۹"
-                    className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#1a1d24] font-mono text-end"
+                    placeholder="+39 340 123 4567"
+                    className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#1a1d24] font-mono"
                   />
                 </div>
 
                 {selectedSize && (
                   <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-800 text-xs flex justify-between border border-neutral-200/60 dark:border-neutral-700">
-                    <span className="text-neutral-500">سایز انتخابی:</span>
+                    <span className="text-neutral-500">
+                      {isIt ? 'Taglia selezionata:' : 'Selected Size:'}
+                    </span>
                     <span className="font-bold font-mono">{selectedSize.name}</span>
                   </div>
                 )}
 
                 <div>
                   <label className="block text-[11px] font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                    توضیحات (اختیاری)
+                    {isIt ? 'Note (opzionale)' : 'Notes (optional)'}
                   </label>
                   <textarea
                     rows={2}
                     value={customerNote}
                     onChange={(e) => setCustomerNote(e.target.value)}
-                    placeholder="رنگ دلخواه یا یادداشت تحویل..."
+                    placeholder={isIt ? 'Colore preferito o dettagli di consegna...' : 'Preferred color or delivery notes...'}
                     className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#1a1d24]"
                   />
                 </div>
@@ -728,7 +758,9 @@ export const PublicCatalogView: React.FC<PublicCatalogViewProps> = ({
                   disabled={isSubmittingInquiry}
                   className="w-full py-2.5 rounded-xl bg-neutral-900 hover:bg-black dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 text-xs font-bold transition-colors cursor-pointer mt-2"
                 >
-                  {isSubmittingInquiry ? 'در حال ثبت...' : 'ارسال درخواست'}
+                  {isSubmittingInquiry
+                    ? isIt ? 'Invio in corso...' : 'Submitting...'
+                    : isIt ? 'Invia richiesta' : 'Send Inquiry'}
                 </button>
               </form>
             )}

@@ -46,7 +46,8 @@ export const SalesReportPage: React.FC = () => {
   const { t, locale } = useTranslation();
   const { activeOrganization } = useOrganization();
   const isPersian = false;
-  const formatNumber = (n: number | string) => (isPersian ? toPersianDigits(n) : String(n));
+  const isIt = locale === 'it';
+  const formatNumber = (n: number | string) => String(n);
 
   const [isLoading, setIsLoading] = useState(true);
 
@@ -382,12 +383,12 @@ export const SalesReportPage: React.FC = () => {
       headers.map((h) => escapeCsvCell(h)).join(','),
       ...rows.map((r) => r.map((c) => escapeCsvCell(c)).join(',')),
     ].join('\n');
-    downloadCsvContent(csvContent, `tankhor_sales_profit_${customFrom}_${customTo}.csv`);
+    downloadCsvContent(csvContent, `clozito_sales_profit_${customFrom}_${customTo}.csv`);
   };
 
   const handlePrint = () => {
     printElement('sales-profit-report-container', {
-      title: isPersian ? 'گزارش_فروش_و_سودآوری_تن‌خور' : 'Tankhor_Sales_Profit_Report',
+      title: 'Clozito_Sales_Profit_Report',
     });
   };
 
@@ -415,8 +416,8 @@ export const SalesReportPage: React.FC = () => {
       {/* Page Header */}
       <div className="no-print">
         <PageHeader
-          title={t('reports.tabSalesProfit', 'گزارش فروش و سودآوری')}
-          subtitle={t('reports.salesTrendsSubtitle', 'تحلیل جامع درآمد فروش، بهای تمام‌شده کالا و حاشیه سود بر اساس بازه‌های زمانی')}
+          title={t('reports.tabSalesProfit', 'Sales & Profitability Report')}
+          subtitle={t('reports.salesTrendsSubtitle', 'Comprehensive analysis of sales revenue, cost of goods sold, and profit margins over time')}
         />
       </div>
 
@@ -480,11 +481,11 @@ export const SalesReportPage: React.FC = () => {
               className="w-full h-9 px-3 rounded-lg text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 focus:ring-1 focus:ring-neutral-400 outline-hidden"
             >
               <option value="all">{t('reports.allStatuses')}</option>
-              <option value="completed">تکمیل‌شده (Completed)</option>
-              <option value="confirmed">تایید‌شده (Confirmed)</option>
-              <option value="processing">در حال پردازش (Processing)</option>
-              <option value="draft">پیش‌نویس (Draft)</option>
-              <option value="cancelled">لغو شده (Cancelled)</option>
+              <option value="completed">{isIt ? 'Completato' : 'Completed'}</option>
+              <option value="confirmed">{isIt ? 'Confermato' : 'Confirmed'}</option>
+              <option value="processing">{isIt ? 'In lavorazione' : 'Processing'}</option>
+              <option value="draft">{isIt ? 'Bozza' : 'Draft'}</option>
+              <option value="cancelled">{isIt ? 'Annullato' : 'Cancelled'}</option>
             </select>
           </div>
 
@@ -499,10 +500,10 @@ export const SalesReportPage: React.FC = () => {
               className="w-full h-9 px-3 rounded-lg text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-900 dark:text-neutral-100 focus:ring-1 focus:ring-neutral-400 outline-hidden"
             >
               <option value="all">{t('reports.allPayments')}</option>
-              <option value="paid">پرداخت‌شده (Paid)</option>
-              <option value="partially_paid">پرداخت ناقص (Partially Paid)</option>
-              <option value="pending">در انتظار (Pending)</option>
-              <option value="refunded">مسترد شده (Refunded)</option>
+              <option value="paid">{isIt ? 'Pagato' : 'Paid'}</option>
+              <option value="partially_paid">{isIt ? 'Parzialmente pagato' : 'Partially Paid'}</option>
+              <option value="pending">{isIt ? 'In attesa' : 'Pending'}</option>
+              <option value="refunded">{isIt ? 'Rimborsato' : 'Refunded'}</option>
             </select>
           </div>
 
@@ -617,7 +618,7 @@ export const SalesReportPage: React.FC = () => {
                   {t('reports.profitMargin')}
                 </p>
                 <h3 className="text-xl sm:text-2xl font-extrabold text-blue-600 dark:text-blue-400 tracking-tight font-mono break-words">
-                  %{formatNumber(reportMetrics.profitMargin.toFixed(1))}
+                  {formatNumber(reportMetrics.profitMargin.toFixed(1))}%
                 </h3>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
                   {t('reports.profitMarginDesc')}
@@ -656,7 +657,7 @@ export const SalesReportPage: React.FC = () => {
             </p>
             <p className="text-sm sm:text-base font-bold text-neutral-900 dark:text-white font-mono mt-1">
               {formatNumber(reportMetrics.totalOrdersCount)}{' '}
-              <span className="text-xs font-normal text-neutral-500">سفارش</span>
+              <span className="text-xs font-normal text-neutral-500">{isIt ? 'ordini' : 'orders'}</span>
             </p>
           </Card>
 
@@ -832,10 +833,10 @@ export const SalesReportPage: React.FC = () => {
                         <span className="font-bold text-neutral-900 dark:text-white">{cat.name}</span>
                         <div className="flex items-center gap-3">
                           <span className="text-neutral-500 font-mono">
-                            فروش: {formatCurrency(cat.revenue, activeOrganization?.currency, isPersian)}
+                            {t('reports.chartRevenue')}: {formatCurrency(cat.revenue, activeOrganization?.currency, isPersian)}
                           </span>
                           <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-                            سود: {formatCurrency(cat.profit, activeOrganization?.currency, isPersian)} ({margin}%)
+                            {t('reports.chartProfit')}: {formatCurrency(cat.profit, activeOrganization?.currency, isPersian)} ({margin}%)
                           </span>
                         </div>
                       </div>
@@ -897,7 +898,7 @@ export const SalesReportPage: React.FC = () => {
                           +{formatCurrency(p.profit, activeOrganization?.currency, isPersian)}
                         </p>
                         <p className="text-[10px] text-neutral-500 font-mono">
-                          {formatNumber(p.qty)} عدد ({margin}%)
+                          {formatNumber(p.qty)} {t('reports.unitsUnit')} ({margin}%)
                         </p>
                       </div>
                     </div>
@@ -1010,7 +1011,7 @@ export const SalesReportPage: React.FC = () => {
                                 ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300'
                                 : 'bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300'
                             }`}>
-                              %{formatNumber(margin)}
+                              {formatNumber(margin)}%
                             </span>
                           </td>
                           <td className="py-3 px-3 text-center">
@@ -1025,10 +1026,10 @@ export const SalesReportPage: React.FC = () => {
                               size="sm"
                             >
                               {o.payment_status === 'paid'
-                                ? 'تسویه'
+                                ? (isIt ? 'Pagato' : 'Paid')
                                 : o.payment_status === 'partially_paid'
-                                ? 'ناقص'
-                                : 'پرداخت‌نشده'}
+                                ? (isIt ? 'Parziale' : 'Partial')
+                                : (isIt ? 'Non pagato' : 'Unpaid')}
                             </Badge>
                           </td>
                         </tr>
@@ -1082,10 +1083,10 @@ export const SalesReportPage: React.FC = () => {
                           size="sm"
                         >
                           {o.payment_status === 'paid'
-                            ? 'تسویه'
+                            ? (isIt ? 'Pagato' : 'Paid')
                             : o.payment_status === 'partially_paid'
-                            ? 'ناقص'
-                            : 'پرداخت‌نشده'}
+                            ? (isIt ? 'Parziale' : 'Partial')
+                            : (isIt ? 'Non pagato' : 'Unpaid')}
                         </Badge>
                       </div>
 
@@ -1100,19 +1101,19 @@ export const SalesReportPage: React.FC = () => {
 
                       <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800/80 grid grid-cols-3 gap-2 text-center text-xs">
                         <div>
-                          <p className="text-[10px] text-neutral-400">فروش</p>
+                          <p className="text-[10px] text-neutral-400">{t('reports.colNetSales')}</p>
                           <p className="font-bold font-mono text-neutral-900 dark:text-white mt-0.5">
                             {formatCurrency(net, activeOrganization?.currency, isPersian)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-neutral-400">بهای خرید</p>
+                          <p className="text-[10px] text-neutral-400">{t('reports.colCogs')}</p>
                           <p className="font-mono text-neutral-500 mt-0.5">
                             {formatCurrency(finalCogs, activeOrganization?.currency, isPersian)}
                           </p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">سود خالص</p>
+                          <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">{t('reports.colProfit')}</p>
                           <p className="font-bold font-mono text-emerald-600 dark:text-emerald-400 mt-0.5">
                             {formatCurrency(profit, activeOrganization?.currency, isPersian)}
                           </p>

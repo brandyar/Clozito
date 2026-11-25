@@ -22,7 +22,10 @@ interface OrderCartTableProps {
   setExtraDiscount: (val: number) => void;
   hasTax: boolean;
   setHasTax: (val: boolean) => void;
+  taxPercent: number;
+  setTaxPercent: (val: number) => void;
   taxAmount: number;
+  currency?: string;
 }
 
 export const OrderCartTable: React.FC<OrderCartTableProps> = ({
@@ -34,9 +37,12 @@ export const OrderCartTable: React.FC<OrderCartTableProps> = ({
   setExtraDiscount,
   hasTax,
   setHasTax,
+  taxPercent,
+  setTaxPercent,
   taxAmount,
+  currency = 'EUR',
 }) => {
-  const { t, locale } = useTranslation();
+  const { t } = useTranslation();
   const isPersian = false;
 
   return (
@@ -112,11 +118,11 @@ export const OrderCartTable: React.FC<OrderCartTableProps> = ({
                 {/* Line Discount & Total */}
                 <div className="text-end">
                   <div className="font-bold font-mono text-[#171717] dark:text-neutral-100">
-                    {formatCurrency(line.quantity * line.unitPrice - line.discount * line.quantity, 'TOMAN', isPersian)}
+                    {formatCurrency(line.quantity * line.unitPrice - line.discount * line.quantity, currency, isPersian)}
                   </div>
                   {line.discount > 0 && (
                     <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-mono">
-                      -{formatCurrency(line.discount * line.quantity, 'TOMAN', isPersian)}
+                      -{formatCurrency(line.discount * line.quantity, currency, isPersian)}
                     </div>
                   )}
                 </div>
@@ -132,22 +138,22 @@ export const OrderCartTable: React.FC<OrderCartTableProps> = ({
                     <input
                       type="number"
                       min="0"
-                      step="1000"
+                      step="0.01"
                       value={line.unitPrice}
                       onChange={(e) => onUpdatePrice(line.variant.id, Math.max(0, parseFloat(e.target.value) || 0))}
                       className="w-full px-2 py-0.5 text-xs font-mono font-bold text-[#171717] dark:text-neutral-100 bg-white dark:bg-[#13151a] border border-[#ebebeb] dark:border-neutral-700 rounded-md focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
                       title={t('orders.editUnitPrice')}
                     />
                   </div>
-                  <span className="text-[10px] text-[#888888] dark:text-neutral-400">
-                    {t('common.currency')}
+                  <span className="text-[10px] text-[#888888] dark:text-neutral-400 font-mono">
+                    {currency}
                   </span>
                 </div>
 
                 {line.unitPrice !== (line.variant.price || 0) && (
                   <div className="flex items-center gap-1 shrink-0">
                     <span
-                      title={`${t('orders.defaultPrice')}: ${formatCurrency(line.variant.price || 0, 'TOMAN', isPersian)}`}
+                      title={`${t('orders.defaultPrice')}: ${formatCurrency(line.variant.price || 0, currency, isPersian)}`}
                       className="text-[9px] px-1 py-0.5 bg-amber-100/80 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 rounded font-bold border border-amber-300 dark:border-amber-800"
                     >
                       {t('orders.customPriceNotice')}
@@ -155,7 +161,7 @@ export const OrderCartTable: React.FC<OrderCartTableProps> = ({
                     <button
                       type="button"
                       onClick={() => onUpdatePrice(line.variant.id, line.variant.price || 0)}
-                      title={`${t('orders.resetPrice')} (${formatCurrency(line.variant.price || 0, 'TOMAN', isPersian)})`}
+                      title={`${t('orders.resetPrice')} (${formatCurrency(line.variant.price || 0, currency, isPersian)})`}
                       className="text-[10px] text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 hover:underline p-0.5 font-bold"
                     >
                       {t('orders.resetPrice')}
@@ -177,9 +183,10 @@ export const OrderCartTable: React.FC<OrderCartTableProps> = ({
           <input
             type="number"
             min="0"
+            step="0.01"
             value={extraDiscount || ''}
             onChange={(e) => setExtraDiscount(Math.max(0, Number(e.target.value)))}
-            placeholder="0"
+            placeholder="0.00"
             className="w-full px-2.5 py-1.5 bg-[#fafafa] dark:bg-[#181a20] border border-[#ebebeb] dark:border-neutral-700 rounded-lg text-xs font-mono text-[#171717] dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-[#171717] dark:focus:ring-neutral-400"
           />
         </div>
@@ -187,7 +194,7 @@ export const OrderCartTable: React.FC<OrderCartTableProps> = ({
         <div>
           <div className="flex items-center justify-between mb-1">
             <label className="block text-[11px] font-bold text-[#4d4d4d] dark:text-neutral-300">
-              {t('orders.vatRate')}
+              {t('orders.vatRate')} ({taxPercent}%)
             </label>
             <button
               type="button"
@@ -199,9 +206,30 @@ export const OrderCartTable: React.FC<OrderCartTableProps> = ({
               {hasTax ? t('orders.active') : t('orders.inactive')}
             </button>
           </div>
-          <div className="px-2.5 py-1.5 bg-[#fafafa] dark:bg-[#181a20] border border-[#ebebeb] dark:border-neutral-700 rounded-lg text-xs font-mono text-[#888888] dark:text-neutral-400">
-            {hasTax ? `${formatCurrency(taxAmount, 'TOMAN', isPersian)}` : t('orders.noTax')}
-          </div>
+          {hasTax ? (
+            <div className="flex items-center gap-1.5">
+              <div className="relative w-16 shrink-0">
+                <input
+                  type="number"
+                  min="0"
+                  max="100"
+                  step="0.01"
+                  value={taxPercent}
+                  onChange={(e) => setTaxPercent(Math.min(100, Math.max(0, parseFloat(e.target.value) || 0)))}
+                  className="w-full ps-2 pe-4 py-1.5 bg-white dark:bg-[#181a20] border border-[#ebebeb] dark:border-neutral-700 rounded-lg text-xs font-mono font-bold text-[#171717] dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                  title="VAT %"
+                />
+                <span className="absolute end-1.5 top-1/2 -translate-y-1/2 text-[10px] text-neutral-400">%</span>
+              </div>
+              <div className="flex-1 px-2 py-1.5 bg-[#fafafa] dark:bg-[#181a20] border border-[#ebebeb] dark:border-neutral-700 rounded-lg text-xs font-mono text-[#4d4d4d] dark:text-neutral-300 truncate">
+                {formatCurrency(taxAmount, currency, isPersian)}
+              </div>
+            </div>
+          ) : (
+            <div className="px-2.5 py-1.5 bg-[#fafafa] dark:bg-[#181a20] border border-[#ebebeb] dark:border-neutral-700 rounded-lg text-xs font-mono text-[#888888] dark:text-neutral-400">
+              {t('orders.noTax')}
+            </div>
+          )}
         </div>
       </div>
     </div>

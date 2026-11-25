@@ -8,7 +8,7 @@ export function registerConfirmHandler(handler: ConfirmHandler) {
   globalConfirmHandler = handler;
 }
 
-export async function confirmAction(message: string, title: string = 'تایید عملیات'): Promise<boolean> {
+export async function confirmAction(message: string, title: string = 'Confirm Action'): Promise<boolean> {
   // 1. In Tauri Desktop environment, try native Tauri dialog first
   if (isTauriEnvironment()) {
     try {

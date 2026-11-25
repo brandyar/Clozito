@@ -45,10 +45,10 @@ export class ErrorBoundary extends Component<Props, State> {
             <AlertTriangle className="w-6 h-6" />
           </div>
           <h2 className="text-base font-bold text-neutral-900 dark:text-white mb-2">
-            {this.props.fallbackTitle || 'خطایی در نمایش این بخش رخ داد'}
+            {this.props.fallbackTitle || 'Something went wrong displaying this section'}
           </h2>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mb-4 max-w-md mx-auto leading-relaxed">
-            سامانه هنگام پردازش این صفحه با خطای پیش‌بینی‌نشده مواجه شد. می‌توانید با کلیک بر روی دکمه زیر صفحه را مجدداً بارگذاری کنید.
+            An unexpected error occurred while rendering this page. You can reload the view or return to the dashboard below.
           </p>
           {this.state.error && (
             <div className="mb-6 p-3 bg-neutral-50 dark:bg-neutral-900/80 rounded-lg text-start text-[11px] font-mono text-red-600 dark:text-red-400 border border-neutral-200 dark:border-neutral-800 overflow-x-auto max-h-32">
@@ -67,7 +67,7 @@ export class ErrorBoundary extends Component<Props, State> {
               className="gap-2 text-xs"
             >
               <Home className="w-3.5 h-3.5" />
-              <span>بازگشت به پیشخوان</span>
+              <span>Back to Dashboard</span>
             </Button>
             <Button
               variant="primary"
@@ -76,7 +76,7 @@ export class ErrorBoundary extends Component<Props, State> {
               className="gap-2 text-xs"
             >
               <RefreshCw className="w-3.5 h-3.5" />
-              <span>تلاش مجدد</span>
+              <span>Try Again</span>
             </Button>
           </div>
         </div>

@@ -15,6 +15,7 @@ import { generateBarcodeSvg, generateRandomBarcode } from '../../utils/barcode';
 import { useModuleAccess } from '../../hooks/useModuleAccess';
 import { ModuleLockedCard } from '../../components/modules/ModuleLockedCard';
 import { Pagination } from '../../components/ui/Pagination';
+import { BRAND } from '../../config/brand';
 import {
   Printer,
   Barcode as BarcodeIcon,
@@ -47,6 +48,7 @@ export const BarcodePrintView: React.FC = () => {
   const { activeOrganization } = useOrganization();
   const { hasAccess, loading: moduleLoading } = useModuleAccess();
   const isPersian = false;
+  const isIt = locale === 'it';
   const hasBarcodeAccess = hasAccess('barcode');
 
   const [variants, setVariants] = useState<ProductVariant[]>([]);
@@ -73,7 +75,7 @@ export const BarcodePrintView: React.FC = () => {
   // Label Design Config
   const [template, setTemplate] = useState<LabelTemplate>('thermal_50x30');
   const [showStoreName, setShowStoreName] = useState(true);
-  const [customStoreName, setCustomStoreName] = useState(activeOrganization?.name || 'TANKHOR');
+  const [customStoreName, setCustomStoreName] = useState(activeOrganization?.name || BRAND.shortName);
   const [showProductTitle, setShowProductTitle] = useState(true);
   const [showColorSize, setShowColorSize] = useState(true);
   const [showSku, setShowSku] = useState(true);
@@ -348,7 +350,9 @@ export const BarcodePrintView: React.FC = () => {
     return (
       <div className="py-24 flex flex-col items-center justify-center text-xs text-neutral-500">
         <RefreshCw className="w-5 h-5 animate-spin mb-3 text-neutral-400" />
-        <span>در حال بررسی مجوزهای ماژول چاپ بارکد...</span>
+        <span>
+          {isIt ? 'Verifica permessi modulo stampa codici a barre...' : 'Checking barcode print module permissions...'}
+        </span>
       </div>
     );
   }
@@ -379,7 +383,7 @@ export const BarcodePrintView: React.FC = () => {
                 icon={<Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-600" />}
               >
                 <span className="hidden sm:inline">{t('inventory.generateBarcodesForMissing')}</span>
-                <span className="sm:hidden">تولید بارکدهای ناقص</span>
+                <span className="sm:hidden">{isIt ? 'Genera mancanti' : 'Generate Missing'}</span>
               </Button>
               <Button
                 variant="primary"
@@ -465,7 +469,7 @@ export const BarcodePrintView: React.FC = () => {
 
             {/* Desktop View: Tabular Grid (hidden on mobile) */}
             <div className="hidden md:block max-h-[520px] overflow-y-auto overflow-x-auto rounded-lg border border-neutral-200 dark:border-neutral-800">
-              <table className="w-full text-right text-xs">
+              <table className="w-full text-start text-xs">
                 <thead className="bg-neutral-100 dark:bg-[#181a20] text-neutral-700 dark:text-neutral-300 font-bold border-b border-neutral-200 dark:border-neutral-800 sticky top-0 z-10">
                   <tr>
                     <th className="px-3 py-2.5 w-10 text-center">{t('inventory.selectCol')}</th>
@@ -913,7 +917,7 @@ export const BarcodePrintView: React.FC = () => {
                     <div
                       className="my-1"
                       dangerouslySetInnerHTML={{
-                        __html: generateBarcodeSvg(samplePrintItem.variant.barcode || samplePrintItem.variant.sku || '626123456789', {
+                        __html: generateBarcodeSvg(samplePrintItem.variant.barcode || samplePrintItem.variant.sku || '2001234567893', {
                           height: 28,
                           barWidth: 1.3,
                         }),
@@ -1051,7 +1055,7 @@ export const BarcodePrintView: React.FC = () => {
           ${template === 'a4_sheet_40' ? 'a4-grid-40' : ''}
         `}>
           {printQueue.map((item, idx) => {
-            const barcodeVal = item.variant.barcode || item.variant.sku || '626123456789';
+            const barcodeVal = item.variant.barcode || item.variant.sku || '2001234567893';
             return (
               <div
                 key={`${item.variant.id}_${idx}`}

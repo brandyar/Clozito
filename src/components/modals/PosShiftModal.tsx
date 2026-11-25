@@ -164,7 +164,7 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
     if (!displayedShift) return;
 
     const auditNote = params.isOtherCashierShift
-      ? `${params.closingNotes ? `${params.closingNotes} | ` : ''}[بسته شده توسط مدیر: ${
+      ? `${params.closingNotes ? `${params.closingNotes} | ` : ''}[Closed by Manager: ${
           user?.first_name || user?.email
         }]`
       : params.closingNotes;
@@ -191,11 +191,13 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
     return rawId ? Number(rawId) : '';
   }, [currentUserMember]);
 
+  const isIt = locale === 'it';
+
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title={isPersian ? 'مدیریت شیفت‌های صندوق فروش (POS Shift)' : 'POS Shift Management'}
+      title={isIt ? 'Gestione Turni Cassa (POS Shift)' : 'POS Shift Management'}
       maxWidth="3xl"
     >
       <div className="space-y-5">
@@ -211,11 +213,11 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
             }`}
           >
             <Clock className="w-4 h-4" />
-            <span>{isPersian ? 'شیفت فعال و جاری' : 'Active Shift'}</span>
+            <span>{isIt ? 'Turno Attivo' : 'Active Shift'}</span>
             {myOpenShift && <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />}
             {otherOpenShifts.length > 0 && !myOpenShift && (
               <span className="text-[10px] px-1.5 py-0.2 rounded-full bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 font-bold">
-                {otherOpenShifts.length} {isPersian ? 'همکار' : 'others'}
+                {otherOpenShifts.length} {isIt ? 'altri' : 'others'}
               </span>
             )}
           </button>
@@ -229,7 +231,7 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
             }`}
           >
             <History className="w-4 h-4" />
-            <span>{isPersian ? 'تاریخچه شیفت‌های گذشته' : 'Shift History'}</span>
+            <span>{isIt ? 'Storico Turni' : 'Shift History'}</span>
             <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-300 font-mono">
               {shiftHistory.length}
             </span>
@@ -238,7 +240,7 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
 
         {isLoading ? (
           <div className="py-12 text-center text-xs text-neutral-400">
-            {isPersian ? 'در حال بارگذاری اطلاعات شیفت...' : 'Loading shift data...'}
+            {isIt ? 'Caricamento dati turno...' : 'Loading shift data...'}
           </div>
         ) : activeTab === 'current' ? (
           <div className="space-y-4">
@@ -247,7 +249,7 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
               <div className="p-2.5 rounded-xl bg-neutral-50 dark:bg-[#14161d] border border-neutral-200 dark:border-neutral-800 flex flex-wrap items-center justify-between gap-2 text-xs">
                 <div className="flex items-center gap-2 text-neutral-600 dark:text-neutral-400 font-medium">
                   <Users className="w-4 h-4 text-indigo-500" />
-                  <span>{isPersian ? 'صندوق‌های فعال هم‌اکنون:' : 'Active Cashboxes:'}</span>
+                  <span>{isIt ? 'Casse Attive:' : 'Active Cashboxes:'}</span>
                 </div>
 
                 <div className="flex flex-wrap items-center gap-1.5">
@@ -262,7 +264,7 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
                       }`}
                     >
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-300 animate-pulse" />
-                      <span>{isPersian ? 'شیفت من' : 'My Shift'}</span>
+                      <span>{isIt ? 'Il Mio Turno' : 'My Shift'}</span>
                       <span className="font-mono text-[10px]">#{myOpenShift.id}</span>
                     </button>
                   ) : (
@@ -276,7 +278,7 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
                       }`}
                     >
                       <Play className="w-3 h-3" />
-                      <span>{isPersian ? 'شروع شیفت جدید برای من' : 'Start My Shift'}</span>
+                      <span>{isIt ? 'Avvia il Mio Turno' : 'Start My Shift'}</span>
                     </button>
                   )}
 
@@ -292,7 +294,7 @@ export const PosShiftModal: React.FC<PosShiftModalProps> = ({
                       }`}
                     >
                       <User className="w-3 h-3" />
-                      <span>{os.user_name || os.user_email || `کاربر #${os.user_id}`}</span>
+                      <span>{os.user_name || os.user_email || `User #${os.user_id}`}</span>
                       <span className="font-mono text-[10px]">#{os.id}</span>
                     </button>
                   ))}

@@ -51,6 +51,89 @@ export function resolveCurrencyCode(currency?: string | null): string {
 }
 
 /**
+ * Rounds any monetary amount to 2 decimal places (cents precision) without float drift.
+ */
+export function roundCurrency(amount: number | string | undefined | null): number {
+  const num = typeof amount === 'number' ? amount : Number(amount);
+  if (!Number.isFinite(num)) return 0;
+  return Math.round((num + Number.EPSILON) * 100) / 100;
+}
+
+/**
+ * Resolves the effective VAT / Tax rate (%) for an organization.
+ * Checks organization.default_tax_rate first, then per-org local cache, then BRAND.defaultVatRate (22%).
+ */
+export function getOrganizationTaxRate(org?: { id?: number; default_tax_rate?: number | string | null } | null): number {
+  const raw = org?.default_tax_rate;
+  if (raw !== undefined && raw !== null && raw !== '') {
+    const parsed = Number(raw);
+    if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 100) {
+      return roundCurrency(parsed);
+    }
+  }
+  if (typeof window !== 'undefined' && org?.id) {
+    try {
+      const cached = localStorage.getItem(`clozito_org_vat_${org.id}`);
+      if (cached !== null && cached !== '') {
+        const parsed = Number(cached);
+        if (Number.isFinite(parsed) && parsed >= 0 && parsed <= 100) {
+          return roundCurrency(parsed);
+        }
+      }
+    } catch {
+      // ignore storage errors
+    }
+  }
+  return BRAND.defaultVatRate;
+}
+
+export function saveOrganizationTaxRateCache(orgId?: number | null, rate?: number | null): void {
+  if (typeof window === 'undefined' || !orgId || rate === undefined || rate === null) return;
+  const parsed = Number(rate);
+  if (!Number.isFinite(parsed) || parsed < 0 || parsed > 100) return;
+  try {
+    localStorage.setItem(`clozito_org_vat_${orgId}`, String(roundCurrency(parsed)));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export interface FiscalMetadata {
+  vat_number?: string | null;
+  tax_code?: string | null;
+}
+
+export function getFiscalMetadataCache(entity: 'org' | 'customer', id?: number | null): FiscalMetadata {
+  if (typeof window === 'undefined' || !id) return {};
+  try {
+    const raw = localStorage.getItem(`clozito_${entity}_fiscal_${id}`);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return {
+      vat_number: typeof parsed?.vat_number === 'string' ? parsed.vat_number : null,
+      tax_code: typeof parsed?.tax_code === 'string' ? parsed.tax_code : null,
+    };
+  } catch {
+    return {};
+  }
+}
+
+export function saveFiscalMetadataCache(entity: 'org' | 'customer', id?: number | null, meta?: FiscalMetadata): void {
+  if (typeof window === 'undefined' || !id || !meta) return;
+  try {
+    const existing = getFiscalMetadataCache(entity, id);
+    const next: FiscalMetadata = {
+      vat_number: meta.vat_number !== undefined ? (meta.vat_number?.trim() || null) : existing.vat_number ?? null,
+      tax_code: meta.tax_code !== undefined ? (meta.tax_code?.trim() || null) : existing.tax_code ?? null,
+    };
+    localStorage.setItem(`clozito_${entity}_fiscal_${id}`, JSON.stringify(next));
+  } catch {
+    // ignore storage errors
+  }
+}
+
+
+/**
  * Formats monetary amounts with 2-decimal precision according to active locale and currency.
  * - Italian (it-IT): 1.250,50 €
  * - English (en-IE): €1,250.50

@@ -390,7 +390,7 @@ export class BackupManager {
 
     const now = new Date();
     const metadata: TankhorBackupMetadata = {
-      app: 'TANKHOR (تن‌خور)',
+      app: 'Clozito',
       signature: 'tankhor_full_backup_v1',
       version: APP_VERSION || '1.2.0',
       exported_at: now.toISOString(),
@@ -442,9 +442,9 @@ export class BackupManager {
     const backupObj = this.generateBackup(organization);
     const jsonStr = JSON.stringify(backupObj, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
-    const orgSlug = organization?.slug || 'tankhor';
+    const orgSlug = organization?.slug || 'clozito';
     const dateStr = new Date().toISOString().slice(0, 10);
-    triggerBlobDownload(blob, `tankhor_backup_${orgSlug}_${dateStr}.json`);
+    triggerBlobDownload(blob, `clozito_backup_${orgSlug}_${dateStr}.json`);
   }
 
   /**
@@ -456,9 +456,9 @@ export class BackupManager {
     const backupObj = await this.generateBackupAsync(organization);
     const jsonStr = JSON.stringify(backupObj, null, 2);
     const blob = new Blob([jsonStr], { type: 'application/json;charset=utf-8;' });
-    const orgSlug = organization?.slug || 'tankhor';
+    const orgSlug = organization?.slug || 'clozito';
     const dateStr = new Date().toISOString().slice(0, 10);
-    const fileName = `tankhor_backup_${orgSlug}_${dateStr}.json`;
+    const fileName = `clozito_backup_${orgSlug}_${dateStr}.json`;
     triggerBlobDownload(blob, fileName);
     return {
       success: true,
@@ -474,12 +474,12 @@ export class BackupManager {
     try {
       const parsed = JSON.parse(content);
       if (!parsed || typeof parsed !== 'object') {
-        return { valid: false, error: 'فایل بارگذاری شده ساختار معتبر JSON ندارد.' };
+        return { valid: false, error: 'The uploaded file does not contain valid JSON.' };
       }
 
       const data = parsed.data && typeof parsed.data === 'object' ? parsed.data : parsed;
       const metadata: TankhorBackupMetadata = parsed.metadata || {
-        app: 'TANKHOR',
+        app: 'Clozito',
         signature: 'tankhor_legacy_backup',
         version: '1.0.0',
         exported_at: new Date().toISOString(),
@@ -504,7 +504,7 @@ export class BackupManager {
       metadata.collections_summary = summary;
 
       if (total === 0) {
-        return { valid: false, error: 'فایل انتخاب شده حاوی داده‌های معتبر پایگاه داده تن‌خور نیست.' };
+        return { valid: false, error: 'The selected file does not contain valid Clozito backup data.' };
       }
 
       return {
@@ -514,7 +514,7 @@ export class BackupManager {
         data,
       };
     } catch (e: any) {
-      return { valid: false, error: `خطا در خواندن فایل پشتیبان: ${e.message || 'فرمت نامعتبر'}` };
+      return { valid: false, error: `Failed to read backup file: ${e.message || 'Invalid format'}` };
     }
   }
 
@@ -671,12 +671,12 @@ export class BackupManager {
             const { CloudMigrationManager } = await import('./cloudMigrationManager');
             const cloudRes = await CloudMigrationManager.migrateLocalToCloud(activeOrgId);
             if (!cloudRes.success && cloudRes.errors.length > 0) {
-              warning = `بازیابی محلی انجام شد اما همگام‌سازی برخی موارد با سرور ابری با خطا مواجه شد: ${cloudRes.errors[0]}`;
+              warning = `Local restore completed, but syncing some records to Cloud failed: ${cloudRes.errors[0]}`;
             }
           }
         } catch (cloudErr: any) {
           console.warn('[BackupManager] Cloud sync warning during restore:', cloudErr);
-          warning = `بازیابی محلی انجام شد اما همگام‌سازی ابری کامل نشد: ${cloudErr?.message || ''}`;
+          warning = `Local restore completed, but Cloud sync did not finish: ${cloudErr?.message || ''}`;
         }
       }
 
@@ -696,7 +696,7 @@ export class BackupManager {
 
       return { success: true, restoredCount: totalRestored, warning };
     } catch (e: any) {
-      return { success: false, restoredCount: 0, error: e.message || 'خطا در بازیابی اطلاعات' };
+      return { success: false, restoredCount: 0, error: e.message || 'Failed to restore backup data' };
     }
   }
 
@@ -705,7 +705,7 @@ export class BackupManager {
       return {
         success: false,
         count: 0,
-        message: 'داده‌ای در این بخش برای خروجی اکسل وجود ندارد.',
+        message: 'No data available in this collection for CSV export.',
       };
     }
 
@@ -743,13 +743,13 @@ export class BackupManager {
       csvRows.push(row.join(','));
     }
 
-    const fileName = `tankhor_${collectionName}_${new Date().toISOString().slice(0, 10)}.csv`;
+    const fileName = `clozito_${collectionName}_${new Date().toISOString().slice(0, 10)}.csv`;
     downloadCsvContent(csvRows.join('\n'), fileName);
 
     return {
       success: true,
       count: items.length,
-      message: `خروجی CSV با ${items.length} ردیف با موفقیت دانلود شد.`,
+      message: `CSV export downloaded successfully (${items.length} rows).`,
     };
   }
 
@@ -830,19 +830,19 @@ export class BackupManager {
 
       // 4. Colors
       const colors = [
-        { id: 501, organization_id: activeOrgId, name: isIt ? 'Nero Opaco' : 'Matte Black', hex: '#18181b', hex_code: '#18181b', status: 'active' },
-        { id: 502, organization_id: activeOrgId, name: isIt ? 'Beige Cammello' : 'Warm Camel', hex: '#d4b996', hex_code: '#d4b996', status: 'active' },
-        { id: 503, organization_id: activeOrgId, name: isIt ? 'Grigio Melange' : 'Heather Grey', hex: '#9ca3af', hex_code: '#9ca3af', status: 'active' },
-        { id: 504, organization_id: activeOrgId, name: isIt ? 'Verde Salvia' : 'Sage Green', hex: '#5b7065', hex_code: '#5b7065', status: 'active' },
-        { id: 505, organization_id: activeOrgId, name: isIt ? 'Blu Notte' : 'Midnight Navy', hex: '#1e293b', hex_code: '#1e293b', status: 'active' },
+        { id: 501, organization_id: activeOrgId, name: isIt ? 'Nero Opaco' : 'Matte Black', code: 'BLK', hex: '#18181b', status: 'active' },
+        { id: 502, organization_id: activeOrgId, name: isIt ? 'Beige Cammello' : 'Warm Camel', code: 'CML', hex: '#d4b996', status: 'active' },
+        { id: 503, organization_id: activeOrgId, name: isIt ? 'Grigio Melange' : 'Heather Grey', code: 'GRY', hex: '#9ca3af', status: 'active' },
+        { id: 504, organization_id: activeOrgId, name: isIt ? 'Verde Salvia' : 'Sage Green', code: 'SGE', hex: '#5b7065', status: 'active' },
+        { id: 505, organization_id: activeOrgId, name: isIt ? 'Blu Notte' : 'Midnight Navy', code: 'NVY', hex: '#1e293b', status: 'active' },
       ];
       this.setRawCollection('colors', colors);
 
       // 5. Size Groups & Sizes
       const sizeGroups = [
-        { id: 601, organization_id: activeOrgId, name: isIt ? 'Taglie Abbigliamento Standard (S - XL)' : 'Standard Apparel Sizes (S - XL)', type: 'apparel', status: 'active' },
-        { id: 602, organization_id: activeOrgId, name: isIt ? 'Taglie EU Pantaloni (38 - 44)' : 'EU Trousers Sizes (38 - 44)', type: 'apparel', status: 'active' },
-        { id: 603, organization_id: activeOrgId, name: isIt ? 'Taglie EU Calzature (38 - 42)' : 'EU Footwear Sizes (38 - 42)', type: 'shoes', status: 'active' },
+        { id: 601, organization_id: activeOrgId, name: isIt ? 'Taglie Abbigliamento Standard (S - XL)' : 'Standard Apparel Sizes (S - XL)', category: 'apparel', type: 'apparel', status: 'active' },
+        { id: 602, organization_id: activeOrgId, name: isIt ? 'Taglie EU Pantaloni (38 - 44)' : 'EU Trousers Sizes (38 - 44)', category: 'apparel', type: 'apparel', status: 'active' },
+        { id: 603, organization_id: activeOrgId, name: isIt ? 'Taglie EU Calzature (38 - 42)' : 'EU Footwear Sizes (38 - 42)', category: 'shoes', type: 'shoes', status: 'active' },
       ];
       this.setRawCollection('size_groups', sizeGroups);
 
@@ -862,8 +862,8 @@ export class BackupManager {
 
       // 6. Warehouses & Locations
       const warehouses = [
-        { id: 801, organization_id: activeOrgId, name: isIt ? 'Magazzino Centrale Milano' : 'Milan Central Warehouse', code: 'WH-MAIN', is_default: true, status: 'active' },
-        { id: 802, organization_id: activeOrgId, name: isIt ? 'Boutique Flagship Brera' : 'Brera Flagship Boutique', code: 'WH-BRERA', is_default: false, status: 'active' },
+        { id: 801, organization_id: activeOrgId, name: isIt ? 'Magazzino Centrale Milano' : 'Milan Central Warehouse', code: 'WH-MAIN', type: 'warehouse', is_default: true, status: 'active' },
+        { id: 802, organization_id: activeOrgId, name: isIt ? 'Boutique Flagship Brera' : 'Brera Flagship Boutique', code: 'WH-BRERA', type: 'store', is_default: false, status: 'active' },
       ];
       this.setRawCollection('warehouses', warehouses);
 
@@ -880,13 +880,16 @@ export class BackupManager {
           id: 1001,
           organization_id: activeOrgId,
           title: isIt ? 'Cappotto Sartoriale in Lana Doppiopetto' : 'Double-Breasted Tailored Wool Coat',
+          slug: 'double-breasted-tailored-wool-coat',
           code: 'PRD-1001',
           category_id: 101,
           brand_id: 201,
           collection_id: 401,
           season_id: 301,
+          size_guide_template_id: 7001,
           gender: 'women',
           material: isIt ? '80% Lana Vergine Italiana, 20% Cashmere' : '80% Italian Virgin Wool, 20% Cashmere',
+          description: isIt ? '80% Lana Vergine Italiana, 20% Cashmere' : '80% Italian Virgin Wool, 20% Cashmere',
           status: 'published',
           date_created: new Date().toISOString(),
         },
@@ -894,13 +897,16 @@ export class BackupManager {
           id: 1002,
           organization_id: activeOrgId,
           title: isIt ? 'Felpa Oversize con Cappuccio in Cotone Organico' : 'Heavyweight Organic Cotton Oversized Hoodie',
+          slug: 'heavyweight-organic-cotton-oversized-hoodie',
           code: 'PRD-1002',
           category_id: 102,
           brand_id: 204,
           collection_id: 401,
           season_id: 301,
+          size_guide_template_id: 7002,
           gender: 'unisex',
           material: isIt ? '100% Cotone Organico 420gsm' : '100% Organic Cotton Fleece 420gsm',
+          description: isIt ? '100% Cotone Organico 420gsm' : '100% Organic Cotton Fleece 420gsm',
           status: 'published',
           date_created: new Date().toISOString(),
         },
@@ -908,6 +914,7 @@ export class BackupManager {
           id: 1003,
           organization_id: activeOrgId,
           title: isIt ? 'Jeans Relaxed Fit a Vita Alta Lavaggio Vintage' : 'High-Waist Relaxed Vintage Wash Denim',
+          slug: 'high-waist-relaxed-vintage-wash-denim',
           code: 'PRD-1003',
           category_id: 103,
           brand_id: 202,
@@ -915,6 +922,7 @@ export class BackupManager {
           season_id: 301,
           gender: 'women',
           material: isIt ? '100% Denim Selvedge Cotone' : '100% Cotton Selvedge Denim',
+          description: isIt ? '100% Denim Selvedge Cotone' : '100% Cotton Selvedge Denim',
           status: 'published',
           date_created: new Date().toISOString(),
         },
@@ -922,6 +930,7 @@ export class BackupManager {
           id: 1004,
           organization_id: activeOrgId,
           title: isIt ? 'Sneakers Basse in Pelle Naturale Artigianali' : 'Artisanal Full-Grain Leather Low Sneakers',
+          slug: 'artisanal-full-grain-leather-low-sneakers',
           code: 'PRD-1004',
           category_id: 105,
           brand_id: 203,
@@ -929,6 +938,7 @@ export class BackupManager {
           season_id: 302,
           gender: 'unisex',
           material: isIt ? 'Pelle di Vitello Pieno Fiore, Suola Margom' : 'Full-Grain Calfskin Leather, Margom Sole',
+          description: isIt ? 'Pelle di Vitello Pieno Fiore, Suola Margom' : 'Full-Grain Calfskin Leather, Margom Sole',
           status: 'published',
           date_created: new Date().toISOString(),
         },
@@ -979,6 +989,7 @@ export class BackupManager {
           organization_id: activeOrgId,
           order_number: 'ORD-2026-1001',
           customer_id: 4001,
+          currency: BRAND.defaultCurrency,
           status: 'completed',
           payment_status: 'paid',
           subtotal: 338.00,
@@ -996,6 +1007,7 @@ export class BackupManager {
           organization_id: activeOrgId,
           order_number: 'ORD-2026-1002',
           customer_id: 4002,
+          currency: BRAND.defaultCurrency,
           status: 'processing',
           payment_status: 'paid',
           subtotal: 119.00,
@@ -1242,9 +1254,9 @@ export class BackupManager {
         );
       }
 
-      return { success: true, message: 'اطلاعات محلی سازمان با موفقیت پاکسازی شد.' };
+      return { success: true, message: 'Local organization data cleared successfully.' };
     } catch (e: any) {
-      return { success: false, message: `خطا در پاکسازی داده‌ها: ${e.message}` };
+      return { success: false, message: `Failed to clear local data: ${e.message}` };
     }
   }
 }

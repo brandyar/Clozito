@@ -165,7 +165,7 @@ export class SqliteCatalogStorage {
         product_id: prodId || v.product_id,
         color_id: colorId,
         size_id: sizeId,
-        product_title: prod?.title || v.product_title || 'محصول',
+        product_title: prod?.title || v.product_title || 'Product',
         color_name: color?.name || v.color_name || '-',
         size_name: size?.name || v.size_name || '-',
         stock_quantity: totalStock,
@@ -340,7 +340,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<Category>('categories');
     const validId = typeof cat.id === 'number' && cat.id > 0 ? cat.id : this.base.generateUniqueId(list);
     const saved: Category = {
-      name: cat.name || 'دسته‌بندی جدید',
+      name: cat.name || 'New Category',
       slug: cat.slug || `cat-${validId}`,
       status: 'active',
       organization_id: cat.organization_id || 1,
@@ -361,7 +361,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<Collection>('collections');
     const validId = typeof col.id === 'number' && col.id > 0 ? col.id : this.base.generateUniqueId(list);
     const saved: Collection = {
-      name: col.name || 'کالکشن جدید',
+      name: col.name || 'New Collection',
       slug: col.slug || `col-${validId}`,
       status: 'active',
       organization_id: col.organization_id || 1,
@@ -382,7 +382,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<Brand>('brands');
     const validId = typeof brand.id === 'number' && brand.id > 0 ? brand.id : this.base.generateUniqueId(list);
     const saved: Brand = {
-      name: brand.name || 'برند جدید',
+      name: brand.name || 'New Brand',
       status: 'active',
       organization_id: brand.organization_id || 1,
       ...brand,
@@ -402,7 +402,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<Season>('seasons');
     const validId = typeof season.id === 'number' && season.id > 0 ? season.id : this.base.generateUniqueId(list);
     const saved: Season = {
-      name: season.name || 'فصل جدید',
+      name: season.name || 'New Season',
       status: 'active',
       organization_id: season.organization_id || 1,
       ...season,
@@ -422,7 +422,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<Color>('colors');
     const validId = typeof color.id === 'number' && color.id > 0 ? color.id : this.base.generateUniqueId(list);
     const saved: Color = {
-      name: color.name || 'رنگ جدید',
+      name: color.name || 'New Color',
       hex: color.hex || '#000000',
       status: 'active',
       organization_id: color.organization_id || 1,
@@ -443,7 +443,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<SizeGroup>('size_groups');
     const validId = typeof group.id === 'number' && group.id > 0 ? group.id : this.base.generateUniqueId(list);
     const saved: SizeGroup = {
-      name: group.name || 'گروه سایز جدید',
+      name: group.name || 'New Size Group',
       category: group.category || 'apparel',
       status: 'active',
       organization_id: group.organization_id || 1,
@@ -464,7 +464,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<Size>('sizes');
     const validId = typeof size.id === 'number' && size.id > 0 ? size.id : this.base.generateUniqueId(list);
     const saved: Size = {
-      name: size.name || 'سایز جدید',
+      name: size.name || 'New Size',
       status: 'active',
       organization_id: size.organization_id || 1,
       ...size,
@@ -491,7 +491,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<SizeGuideTemplate>('size_guide_templates');
     const validId = typeof tpl.id === 'number' && tpl.id > 0 ? tpl.id : this.base.generateUniqueId(list);
     const saved: SizeGuideTemplate = {
-      name: tpl.name || 'قالب راهنمای سایز جدید',
+      name: tpl.name || 'New Size Guide Template',
       type: tpl.type || 'apparel',
       unit: tpl.unit || 'cm',
       status: 'active',
@@ -518,7 +518,7 @@ export class SqliteCatalogStorage {
     const list = await this.base.getItems<SizeGuideMeasurement>('size_guide_measurements');
     const validId = typeof meas.id === 'number' && meas.id > 0 ? meas.id : this.base.generateUniqueId(list);
     const saved: SizeGuideMeasurement = {
-      name: meas.name || 'اندازه جدید',
+      name: meas.name || 'New Measurement',
       template_id: meas.template_id || 1,
       unit: meas.unit || 'cm',
       type: meas.type || 'width',

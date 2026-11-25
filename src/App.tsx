@@ -41,6 +41,9 @@ import { WebFreePlanGuardModal } from './components/modals/WebFreePlanGuardModal
 import { ConfirmModalHost } from './components/ui/ConfirmModal';
 import { UpdateNotificationModal } from './components/modals/UpdateNotificationModal';
 import { PaymentResultModal } from './components/modals/PaymentResultModal';
+import { LegalDocumentPage } from './features/legal/LegalDocumentView';
+import { LegalDocType } from './features/legal/legalContent';
+import { CookieConsentBanner } from './components/ui/CookieConsentBanner';
 import { ModuleAccessProvider } from './context/ModuleAccessContext';
 import { Card } from './components/ui/Card';
 import { Button } from './components/ui/Button';
@@ -151,6 +154,8 @@ const AuthenticatedApp: React.FC = () => {
         return permissions.canViewFinancials;
       case 'reports/apparel':
         return permissions.canViewOrders || permissions.canViewFinancials;
+      case 'settings/privacy':
+        return true;
       case 'settings':
       case 'settings/org':
       case 'settings/general':
@@ -295,6 +300,7 @@ const AuthenticatedApp: React.FC = () => {
       case 'settings/modules':
       case 'settings/sync':
       case 'settings/appearance':
+      case 'settings/privacy':
       case 'settings/updater':
         return <SettingsView activeSubRoute={currentRoute} onNavigate={setCurrentRoute} />;
       default:
@@ -343,14 +349,51 @@ const getPublicCatalogSlug = (): string | null => {
   return null;
 };
 
+const getPublicLegalDoc = (): LegalDocType | null => {
+  if (typeof window === 'undefined') return null;
+  const path = window.location.pathname.toLowerCase().replace(/\/+$/, '');
+  if (path === '/legal/terms' || path === '/terms') return 'terms';
+  if (path === '/legal/privacy' || path === '/privacy') return 'privacy';
+  if (path === '/legal/cookies' || path === '/cookies') return 'cookies';
+
+  const params = new URLSearchParams(window.location.search);
+  const qLegal = (params.get('legal') || '').toLowerCase();
+  if (qLegal === 'terms' || qLegal === 'privacy' || qLegal === 'cookies') {
+    return qLegal;
+  }
+
+  const hash = window.location.hash.toLowerCase();
+  if (hash.startsWith('#/legal/terms')) return 'terms';
+  if (hash.startsWith('#/legal/privacy')) return 'privacy';
+  if (hash.startsWith('#/legal/cookies')) return 'cookies';
+  return null;
+};
+
 const MainAppContent: React.FC = () => {
+  const [publicLegalDoc, setPublicLegalDoc] = useState<LegalDocType | null>(() => getPublicLegalDoc());
+  const { isAuthenticated, isLoading } = useAuth();
+  const { t } = useTranslation();
+
   const publicCatalogSlug = getPublicCatalogSlug();
+  if (publicLegalDoc) {
+    return (
+      <LegalDocumentPage
+        initialDoc={publicLegalDoc}
+        onExit={() => {
+          try {
+            window.history.replaceState({}, '', '/');
+          } catch {
+            // Ignore restricted history API
+          }
+          setPublicLegalDoc(null);
+        }}
+      />
+    );
+  }
+
   if (publicCatalogSlug) {
     return <PublicCatalogView organizationSlug={publicCatalogSlug} />;
   }
-
-  const { isAuthenticated, isLoading } = useAuth();
-  const { t } = useTranslation();
 
   if (isLoading) {
     return (
@@ -387,6 +430,7 @@ export default function App() {
       <I18nProvider>
         <AuthProvider>
           <MainAppContent />
+          <CookieConsentBanner />
           <ConfirmModalHost />
           <UpdateNotificationModal />
         </AuthProvider>

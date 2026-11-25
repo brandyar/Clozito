@@ -163,16 +163,29 @@ export async function syncAndPersistFinancialAccountBalances(orgIdNum: number, f
         }
 
         if (destAcc && destAcc.id) {
+          const safeAmt = Math.max(0, Math.round((ordAmt + Number.EPSILON) * 100) / 100);
+          const txPayload = {
+            organization_id: orgIdNum,
+            destination_account_id: Number(destAcc.id),
+            type: 'deposit',
+            amount: safeAmt,
+            tracking_code: trackingCode,
+            transaction_date: ord.order_date || ord.date_created || new Date().toISOString(),
+          };
           try {
-            const safeAmt = Math.max(0, Math.round(ordAmt));
-            const newTx = await DirectusAdminClient.createItem('treasury_transactions', {
-              organization_id: orgIdNum,
-              destination_account_id: Number(destAcc.id),
-              type: 'deposit',
-              amount: safeAmt,
-              tracking_code: trackingCode,
-              transaction_date: ord.order_date || ord.date_created || new Date().toISOString(),
-            });
+            let newTx: any;
+            try {
+              newTx = await DirectusAdminClient.createItem('treasury_transactions', txPayload);
+            } catch (innerErr: any) {
+              if (String(innerErr?.message || '').includes('syntax for type bigint')) {
+                newTx = await DirectusAdminClient.createItem('treasury_transactions', {
+                  ...txPayload,
+                  amount: Math.round(safeAmt),
+                });
+              } else {
+                throw innerErr;
+              }
+            }
             allTxs.push(newTx);
             existingTracking.add(trackingCode);
           } catch (txErr: any) {
@@ -215,8 +228,10 @@ export async function syncAndPersistFinancialAccountBalances(orgIdNum: number, f
             }
           });
 
+          balance = Math.round((balance + Number.EPSILON) * 100) / 100;
+
         // CRITICAL: PERSIST current_balance DIRECTLY INTO DIRECTUS DATABASE!
-        if (Number(acc.current_balance) !== balance) {
+        if (Math.round(((Number(acc.current_balance) || 0) + Number.EPSILON) * 100) / 100 !== balance) {
           await DirectusAdminClient.updateItem('financial_accounts', acc.id, {
             current_balance: balance,
           }).catch((updateErr: any) =>

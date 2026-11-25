@@ -50,7 +50,7 @@ export async function checkDesktopUpdate(options?: { target?: string }): Promise
     const updaterModule = await import('@tauri-apps/plugin-updater');
     
     if (!updaterModule || typeof updaterModule.check !== 'function') {
-      throw new Error('ماژول بروزرسانی (Updater) در این بیلد در دسترس نیست.');
+      throw new Error('The auto-updater module is not available in this build.');
     }
 
     // Attempt default check first
@@ -130,7 +130,7 @@ export async function downloadAndInstallUpdate(
   onProgress?: (downloaded: number, total: number) => void
 ): Promise<void> {
   if (!updateObj) {
-    throw new Error('شیء بروزرسانی نامعتبر است.');
+    throw new Error('Invalid update package object.');
   }
 
   let downloaded = 0;

@@ -90,7 +90,7 @@ export class LocalAccountingStorage {
       savedCat = {
         id: newId,
         organization_id: orgId,
-        title: category.title || 'دسته‌بندی جدید',
+        title: category.title || 'New Category',
         code: category.code || `cat-${Date.now().toString().slice(-4)}`,
         status: category.status || 'active',
         ...category,
@@ -166,7 +166,7 @@ export class LocalAccountingStorage {
       savedExp = {
         id: newId,
         organization_id: orgId,
-        title: expense.title || 'هزینه جدید',
+        title: expense.title || 'New Expense',
         amount: Math.max(0, Number(expense.amount) || 0),
         expense_date: expense.expense_date || new Date().toISOString().split('T')[0],
         category_id: expense.category_id || 1,
@@ -197,7 +197,7 @@ export class LocalAccountingStorage {
             type: 'withdrawal',
             amount: savedExp.amount,
             expense_id: savedExp.id,
-            description: `پرداخت هزینه: ${savedExp.title}`,
+            description: `Expense payment: ${savedExp.title}`,
             transaction_date: savedExp.expense_date,
           });
         }
@@ -418,7 +418,7 @@ export class LocalAccountingStorage {
     const catMap = new Map<number, { title: string; amount: number }>();
     filteredExpenses.forEach((e) => {
       const catKey = Number(typeof e.category_id === 'object' ? (e.category_id as any)?.id : e.category_id) || 0;
-      const catTitle = e.category_title || (e as any).category_name || 'سایر هزینه‌ها';
+      const catTitle = e.category_title || (e as any).category_name || 'Other Expenses';
       const current = catMap.get(catKey) || { title: catTitle, amount: 0 };
       current.amount += Number(e.amount) || 0;
       catMap.set(catKey, current);
@@ -700,7 +700,7 @@ export class LocalAccountingStorage {
       savedAcc = {
         id: newId,
         organization_id: orgId,
-        name: account.name || 'حساب جدید',
+        name: account.name || 'New Account',
         type: account.type || 'cashbox',
         warehouse_id: parsedWarehouseId !== undefined ? parsedWarehouseId : null,
         bank_name: account.bank_name || null,
@@ -937,7 +937,7 @@ export class LocalAccountingStorage {
         type: cheque.type || 'received',
         sayad_id: cheque.sayad_id || '',
         cheque_number: cheque.cheque_number || '',
-        bank_name: cheque.bank_name || 'بانک ملت',
+        bank_name: cheque.bank_name || '',
         branch_name: cheque.branch_name || null,
         account_number: cheque.account_number || null,
         drawer_name: cheque.drawer_name || '',
@@ -1201,7 +1201,7 @@ export class LocalAccountingStorage {
       if (alloc.variant_id && alloc.effective_unit_cost && alloc.effective_unit_cost > 0) {
         const vIdx = variants.findIndex((v) => v.id === alloc.variant_id);
         if (vIdx !== -1) {
-          variants[vIdx].buy_price = Math.round(Number(alloc.effective_unit_cost));
+          variants[vIdx].buy_price = Math.round(((Number(alloc.effective_unit_cost) || 0) + Number.EPSILON) * 100) / 100;
           updatedCount++;
         }
       }
@@ -1216,7 +1216,7 @@ export class LocalAccountingStorage {
 
   async getVatReport(params?: { organizationId?: number; year?: number; quarter?: 1 | 2 | 3 | 4 }): Promise<VatReportSummary> {
     const orgId = params?.organizationId || this.base.getActiveOrgId() || 1;
-    const year = params?.year || 1403;
+    const year = params?.year || new Date().getFullYear();
     const quarter = params?.quarter || 1;
 
     let orders = this.base.getItem<Order>('orders', []);
@@ -1243,10 +1243,10 @@ export class LocalAccountingStorage {
     const netVatPayable = salesVat - purchasesVat;
 
     const quarterLabels: Record<number, string> = {
-      1: `بهار ${year}`,
-      2: `تابستان ${year}`,
-      3: `پاییز ${year}`,
-      4: `زمستان ${year}`,
+      1: `Q1 ${year}`,
+      2: `Q2 ${year}`,
+      3: `Q3 ${year}`,
+      4: `Q4 ${year}`,
     };
 
     const salesInvoices = orders.map((o) => {
@@ -1255,7 +1255,7 @@ export class LocalAccountingStorage {
       return {
         id: o.id,
         orderNumber: o.order_number,
-        customerName: cust?.name || o.customer_name || 'مشتری متفرقه',
+        customerName: cust?.name || o.customer_name || 'Walk-in Customer',
         nationalId: cust?.phone || '',
         date: o.date_created || '',
         subtotal: Number(o.subtotal) || Number(o.total) || 0,
@@ -1270,7 +1270,7 @@ export class LocalAccountingStorage {
       return {
         id: p.id,
         purchaseNumber: p.purchase_number,
-        supplierName: sup?.name || p.supplier_name || 'تامین‌کننده',
+        supplierName: sup?.name || p.supplier_name || 'Supplier',
         economicCode: sup?.phone || '',
         date: p.date_created || '',
         subtotal: Number(p.subtotal) || Number(p.total) || 0,
@@ -1282,13 +1282,13 @@ export class LocalAccountingStorage {
     return {
       year,
       quarter,
-      periodLabel: quarterLabels[quarter] || `فصل ${quarter} سال ${year}`,
+      periodLabel: quarterLabels[quarter] || `Q${quarter} ${year}`,
       salesTaxableAmount: salesTaxable,
       salesVatAmount: salesVat,
       purchasesTaxableAmount: purchasesTaxable,
       purchasesVatAmount: purchasesVat,
       netVatPayable,
-      vatRate: 10,
+      vatRate: 22,
       ordersCount: orders.length,
       purchasesCount: purchaseOrders.length,
       salesInvoices,
@@ -1296,7 +1296,7 @@ export class LocalAccountingStorage {
     };
   }
 
-  // POS Shifts (شیفت‌های صندوق)
+  // POS Shifts
   async getPosShifts(params?: QueryParams & { user_id?: string; status?: PosShiftStatus; warehouse_id?: number }): Promise<PosShift[]> {
     const all = this.base.getItem<PosShift>('pos_shifts', []);
     let filtered = this.base.filterByOrg(all, params);
@@ -1340,9 +1340,9 @@ export class LocalAccountingStorage {
             return true;
           }
 
-          // 2. Check notes for explicit shift reference [شیفت #X] or [Shift #X]
+          // 2. Check notes for explicit shift reference [Shift #X]
           const notesStr = String(o.notes || '');
-          if (notesStr.includes(`شیفت #${shift.id}`) || notesStr.includes(`Shift #${shift.id}`)) {
+          if (notesStr.includes(`Shift #${shift.id}`)) {
             return true;
           }
 
@@ -1402,14 +1402,14 @@ export class LocalAccountingStorage {
           const ordTotal = Number(ord.total) || 0;
           totalSales += ordTotal;
           const pMethod = String(ord.payment_method || (ord as any).payment_type || ord.notes || '').toLowerCase();
-          if (pMethod.includes('cash') || pMethod.includes('نقدی') || pMethod.includes('نقد')) {
+          if (pMethod.includes('cash') || pMethod.includes('contanti')) {
             cashSales += ordTotal;
-          } else if (pMethod.includes('pos') || pMethod.includes('پوز') || pMethod.includes('کارتخوان')) {
+          } else if (pMethod.includes('pos') || pMethod.includes('terminal')) {
             posSales += ordTotal;
-          } else if (pMethod.includes('card') || pMethod.includes('کارت')) {
+          } else if (pMethod.includes('card') || pMethod.includes('carta')) {
             cardSales += ordTotal;
-            posSales += ordTotal; // Electronic card-to-card also counted in electronic card sales
-          } else if (pMethod.includes('credit') || pMethod.includes('نسیه')) {
+            posSales += ordTotal;
+          } else if (pMethod.includes('credit') || pMethod.includes('credito')) {
             creditSales += ordTotal;
           } else {
             posSales += ordTotal;
@@ -1458,8 +1458,8 @@ export class LocalAccountingStorage {
 
         return {
           ...shift,
-          warehouse_name: wh?.name || (whId ? `انبار #${whId}` : undefined),
-          account_name: acc?.name || (accId ? `حساب #${accId}` : undefined),
+          warehouse_name: wh?.name || (whId ? `Warehouse #${whId}` : undefined),
+          account_name: acc?.name || (accId ? `Account #${accId}` : undefined),
           user_name: usr ? `${usr.first_name || ''} ${usr.last_name || ''}`.trim() || usr.email : undefined,
           user_email: usr?.email,
           total_sales_amount: totalSales,

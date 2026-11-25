@@ -34,7 +34,7 @@ woocommerceRouter.post('/test-connection', async (req: Request, res: Response) =
     if (!site_url || !consumer_key || !consumer_secret) {
       return res.status(400).json({
         success: false,
-        error: 'آدرس فروشگاه (site_url)، کلید مصرف‌کننده (consumer_key) و رمز (consumer_secret) الزامی هستند.',
+        error: 'Store URL (site_url), Consumer Key, and Consumer Secret are required.',
       });
     }
 
@@ -58,9 +58,9 @@ woocommerceRouter.post('/test-connection', async (req: Request, res: Response) =
 
       return res.json({
         success: true,
-        store_name: environment.site_title || environment.home_url || 'فروشگاه ووکامرس',
+        store_name: environment.site_title || environment.home_url || 'WooCommerce Store',
         wc_version: environment.version || 'v3+',
-        currency: settings.currency || 'IRR/IRT',
+        currency: settings.currency || 'EUR',
         url: cleanUrl,
       });
     }
@@ -71,13 +71,13 @@ woocommerceRouter.post('/test-connection', async (req: Request, res: Response) =
       headers: {
         Authorization: authHeader,
         Accept: 'application/json',
-        'User-Agent': 'Tankhor-BFF-Proxy/1.0',
+        'User-Agent': 'Clozito-BFF-Proxy/1.0',
       },
     });
 
     if (!fallbackResponse.ok) {
       const errText = await fallbackResponse.text().catch(() => '');
-      let errorMsg = `خطای دسترسی ووکامرس (کد ${fallbackResponse.status})`;
+      let errorMsg = `WooCommerce access error (HTTP ${fallbackResponse.status})`;
       try {
         const json = JSON.parse(errText);
         if (json.message) errorMsg = json.message;
@@ -90,16 +90,16 @@ woocommerceRouter.post('/test-connection', async (req: Request, res: Response) =
 
     return res.json({
       success: true,
-      store_name: 'فروشگاه ووکامرس متصل شد',
-      wc_version: 'v3 (تأییدشده)',
-      currency: 'شناسایی شد',
+      store_name: 'WooCommerce Store Connected',
+      wc_version: 'v3 (Verified)',
+      currency: 'Detected',
       url: cleanUrl,
     });
   } catch (error: any) {
     console.error('[WooCommerce] test-connection error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'خطا در برقراری ارتباط با هاست وردپرس یا اینترنت.',
+      error: error.message || 'Failed to connect to WordPress host or network error.',
     });
   }
 });
@@ -115,7 +115,7 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
     if (!organization_id || !site_url || !consumer_key || !consumer_secret) {
       return res.status(400).json({
         success: false,
-        error: 'اطلاعات سازمان و اعتبارنامه ووکامرس الزامی است.',
+        error: 'Organization ID and WooCommerce credentials are required.',
       });
     }
 
@@ -177,7 +177,7 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
     if (!wcRes.ok) {
       return res.status(wcRes.status).json({
         success: false,
-        error: 'خطا در دریافت لیست محصولات از ووکامرس.',
+        error: 'Failed to fetch products from WooCommerce.',
       });
     }
 
@@ -234,7 +234,7 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
             }
           }
         } catch (vErr: any) {
-          errors.push(`خطا در متغیرهای کالای ${product.name}: ${vErr.message}`);
+          errors.push(`Error updating variations for product ${product.name}: ${vErr.message}`);
         }
       }
     }
@@ -250,7 +250,7 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
         body: JSON.stringify({ update: updates }),
       });
       if (!batchRes.ok) {
-        errors.push('خطا در ارسال پکیج کالاهای ساده به ووکامرس.');
+        errors.push('Failed to send simple products batch update to WooCommerce.');
       }
     }
 
@@ -260,7 +260,7 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
       action: 'sync_stock',
       direction: 'outbound',
       status: errors.length === 0 ? 'success' : 'info',
-      message: `همگام‌سازی موجودی به پایان رسید. تعداد ${updatedCount} قلم کالا/متغیر در ووکامرس بروزرسانی شد.`,
+      message: `Inventory sync completed. ${updatedCount} products/variations updated in WooCommerce.`,
       details: {
         totalVariants: variants.length,
         updatedCount,
@@ -281,7 +281,7 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
     console.error('[WooCommerce] sync-stock error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'خطا در ارسال موجودی به ووکامرس.',
+      error: error.message || 'Failed to sync stock to WooCommerce.',
     });
   }
 });
@@ -297,7 +297,7 @@ woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
     if (!organization_id || !site_url || !consumer_key || !consumer_secret) {
       return res.status(400).json({
         success: false,
-        error: 'اطلاعات سازمان و اعتبارنامه ووکامرس الزامی است.',
+        error: 'Organization ID and WooCommerce credentials are required.',
       });
     }
 
@@ -305,7 +305,7 @@ woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
     const cleanUrl = sanitizeUrl(site_url);
     const authHeader = getAuthHeader(consumer_key, consumer_secret);
 
-    // Fetch Tankhor variants
+    // Fetch variants
     const variants = await DirectusAdminClient.getItems('product_variants', {
       filter: { organization_id: { _eq: orgIdNum } },
       fields: ['id', 'sku', 'barcode', 'price'],
@@ -329,7 +329,7 @@ woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
     if (!wcRes.ok) {
       return res.status(wcRes.status).json({
         success: false,
-        error: 'خطا در دریافت لیست محصولات از ووکامرس.',
+        error: 'Failed to fetch products list from WooCommerce.',
       });
     }
 
@@ -400,7 +400,7 @@ woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
       action: 'sync_prices',
       direction: 'outbound',
       status: 'success',
-      message: `همگام‌سازی قیمت‌ها با موفقیت انجام شد. تعداد ${updatedCount} قیمت در سایت بروزرسانی گردید.`,
+      message: `Price sync completed successfully. ${updatedCount} prices updated on the store.`,
       details: { updatedCount },
     }).catch(() => null);
 
@@ -412,7 +412,7 @@ woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
     console.error('[WooCommerce] sync-prices error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'خطا در ارسال قیمت‌ها به ووکامرس.',
+      error: error.message || 'Failed to sync prices to WooCommerce.',
     });
   }
 });
@@ -428,7 +428,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
     if (!organization_id || !site_url || !consumer_key || !consumer_secret) {
       return res.status(400).json({
         success: false,
-        error: 'اطلاعات سازمان و اعتبارنامه ووکامرس الزامی است.',
+        error: 'Organization ID and WooCommerce credentials are required.',
       });
     }
 
@@ -445,7 +445,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
     if (!wcRes.ok) {
       return res.status(wcRes.status).json({
         success: false,
-        error: 'خطا در دریافت سفارش‌ها از ووکامرس.',
+        error: 'Failed to fetch orders from WooCommerce.',
       });
     }
 
@@ -530,8 +530,8 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
           // Create new customer
           const newCustomer = await DirectusAdminClient.createItem('customers', {
             organization_id: orgIdNum,
-            first_name: billing.first_name || 'خریدار',
-            last_name: billing.last_name || `سایت ${wcOrder.id}`,
+            first_name: billing.first_name || 'Customer',
+            last_name: billing.last_name || `Web #${wcOrder.id}`,
             phone: billing.phone || null,
             email: billing.email || null,
             address: `${billing.city || ''} ${billing.address_1 || ''}`.trim() || null,
@@ -543,7 +543,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
           }
         }
 
-        // Create Order in Tankhor
+        // Create Order in Clozito
         const totalAmount = Number(wcOrder.total) || 0;
         const isPaid = wcOrder.status === 'processing' || wcOrder.status === 'completed';
         const newOrder = await DirectusAdminClient.createItem('orders', {
@@ -559,7 +559,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
           total: totalAmount,
           total_amount: String(totalAmount),
           discount_amount: String(wcOrder.discount_total || 0),
-          notes: `سفارش آنلاین ووکامرس WC#${wcOrder.id} - وضعیت سایت: ${wcOrder.status} - نام: ${billing.first_name || ''} ${billing.last_name || ''}`,
+          notes: `WooCommerce Online Order WC#${wcOrder.id} - Status: ${wcOrder.status} - Customer: ${billing.first_name || ''} ${billing.last_name || ''}`,
           date_created: wcOrder.date_created || new Date().toISOString(),
         });
 
@@ -582,7 +582,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
               quantity: itemQty,
               unit_price: String(item.price || 0),
               total_price: String(item.total || 0),
-              title: item.name || 'آیتم ووکامرس',
+              title: item.name || 'WooCommerce Item',
             }).catch(() => null);
 
             // If warehouse specified and variant matched, record stock movement and update inventory items
@@ -597,7 +597,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
                 type: 'sale',
                 reference_type: 'order',
                 reference_id: String(newOrder.id),
-                note: `کسر خودکار بابت سفارش آنلاین ووکامرس WC#${wcOrder.id}`,
+                note: `Auto deduction for WooCommerce online order WC#${wcOrder.id}`,
                 date_created: new Date().toISOString(),
               }).catch(() => null);
 
@@ -638,7 +638,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
                 type: 'deposit',
                 amount: totalAmount,
                 tracking_code: `WC-${wcOrder.id}`,
-                description: `دریافت وجه فاکتور آنلاین ووکامرس WC#${wcOrder.id} (${billing.first_name || ''} ${billing.last_name || ''})`,
+                description: `Payment received for WooCommerce order WC#${wcOrder.id} (${billing.first_name || ''} ${billing.last_name || ''})`,
                 transaction_date: new Date().toISOString(),
               });
             } catch (trErr) {
@@ -653,7 +653,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
                   customer_id: customerId,
                   financial_account_id: finAccId,
                   party_type: 'customer',
-                  party_name: `${billing.first_name || ''} ${billing.last_name || ''}`.trim() || 'مشتری ووکامرس',
+                  party_name: `${billing.first_name || ''} ${billing.last_name || ''}`.trim() || 'WooCommerce Customer',
                   type: 'debtor',
                   transaction_type: 'sale_invoice',
                   amount: totalAmount,
@@ -661,7 +661,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
                   status: 'completed',
                   reference_number: wcOrderCode,
                   order_id: newOrder.id,
-                  description: `فاکتور فروش آنلاین ووکامرس WC#${wcOrder.id}`,
+                  description: `WooCommerce Online Sales Invoice WC#${wcOrder.id}`,
                   transaction_date: new Date().toISOString(),
                 });
 
@@ -670,7 +670,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
                   customer_id: customerId,
                   financial_account_id: finAccId,
                   party_type: 'customer',
-                  party_name: `${billing.first_name || ''} ${billing.last_name || ''}`.trim() || 'مشتری ووکامرس',
+                  party_name: `${billing.first_name || ''} ${billing.last_name || ''}`.trim() || 'WooCommerce Customer',
                   type: 'creditor',
                   transaction_type: 'receipt',
                   amount: totalAmount,
@@ -678,7 +678,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
                   status: 'completed',
                   reference_number: `REC-${wcOrderCode}`,
                   order_id: newOrder.id,
-                  description: `تسویه اینترنتی فاکتور ووکامرس WC#${wcOrder.id}`,
+                  description: `Online Payment Settlement for WooCommerce WC#${wcOrder.id}`,
                   transaction_date: new Date().toISOString(),
                 });
               } catch (ptErr) {
@@ -690,7 +690,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
           importedOrdersCount++;
         }
       } catch (orderErr: any) {
-        errors.push(`خطا در ثبت سفارش #${wcOrder.id}: ${orderErr.message}`);
+        errors.push(`Error importing order #${wcOrder.id}: ${orderErr.message}`);
       }
     }
 
@@ -699,7 +699,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
       action: 'import_orders',
       direction: 'inbound',
       status: errors.length === 0 ? 'success' : 'info',
-      message: `دریافت سفارشات اینترنتی: تعداد ${importedOrdersCount} سفارش جدید وارد تن‌خور شد (${skippedCount} قبلاً ثبت شده بودند).`,
+      message: `Online orders imported: ${importedOrdersCount} new orders added (${skippedCount} already imported).`,
       details: {
         fetchedCount: wcOrders.length,
         importedOrdersCount,
@@ -720,7 +720,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
     console.error('[WooCommerce] import-orders error:', error);
     return res.status(500).json({
       success: false,
-      error: error.message || 'خطا در دریافت سفارشات از ووکامرس.',
+      error: error.message || 'Failed to import orders from WooCommerce.',
     });
   }
 });
@@ -770,8 +770,8 @@ woocommerceRouter.post('/webhook', async (req: Request, res: Response) => {
       if (!customerId) {
         const newCust = await DirectusAdminClient.createItem('customers', {
           organization_id: orgId,
-          first_name: billing.first_name || 'خریدار',
-          last_name: billing.last_name || `سایت ${wcOrder.id}`,
+          first_name: billing.first_name || 'Customer',
+          last_name: billing.last_name || `Web #${wcOrder.id}`,
           phone: billing.phone || null,
           email: billing.email || null,
           address: `${billing.city || ''} ${billing.address_1 || ''}`.trim() || null,
@@ -789,7 +789,7 @@ woocommerceRouter.post('/webhook', async (req: Request, res: Response) => {
         channel: 'online',
         status: 'pending',
         total_amount: String(totalAmount),
-        notes: `وب‌هوک ووکامرس WC#${wcOrder.id} - ${billing.first_name || ''} ${billing.last_name || ''}`,
+        notes: `WooCommerce Webhook WC#${wcOrder.id} - ${billing.first_name || ''} ${billing.last_name || ''}`,
         date_created: new Date().toISOString(),
       });
 
@@ -802,7 +802,7 @@ woocommerceRouter.post('/webhook', async (req: Request, res: Response) => {
             quantity: Number(item.quantity) || 1,
             unit_price: String(item.price || 0),
             total_price: String(item.total || 0),
-            title: item.name || 'آیتم وب‌هوک',
+            title: item.name || 'Webhook Item',
           }).catch(() => null);
         }
 
@@ -811,7 +811,7 @@ woocommerceRouter.post('/webhook', async (req: Request, res: Response) => {
           action: 'webhook_order',
           direction: 'inbound',
           status: 'success',
-          message: `سفارش آنلاین WC#${wcOrder.id} بلافاصله از طریق وب‌هوک ووکامرس در تن‌خور ثبت شد.`,
+          message: `Online order WC#${wcOrder.id} was automatically recorded via WooCommerce webhook.`,
           details: { wcOrderId: wcOrder.id, orderId: order.id },
         }).catch(() => null);
       }

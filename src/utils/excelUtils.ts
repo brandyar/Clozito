@@ -15,8 +15,10 @@ import {
   OrderStatus,
   PaymentStatus,
 } from '../types';
-import { jalaliToIsoString, isoToJalaliString } from './dateUtils';
 import { normalizeId } from './formatters';
+import { BRAND } from '../config/brand';
+
+const FILE_PREFIX = BRAND.name.toLowerCase();
 
 export interface ExcelImportResult<T> {
   success: boolean;
@@ -52,7 +54,7 @@ export function downloadWorkbook(workbook: XLSX.WorkBook, fileName: string) {
 }
 
 /**
- * Trigger browser download for UTF-8 BOM CSV content (Excel Persian compatible)
+ * Trigger browser download for UTF-8 BOM CSV content (Excel compatible)
  */
 export function downloadCsvContent(csvContent: string, fileName: string) {
   const contentWithBom = csvContent.startsWith('\uFEFF') ? csvContent : '\uFEFF' + csvContent;
@@ -75,18 +77,19 @@ export function escapeCsvCell(val: unknown): string {
 
 export function toEnglishDigits(val: unknown): string {
   if (val === undefined || val === null) return '';
-  return String(val)
-    .replace(/[۰-۹]/g, (d) => String('۰۱۲۳۴۵۶۷۸۹'.indexOf(d)))
-    .replace(/[٠-٩]/g, (d) => String('٠١٢٣٤٥٦٧٨٩'.indexOf(d)));
+  return String(val).replace(/[\u06F0-\u06F9\u0660-\u0669]/g, (ch) => {
+    const code = ch.charCodeAt(0);
+    if (code >= 0x06f0 && code <= 0x06f9) return String(code - 0x06f0);
+    if (code >= 0x0660 && code <= 0x0669) return String(code - 0x0660);
+    return ch;
+  });
 }
 
 function normalizeHeaderKey(key: string): string {
   return toEnglishDigits(key)
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/[يى]/g, 'ی')
-    .replace(/[ك]/g, 'ک')
-    .replace(/[ة]/g, 'ه')
-    .replace(/[أإآ]/g, 'ا')
     .replace(/[\u200C\u200B\u200D\uFEFF]/g, ' ')
     .replace(/[_-]/g, ' ')
     .replace(/\s+/g, ' ')
@@ -122,8 +125,9 @@ function getNumericCell(normRow: Record<string, any>, aliases: string[]): number
     if (val !== undefined && val !== null && String(val).trim() !== '') {
       if (typeof val === 'number' && !isNaN(val)) return val;
       const cleaned = toEnglishDigits(val)
-        .replace(/[,٬،\s]/g, '')
-        .replace(/تومان|ریال|toman|irr/gi, '')
+        .replace(/[€$£\s]/g, '')
+        .replace(/eur|usd|gbp/gi, '')
+        .replace(/,/g, '')
         .trim();
       if (!cleaned) continue;
       const num = Number(cleaned);
@@ -155,10 +159,17 @@ function parseExcelDateToIso(raw: unknown): string {
     const year = Number(match[1]);
     const month = Number(match[2]);
     const day = Number(match[3]);
-    // Jalali year typically in 1300-1500
-    if (year >= 1300 && year <= 1550) {
-      return `${jalaliToIsoString({ jy: year, jm: month, jd: day })}T12:00:00.000Z`;
-    }
+    const isoStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00.000Z`;
+    const parsed = new Date(isoStr);
+    if (!isNaN(parsed.getTime())) return parsed.toISOString();
+  }
+
+  // Check DD/MM/YYYY or DD-MM-YYYY (common in Europe)
+  const euMatch = str.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{4})/);
+  if (euMatch) {
+    const day = Number(euMatch[1]);
+    const month = Number(euMatch[2]);
+    const year = Number(euMatch[3]);
     const isoStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T12:00:00.000Z`;
     const parsed = new Date(isoStr);
     if (!isNaN(parsed.getTime())) return parsed.toISOString();
@@ -169,13 +180,8 @@ function parseExcelDateToIso(raw: unknown): string {
   return new Date().toISOString();
 }
 
-function normalizeIranianPhone(raw: unknown): string {
+function normalizePhone(raw: unknown): string {
   const cleaned = toEnglishDigits(raw).replace(/[\s\-()]/g, '').trim();
-  if (!cleaned) return '';
-  // Excel frequently drops the leading zero from Iranian 09... phone numbers
-  if (/^9\d{9}$/.test(cleaned)) {
-    return `0${cleaned}`;
-  }
   return cleaned;
 }
 
@@ -186,26 +192,26 @@ function normalizeIranianPhone(raw: unknown): string {
  */
 
 export interface ProductExportRow {
-  'کد محصول (کد مدل)': string;
-  'عنوان محصول': string;
-  'دسته‌بندی': string;
-  'برند': string;
-  'کالکشن': string;
-  'فصل': string;
-  'جنسیت': string;
-  'جنس/پارچه': string;
-  'وضعیت انتشار': string;
-  'شناسه کالا (SKU)': string;
-  'بارکد تنوع': string;
-  'رنگ': string;
-  'کد رنگ': string;
-  'سایز': string;
-  'قیمت فروش (تومان)': number;
-  'قیمت خرید/تمام‌شده (تومان)': number;
-  'قیمت عمده‌فروشی (تومان)': number;
-  'وزن (گرم)': number;
-  'موجودی فعلی': number;
-  'وضعیت تنوع': string;
+  'Product Code': string;
+  'Product Title': string;
+  'Category': string;
+  'Brand': string;
+  'Collection': string;
+  'Season': string;
+  'Gender': string;
+  'Material': string;
+  'Product Status': string;
+  'SKU': string;
+  'Barcode': string;
+  'Color': string;
+  'Color Hex': string;
+  'Size': string;
+  'Sale Price': number;
+  'Cost Price': number;
+  'Wholesale Price': number;
+  'Weight (g)': number;
+  'Current Stock': number;
+  'Variant Status': string;
 }
 
 export interface ParsedProductRow {
@@ -239,7 +245,7 @@ export function exportProductsToExcel(
   brands: Brand[],
   colors: Color[],
   sizes: Size[],
-  fileName: string = `tankhor_products_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  fileName: string = `${FILE_PREFIX}_products_${new Date().toISOString().slice(0, 10)}.xlsx`,
   extraLookups?: { collections?: Collection[]; seasons?: Season[] }
 ): number {
   const rows: ProductExportRow[] = [];
@@ -251,7 +257,6 @@ export function exportProductsToExcel(
   const colorMap = new Map(colors.map((c) => [normalizeId(c.id) || Number(c.id), c]));
   const sizeMap = new Map(sizes.map((s) => [normalizeId(s.id) || Number(s.id), s.name]));
 
-  // Group variants by product
   const variantsByProduct = new Map<number, ProductVariant[]>();
   variants.forEach((v) => {
     const pId = normalizeId(v.product_id) || Number(v.product_id);
@@ -286,30 +291,30 @@ export function exportProductsToExcel(
       (p as any).season_name ||
       '';
 
-    const statusText = p.status === 'published' || String(p.status) === 'active' ? 'منتشر شده' : 'پیش‌نویس';
+    const statusText = p.status === 'published' || String(p.status) === 'active' ? 'Published' : 'Draft';
 
     if (pVariants.length === 0) {
       rows.push({
-        'کد محصول (کد مدل)': (p as any).code || p.slug || '',
-        'عنوان محصول': p.title || '',
-        'دسته‌بندی': catName,
-        'برند': brandName,
-        'کالکشن': collectionName,
-        'فصل': seasonName,
-        'جنسیت': (p as any).gender || 'unisex',
-        'جنس/پارچه': (p as any).material || '',
-        'وضعیت انتشار': statusText,
-        'شناسه کالا (SKU)': '',
-        'بارکد تنوع': '',
-        'رنگ': '',
-        'کد رنگ': '',
-        'سایز': '',
-        'قیمت فروش (تومان)': 0,
-        'قیمت خرید/تمام‌شده (تومان)': 0,
-        'قیمت عمده‌فروشی (تومان)': 0,
-        'وزن (گرم)': 0,
-        'موجودی فعلی': Number(p.total_stock) || 0,
-        'وضعیت تنوع': 'فعال',
+        'Product Code': (p as any).code || p.slug || '',
+        'Product Title': p.title || '',
+        'Category': catName,
+        'Brand': brandName,
+        'Collection': collectionName,
+        'Season': seasonName,
+        'Gender': (p as any).gender || 'unisex',
+        'Material': (p as any).material || '',
+        'Product Status': statusText,
+        'SKU': '',
+        'Barcode': '',
+        'Color': '',
+        'Color Hex': '',
+        'Size': '',
+        'Sale Price': 0,
+        'Cost Price': 0,
+        'Wholesale Price': 0,
+        'Weight (g)': 0,
+        'Current Stock': Number(p.total_stock) || 0,
+        'Variant Status': 'Active',
       });
     } else {
       pVariants.forEach((v) => {
@@ -326,27 +331,27 @@ export function exportProductsToExcel(
         const weightGrams = Number((v as any).weight_grams ?? (v as any).weight ?? 0) || 0;
 
         rows.push({
-          'کد محصول (کد مدل)': (p as any).code || p.slug || '',
-          'عنوان محصول': p.title || '',
-          'دسته‌بندی': catName,
-          'برند': brandName,
-          'کالکشن': collectionName,
-          'فصل': seasonName,
-          'جنسیت': (p as any).gender || 'unisex',
-          'جنس/پارچه': (p as any).material || '',
-          'وضعیت انتشار': statusText,
-          'شناسه کالا (SKU)': v.sku || '',
-          'بارکد تنوع': v.barcode || '',
-          'رنگ': colorName,
-          'کد رنگ': colorHex,
-          'سایز': sizeName,
-          'قیمت فروش (تومان)': salePrice,
-          'قیمت خرید/تمام‌شده (تومان)': costPrice,
-          'قیمت عمده‌فروشی (تومان)': wholesalePrice,
-          'وزن (گرم)': weightGrams,
-          'موجودی فعلی': Number(v.stock_quantity) || 0,
-          'وضعیت تنوع':
-            String(v.status) === 'active' || String(v.status) === 'published' ? 'فعال' : 'غیرفعال',
+          'Product Code': (p as any).code || p.slug || '',
+          'Product Title': p.title || '',
+          'Category': catName,
+          'Brand': brandName,
+          'Collection': collectionName,
+          'Season': seasonName,
+          'Gender': (p as any).gender || 'unisex',
+          'Material': (p as any).material || '',
+          'Product Status': statusText,
+          'SKU': v.sku || '',
+          'Barcode': v.barcode || '',
+          'Color': colorName,
+          'Color Hex': colorHex,
+          'Size': sizeName,
+          'Sale Price': salePrice,
+          'Cost Price': costPrice,
+          'Wholesale Price': wholesalePrice,
+          'Weight (g)': weightGrams,
+          'Current Stock': Number(v.stock_quantity) || 0,
+          'Variant Status':
+            String(v.status) === 'active' || String(v.status) === 'published' ? 'Active' : 'Inactive',
         });
       });
     }
@@ -356,7 +361,7 @@ export function exportProductsToExcel(
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'محصولات و تنوع‌ها');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Products & Variants');
   downloadWorkbook(workbook, fileName);
   return rows.length;
 }
@@ -369,7 +374,7 @@ export function parseProductsFromExcel(fileBuffer: ArrayBuffer): ExcelImportResu
       success: false,
       importedCount: 0,
       updatedCount: 0,
-      errors: ['فایل اکسل خالی است یا برگه معتبری ندارد.'],
+      errors: ['The Excel file is empty or has no valid worksheet.'],
       items: [],
     };
   }
@@ -381,7 +386,7 @@ export function parseProductsFromExcel(fileBuffer: ArrayBuffer): ExcelImportResu
       success: false,
       importedCount: 0,
       updatedCount: 0,
-      errors: ['هیچ ردیفی در فایل اکسل یافت نشد.'],
+      errors: ['No rows were found in the Excel file.'],
       items: [],
     };
   }
@@ -392,55 +397,55 @@ export function parseProductsFromExcel(fileBuffer: ArrayBuffer): ExcelImportResu
   rawRows.forEach((rawRow, idx) => {
     const rowNum = idx + 2;
     const row = normalizeRowKeys(rawRow);
-    const title = getCell(row, ['عنوان محصول', 'نام محصول', 'نام کالا', 'محصول', 'title', 'product name', 'name']);
+    const title = getCell(row, ['product title', 'title', 'product name', 'name', 'titolo prodotto', 'nome prodotto']);
     if (!title) {
-      errors.push(`سطر ${rowNum}: عنوان محصول خالی است.`);
+      errors.push(`Row ${rowNum}: Product title is required.`);
       return;
     }
 
-    const statusRaw = getCell(row, ['وضعیت انتشار', 'وضعیت محصول', 'status']).toLowerCase();
+    const statusRaw = getCell(row, ['product status', 'status', 'stato prodotto', 'stato']).toLowerCase();
     const productStatus: 'published' | 'draft' =
-      statusRaw === 'پیش‌نویس' || statusRaw === 'پیشنویس' || statusRaw === 'draft' || statusRaw === 'inactive'
+      statusRaw === 'draft' || statusRaw === 'inactive' || statusRaw === 'bozza' || statusRaw === 'inattivo'
         ? 'draft'
         : 'published';
 
-    const varStatusRaw = getCell(row, ['وضعیت تنوع', 'variant status']).toLowerCase();
+    const varStatusRaw = getCell(row, ['variant status', 'stato variante']).toLowerCase();
     const variantStatus: 'published' | 'draft' =
-      varStatusRaw === 'غیرفعال' ||
       varStatusRaw === 'inactive' ||
       varStatusRaw === 'disabled' ||
       varStatusRaw === 'draft' ||
-      varStatusRaw === 'پیش‌نویس'
+      varStatusRaw === 'inattivo' ||
+      varStatusRaw === 'bozza'
         ? 'draft'
         : 'published';
 
-    const price = getNumericCell(row, ['قیمت فروش (تومان)', 'قیمت فروش', 'قیمت', 'price', 'sale price']) ?? 0;
-    const cost = getNumericCell(row, ['قیمت خرید/تمام‌شده (تومان)', 'قیمت خرید', 'قیمت تمام شده', 'بهای تمام شده', 'cost', 'cost price', 'buy price']) ?? 0;
-    const wholesalePrice = getNumericCell(row, ['قیمت عمده‌فروشی (تومان)', 'قیمت عمده', 'wholesale price']) ?? 0;
-    const weightGrams = getNumericCell(row, ['وزن (گرم)', 'وزن', 'weight', 'weight grams']) ?? 0;
-    const stockQuantity = getNumericCell(row, ['موجودی فعلی', 'موجودی اولیه', 'موجودی', 'تعداد', 'stock', 'quantity', 'stock quantity']);
+    const price = getNumericCell(row, ['sale price', 'price', 'prezzo di vendita', 'prezzo']) ?? 0;
+    const cost = getNumericCell(row, ['cost price', 'cost', 'buy price', 'prezzo di costo', 'costo']) ?? 0;
+    const wholesalePrice = getNumericCell(row, ['wholesale price', 'prezzo ingrosso']) ?? 0;
+    const weightGrams = getNumericCell(row, ['weight (g)', 'weight grams', 'weight', 'peso (g)', 'peso']) ?? 0;
+    const stockQuantity = getNumericCell(row, ['current stock', 'stock quantity', 'stock', 'quantity', 'giacenza', 'quantita']);
 
     if (price < 0 || cost < 0) {
-      errors.push(`سطر ${rowNum} (${title}): قیمت نمی‌تواند منفی باشد.`);
+      errors.push(`Row ${rowNum} (${title}): Price or cost cannot be negative.`);
       return;
     }
 
     items.push({
       rowNumber: rowNum,
-      productCode: getCell(row, ['کد محصول (کد مدل)', 'کد محصول', 'کد مدل', 'code', 'slug', 'product code']),
+      productCode: getCell(row, ['product code', 'code', 'slug', 'codice prodotto']),
       title,
-      categoryName: getCell(row, ['دسته‌بندی', 'دسته بندی', 'دسته', 'category']),
-      brandName: getCell(row, ['برند', 'مارک', 'brand']),
-      collectionName: getCell(row, ['کالکشن', 'مجموعه', 'collection']),
-      seasonName: getCell(row, ['فصل', 'season']),
-      gender: getCell(row, ['جنسیت', 'gender']) || 'unisex',
-      material: getCell(row, ['جنس/پارچه', 'جنس', 'پارچه', 'material']),
+      categoryName: getCell(row, ['category', 'categoria']),
+      brandName: getCell(row, ['brand', 'marchio']),
+      collectionName: getCell(row, ['collection', 'collezione']),
+      seasonName: getCell(row, ['season', 'stagione']),
+      gender: getCell(row, ['gender', 'genere']) || 'unisex',
+      material: getCell(row, ['material', 'fabric', 'materiale', 'tessuto']),
       productStatus,
-      sku: getCell(row, ['شناسه کالا (sku)', 'شناسه کالا', 'کد تنوع', 'sku']),
-      barcode: toEnglishDigits(getCell(row, ['بارکد تنوع', 'بارکد', 'barcode'])),
-      colorName: getCell(row, ['رنگ', 'color']),
-      colorHex: getCell(row, ['کد رنگ', 'color hex', 'hex']),
-      sizeName: getCell(row, ['سایز', 'اندازه', 'size']),
+      sku: getCell(row, ['sku', 'variant sku', 'codice sku']),
+      barcode: toEnglishDigits(getCell(row, ['barcode', 'ean', 'codice a barre'])),
+      colorName: getCell(row, ['color', 'colour', 'colore']),
+      colorHex: getCell(row, ['color hex', 'hex', 'codice colore']),
+      sizeName: getCell(row, ['size', 'taglia']),
       price: Math.max(0, price),
       cost: Math.max(0, cost),
       wholesalePrice: Math.max(0, wholesalePrice),
@@ -466,20 +471,20 @@ export function parseProductsFromExcel(fileBuffer: ArrayBuffer): ExcelImportResu
  */
 
 export interface InventoryExportRow {
-  'شناسه کالا (SKU)': string;
-  'بارکد': string;
-  'عنوان محصول': string;
-  'رنگ': string;
-  'سایز': string;
-  'نام انبار': string;
-  'موقعیت در انبار': string;
-  'موجودی فیزیکی': number;
-  'موجودی رزرو شده': number;
-  'موجودی قابل فروش': number;
-  'نقطه سفارش مجدد': number;
-  'موجودی اطمینان': number;
-  'قیمت واحد (تومان)': number;
-  'ارزش کل ریالی': number;
+  'SKU': string;
+  'Barcode': string;
+  'Product Title': string;
+  'Color': string;
+  'Size': string;
+  'Warehouse': string;
+  'Location': string;
+  'Physical Stock': number;
+  'Reserved Stock': number;
+  'Available Stock': number;
+  'Reorder Point': number;
+  'Safety Stock': number;
+  'Unit Price': number;
+  'Total Value': number;
 }
 
 export interface ParsedInventoryRow {
@@ -499,7 +504,7 @@ export function exportInventoryToExcel(
   items: InventoryItem[],
   variants: ProductVariant[],
   warehouses: Warehouse[],
-  fileName: string = `tankhor_inventory_${new Date().toISOString().slice(0, 10)}.xlsx`
+  fileName: string = `${FILE_PREFIX}_inventory_${new Date().toISOString().slice(0, 10)}.xlsx`
 ): number {
   if (!items || items.length === 0) return 0;
 
@@ -510,7 +515,7 @@ export function exportInventoryToExcel(
     const vId = normalizeId(item.variant_id) || Number(item.variant_id);
     const wId = normalizeId(item.warehouse_id) || Number(item.warehouse_id);
     const v = varMap.get(vId);
-    const whName = item.warehouse_name || whMap.get(wId) || 'انبار اصلی';
+    const whName = item.warehouse_name || whMap.get(wId) || 'Main Warehouse';
     const sku = item.sku || v?.sku || '-';
     const barcode = v?.barcode || '-';
     const prodTitle = item.product_title || v?.product_title || '-';
@@ -537,26 +542,26 @@ export function exportInventoryToExcel(
     const unitPrice = Number(v?.price ?? (v as any)?.sale_price ?? (v as any)?.regular_price ?? 0) || 0;
 
     return {
-      'شناسه کالا (SKU)': sku,
-      'بارکد': barcode,
-      'عنوان محصول': prodTitle,
-      'رنگ': colorName,
-      'سایز': sizeName,
-      'نام انبار': whName,
-      'موقعیت در انبار': item.location_name || '-',
-      'موجودی فیزیکی': qty,
-      'موجودی رزرو شده': reserved,
-      'موجودی قابل فروش': available,
-      'نقطه سفارش مجدد': reorderPoint,
-      'موجودی اطمینان': safetyStock,
-      'قیمت واحد (تومان)': unitPrice,
-      'ارزش کل ریالی': qty * unitPrice,
+      'SKU': sku,
+      'Barcode': barcode,
+      'Product Title': prodTitle,
+      'Color': colorName,
+      'Size': sizeName,
+      'Warehouse': whName,
+      'Location': item.location_name || '-',
+      'Physical Stock': qty,
+      'Reserved Stock': reserved,
+      'Available Stock': available,
+      'Reorder Point': reorderPoint,
+      'Safety Stock': safetyStock,
+      'Unit Price': unitPrice,
+      'Total Value': Number((qty * unitPrice).toFixed(2)),
     };
   });
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'موجودی انبار');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Inventory');
   downloadWorkbook(workbook, fileName);
   return rows.length;
 }
@@ -565,13 +570,13 @@ export function parseInventoryFromExcel(fileBuffer: ArrayBuffer): ExcelImportRes
   const workbook = XLSX.read(fileBuffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    return { success: false, importedCount: 0, updatedCount: 0, errors: ['فایل اکسل خالی است.'], items: [] };
+    return { success: false, importedCount: 0, updatedCount: 0, errors: ['The Excel file is empty.'], items: [] };
   }
   const worksheet = workbook.Sheets[sheetName];
   const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
   if (!rawRows || rawRows.length === 0) {
-    return { success: false, importedCount: 0, updatedCount: 0, errors: ['هیچ ردیفی در فایل یافت نشد.'], items: [] };
+    return { success: false, importedCount: 0, updatedCount: 0, errors: ['No rows were found in the file.'], items: [] };
   }
 
   const items: ParsedInventoryRow[] = [];
@@ -580,34 +585,34 @@ export function parseInventoryFromExcel(fileBuffer: ArrayBuffer): ExcelImportRes
   rawRows.forEach((rawRow, idx) => {
     const rowNum = idx + 2;
     const row = normalizeRowKeys(rawRow);
-    const skuRaw = getCell(row, ['شناسه کالا (sku)', 'شناسه کالا', 'sku', 'کد کالا']);
-    const barcodeRaw = toEnglishDigits(getCell(row, ['بارکد', 'barcode']));
+    const skuRaw = getCell(row, ['sku', 'codice sku']);
+    const barcodeRaw = toEnglishDigits(getCell(row, ['barcode', 'ean', 'codice a barre']));
     const sku = skuRaw === '-' ? '' : skuRaw;
     const barcode = barcodeRaw === '-' ? '' : barcodeRaw;
 
     if (!sku && !barcode) {
-      errors.push(`سطر ${rowNum}: شناسه کالا (SKU) یا بارکد الزامی است.`);
+      errors.push(`Row ${rowNum}: SKU or Barcode is required.`);
       return;
     }
 
-    const quantity = getNumericCell(row, ['موجودی فیزیکی', 'موجودی', 'تعداد', 'quantity', 'qty', 'stock']);
+    const quantity = getNumericCell(row, ['physical stock', 'quantity', 'qty', 'stock', 'giacenza', 'quantita']);
     if (quantity === undefined || quantity < 0) {
-      errors.push(`سطر ${rowNum} (${sku || barcode}): مقدار موجودی فیزیکی نامعتبر است.`);
+      errors.push(`Row ${rowNum} (${sku || barcode}): Invalid physical stock quantity.`);
       return;
     }
 
-    const reservedQuantity = getNumericCell(row, ['موجودی رزرو شده', 'رزرو', 'reserved', 'reserved quantity']);
-    const reorderPoint = getNumericCell(row, ['نقطه سفارش مجدد', 'نقطه سفارش', 'reorder point']);
-    const safetyStock = getNumericCell(row, ['موجودی اطمینان', 'حداقل موجودی', 'safety stock']);
+    const reservedQuantity = getNumericCell(row, ['reserved stock', 'reserved', 'reserved quantity', 'riservato']);
+    const reorderPoint = getNumericCell(row, ['reorder point', 'punto di riordino']);
+    const safetyStock = getNumericCell(row, ['safety stock', 'scorta minima']);
 
-    const whName = getCell(row, ['نام انبار', 'انبار', 'warehouse', 'warehouse name']);
-    const locName = getCell(row, ['موقعیت در انبار', 'موقیعت در انبار', 'موقعیت', 'قفسه', 'location']);
+    const whName = getCell(row, ['warehouse', 'warehouse name', 'magazzino']);
+    const locName = getCell(row, ['location', 'bin', 'ubicazione']);
 
     items.push({
       rowNumber: rowNum,
       sku,
       barcode,
-      productTitle: getCell(row, ['عنوان محصول', 'نام محصول', 'product title', 'title']),
+      productTitle: getCell(row, ['product title', 'title', 'titolo prodotto']),
       warehouseName: whName === '-' ? '' : whName,
       locationName: locName === '-' ? '' : locName,
       quantity: Math.max(0, quantity),
@@ -633,19 +638,19 @@ export function parseInventoryFromExcel(fileBuffer: ArrayBuffer): ExcelImportRes
  */
 
 export interface OrderExportRow {
-  'شماره سفارش': string;
-  'تاریخ ثبت': string;
-  'نام مشتری': string;
-  'شماره تماس': string;
-  'انبار تحویل': string;
-  'وضعیت سفارش': string;
-  'وضعیت پرداخت': string;
-  'مبلغ کل اقلام (تومان)': number;
-  'تخفیف (تومان)': number;
-  'مالیات (تومان)': number;
-  'مبلغ نهایی فاکتور (تومان)': number;
-  'مبلغ پرداختی (تومان)': number;
-  'شرح / یادداشت': string;
+  'Order Number': string;
+  'Order Date': string;
+  'Customer Name': string;
+  'Phone': string;
+  'Warehouse': string;
+  'Order Status': string;
+  'Payment Status': string;
+  'Subtotal': number;
+  'Discount': number;
+  'Tax': number;
+  'Total': number;
+  'Paid Amount': number;
+  'Notes': string;
 }
 
 export interface ParsedOrderRow {
@@ -667,23 +672,23 @@ export interface ParsedOrderRow {
 
 export function exportOrdersToExcel(
   orders: Order[],
-  fileName: string = `tankhor_orders_${new Date().toISOString().slice(0, 10)}.xlsx`,
+  fileName: string = `${FILE_PREFIX}_orders_${new Date().toISOString().slice(0, 10)}.xlsx`,
   lookups?: { customers?: Customer[]; warehouses?: Warehouse[]; isPersian?: boolean }
 ): number {
   if (!orders || orders.length === 0) return 0;
 
   const statusLabels: Record<string, string> = {
-    completed: 'تکمیل شده',
-    confirmed: 'تایید شده / در انتظار',
-    processing: 'در حال پردازش',
-    draft: 'پیش‌نویس',
-    cancelled: 'لغو شده',
+    completed: 'Completed',
+    confirmed: 'Confirmed',
+    processing: 'Processing',
+    draft: 'Draft',
+    cancelled: 'Cancelled',
   };
 
   const paymentLabels: Record<string, string> = {
-    paid: 'پرداخت کامل',
-    pending: 'پرداخت نشده',
-    partially_paid: 'پرداخت بیعانه/بخشی',
+    paid: 'Paid',
+    pending: 'Pending',
+    partially_paid: 'Partially Paid',
   };
 
   const custMap = new Map((lookups?.customers || []).map((c) => [normalizeId(c.id) || Number(c.id), c]));
@@ -704,32 +709,28 @@ export function exportOrdersToExcel(
         : 0;
 
     const rawDate = o.order_date || o.date_created || '';
-    const dateDisplay = rawDate
-      ? lookups?.isPersian
-        ? isoToJalaliString(rawDate)
-        : rawDate.slice(0, 10)
-      : '';
+    const dateDisplay = rawDate ? rawDate.slice(0, 10) : '';
 
     return {
-      'شماره سفارش': o.order_number || '',
-      'تاریخ ثبت': dateDisplay,
-      'نام مشتری': o.customer_name || cust?.name || (cust as any)?.full_name || 'مشتری عمومی',
-      'شماره تماس': (o as any).customer_phone || (o as any).customer_mobile || cust?.phone || '-',
-      'انبار تحویل': (o as any).warehouse_name || wh?.name || 'انبار اصلی',
-      'وضعیت سفارش': statusLabels[o.status] || o.status,
-      'وضعیت پرداخت': paymentLabels[o.payment_status] || o.payment_status,
-      'مبلغ کل اقلام (تومان)': Number(o.subtotal ?? (o as any).total_amount ?? total) || 0,
-      'تخفیف (تومان)': Number(o.discount ?? (o as any).discount_amount ?? 0) || 0,
-      'مالیات (تومان)': Number(o.tax ?? (o as any).tax_amount ?? 0) || 0,
-      'مبلغ نهایی فاکتور (تومان)': total,
-      'مبلغ پرداختی (تومان)': paidAmount,
-      'شرح / یادداشت': o.notes || '',
+      'Order Number': o.order_number || '',
+      'Order Date': dateDisplay,
+      'Customer Name': o.customer_name || cust?.name || (cust as any)?.full_name || 'Walk-in Customer',
+      'Phone': (o as any).customer_phone || (o as any).customer_mobile || cust?.phone || '-',
+      'Warehouse': (o as any).warehouse_name || wh?.name || 'Main Warehouse',
+      'Order Status': statusLabels[o.status] || o.status,
+      'Payment Status': paymentLabels[o.payment_status] || o.payment_status,
+      'Subtotal': Number(o.subtotal ?? (o as any).total_amount ?? total) || 0,
+      'Discount': Number(o.discount ?? (o as any).discount_amount ?? 0) || 0,
+      'Tax': Number(o.tax ?? (o as any).tax_amount ?? 0) || 0,
+      'Total': total,
+      'Paid Amount': paidAmount,
+      'Notes': o.notes || '',
     };
   });
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'لیست سفارشات');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Orders');
   downloadWorkbook(workbook, fileName);
   return rows.length;
 }
@@ -738,13 +739,13 @@ export function parseOrdersFromExcel(fileBuffer: ArrayBuffer): ExcelImportResult
   const workbook = XLSX.read(fileBuffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    return { success: false, importedCount: 0, updatedCount: 0, errors: ['فایل اکسل خالی است.'], items: [] };
+    return { success: false, importedCount: 0, updatedCount: 0, errors: ['The Excel file is empty.'], items: [] };
   }
   const worksheet = workbook.Sheets[sheetName];
   const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
   if (!rawRows || rawRows.length === 0) {
-    return { success: false, importedCount: 0, updatedCount: 0, errors: ['هیچ ردیفی در فایل یافت نشد.'], items: [] };
+    return { success: false, importedCount: 0, updatedCount: 0, errors: ['No rows were found in the file.'], items: [] };
   }
 
   const items: ParsedOrderRow[] = [];
@@ -752,19 +753,19 @@ export function parseOrdersFromExcel(fileBuffer: ArrayBuffer): ExcelImportResult
 
   const mapOrderStatus = (raw: string): OrderStatus => {
     const s = normalizeHeaderKey(raw);
-    if (!s || s.includes('تکمیل') || s === 'completed') return 'completed';
-    if (s.includes('تایید') || s.includes('تأیید') || s.includes('انتظار') || s === 'confirmed') return 'confirmed';
-    if (s.includes('پردازش') || s === 'processing') return 'processing';
-    if (s.includes('پیش') || s === 'draft') return 'draft';
-    if (s.includes('لغو') || s === 'cancelled') return 'cancelled';
+    if (!s || s === 'completed' || s === 'completato') return 'completed';
+    if (s === 'confirmed' || s === 'confermato') return 'confirmed';
+    if (s === 'processing' || s === 'in lavorazione') return 'processing';
+    if (s === 'draft' || s === 'bozza') return 'draft';
+    if (s === 'cancelled' || s === 'canceled' || s === 'annullato') return 'cancelled';
     return 'completed';
   };
 
   const mapPaymentStatus = (raw: string, total: number, paid: number): PaymentStatus => {
     const s = normalizeHeaderKey(raw);
-    if (s.includes('کامل') || s === 'paid') return 'paid';
-    if (s.includes('نشده') || s.includes('معوق') || s === 'pending' || s === 'unpaid') return 'pending';
-    if (s.includes('بیعانه') || s.includes('بخشی') || s.includes('اقساط') || s === 'partially paid') return 'partially_paid';
+    if (s === 'paid' || s === 'pagato') return 'paid';
+    if (s === 'pending' || s === 'unpaid' || s === 'in attesa' || s === 'non pagato') return 'pending';
+    if (s === 'partially paid' || s === 'partial' || s === 'parzialmente pagato') return 'partially_paid';
     if (paid > 0 && total > 0 && paid < total) return 'partially_paid';
     if (paid >= total && total > 0) return 'paid';
     return 'pending';
@@ -775,39 +776,41 @@ export function parseOrdersFromExcel(fileBuffer: ArrayBuffer): ExcelImportResult
     const row = normalizeRowKeys(rawRow);
 
     const orderNumber =
-      getCell(row, ['شماره سفارش', 'شماره فاکتور', 'کد سفارش', 'order number', 'order no']) ||
+      getCell(row, ['order number', 'order no', 'numero ordine']) ||
       `IMP-${Date.now().toString().slice(-5)}-${idx + 1}`;
 
-    const subtotal = getNumericCell(row, ['مبلغ کل اقلام (تومان)', 'مبلغ کل اقلام', 'مبلغ اقلام', 'subtotal']);
-    const discount = getNumericCell(row, ['تخفیف (تومان)', 'تخفیف', 'discount']) ?? 0;
-    const tax = getNumericCell(row, ['مالیات (تومان)', 'مالیات', 'tax']) ?? 0;
-    const totalCell = getNumericCell(row, ['مبلغ نهایی فاکتور (تومان)', 'مبلغ نهایی فاکتور', 'مبلغ نهایی', 'مبلغ کل', 'total']);
-    const paidCell = getNumericCell(row, ['مبلغ پرداختی (تومان)', 'مبلغ پرداختی', 'پرداختی', 'paid amount']);
+    const subtotal = getNumericCell(row, ['subtotal', 'subtotale']);
+    const discount = getNumericCell(row, ['discount', 'sconto']) ?? 0;
+    const tax = getNumericCell(row, ['tax', 'vat', 'iva', 'imposte']) ?? 0;
+    const totalCell = getNumericCell(row, ['total', 'totale']);
+    const paidCell = getNumericCell(row, ['paid amount', 'paid', 'importo pagato']);
 
     const total = totalCell ?? Math.max(0, (subtotal ?? 0) - discount + tax);
     const finalSubtotal = subtotal ?? Math.max(0, total + discount - tax);
 
     if (total <= 0 && finalSubtotal <= 0) {
-      errors.push(`سطر ${rowNum} (${orderNumber}): مبلغ کل فاکتور باید بیشتر از صفر باشد.`);
+      errors.push(`Row ${rowNum} (${orderNumber}): Total amount must be greater than zero.`);
       return;
     }
 
-    const rawDate = row[normalizeHeaderKey('تاریخ ثبت')] || row[normalizeHeaderKey('تاریخ')] || row['date'] || row['order date'];
+    const rawDate = row['order date'] || row['date'] || row['data ordine'] || row['data'];
     const dateCreated = parseExcelDateToIso(rawDate);
-    const status = mapOrderStatus(getCell(row, ['وضعیت سفارش', 'وضعیت', 'status']));
-    const rawPayStatus = getCell(row, ['وضعیت پرداخت', 'payment status']);
-    const paidAmount = paidCell !== undefined ? Math.max(0, paidCell) : rawPayStatus.includes('نشده') ? 0 : total;
+    const status = mapOrderStatus(getCell(row, ['order status', 'status', 'stato ordine', 'stato']));
+    const rawPayStatus = getCell(row, ['payment status', 'stato pagamento']);
+    const payNorm = normalizeHeaderKey(rawPayStatus);
+    const isExplicitlyUnpaid = payNorm === 'pending' || payNorm === 'unpaid' || payNorm === 'non pagato';
+    const paidAmount = paidCell !== undefined ? Math.max(0, paidCell) : isExplicitlyUnpaid ? 0 : total;
     const paymentStatus = mapPaymentStatus(rawPayStatus, total, paidAmount);
 
-    const customerPhoneRaw = getCell(row, ['شماره تماس', 'موبایل', 'تلفن', 'phone', 'customer phone']);
-    const customerPhone = customerPhoneRaw === '-' ? '' : normalizeIranianPhone(customerPhoneRaw);
-    const warehouseRaw = getCell(row, ['انبار تحویل', 'انبار', 'warehouse']);
+    const customerPhoneRaw = getCell(row, ['phone', 'customer phone', 'mobile', 'telefono']);
+    const customerPhone = customerPhoneRaw === '-' ? '' : normalizePhone(customerPhoneRaw);
+    const warehouseRaw = getCell(row, ['warehouse', 'magazzino']);
 
     items.push({
       rowNumber: rowNum,
       orderNumber,
       dateCreated,
-      customerName: getCell(row, ['نام مشتری', 'مشتری', 'customer', 'customer name']) || 'مشتری عمومی',
+      customerName: getCell(row, ['customer name', 'customer', 'cliente', 'nome cliente']) || 'Walk-in Customer',
       customerPhone,
       warehouseName: warehouseRaw === '-' ? '' : warehouseRaw,
       status,
@@ -817,7 +820,7 @@ export function parseOrdersFromExcel(fileBuffer: ArrayBuffer): ExcelImportResult
       tax: Math.max(0, tax),
       total: Math.max(0, total),
       paidAmount,
-      notes: getCell(row, ['شرح / یادداشت', 'یادداشت', 'شرح', 'توضیحات', 'notes']),
+      notes: getCell(row, ['notes', 'note']),
     });
   });
 
@@ -837,42 +840,42 @@ export function parseOrdersFromExcel(fileBuffer: ArrayBuffer): ExcelImportResult
  */
 
 export interface CustomerExportRow {
-  'نام و نام خانوادگی': string;
-  'شماره تماس': string;
-  'موبایل': string;
-  'ایمیل': string;
-  'استان': string;
-  'شهر': string;
-  'کد پستی': string;
-  'آدرس': string;
-  'یادداشت': string;
-  'وضعیت': string;
+  'Full Name': string;
+  'Phone': string;
+  'Mobile': string;
+  'Email': string;
+  'State / Province': string;
+  'City': string;
+  'Postal Code': string;
+  'Address': string;
+  'Notes': string;
+  'Status': string;
 }
 
 export function exportCustomersToExcel(
   customers: Customer[],
-  fileName: string = `tankhor_customers_${new Date().toISOString().slice(0, 10)}.xlsx`
+  fileName: string = `${FILE_PREFIX}_customers_${new Date().toISOString().slice(0, 10)}.xlsx`
 ): number {
   if (!customers || customers.length === 0) return 0;
 
   const rows: CustomerExportRow[] = customers.map((c) => {
     return {
-      'نام و نام خانوادگی': c.name || (c as any).full_name || '',
-      'شماره تماس': c.phone || '',
-      'موبایل': (c as any).mobile || c.phone || '',
-      'ایمیل': c.email || '',
-      'استان': (c as any).province || '',
-      'شهر': (c as any).city || '',
-      'کد پستی': (c as any).postal_code || '',
-      'آدرس': c.address || '',
-      'یادداشت': c.notes || '',
-      'وضعیت': c.status === 'inactive' ? 'غیرفعال' : 'فعال',
+      'Full Name': c.name || (c as any).full_name || '',
+      'Phone': c.phone || '',
+      'Mobile': (c as any).mobile || c.phone || '',
+      'Email': c.email || '',
+      'State / Province': (c as any).province || '',
+      'City': (c as any).city || '',
+      'Postal Code': (c as any).postal_code || '',
+      'Address': c.address || '',
+      'Notes': c.notes || '',
+      'Status': c.status === 'inactive' ? 'Inactive' : 'Active',
     };
   });
 
   const worksheet = XLSX.utils.json_to_sheet(rows);
   const workbook = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(workbook, worksheet, 'مشتریان');
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Customers');
   downloadWorkbook(workbook, fileName);
   return rows.length;
 }
@@ -881,13 +884,13 @@ export function parseCustomersFromExcel(fileBuffer: ArrayBuffer): ExcelImportRes
   const workbook = XLSX.read(fileBuffer, { type: 'array' });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) {
-    return { success: false, importedCount: 0, updatedCount: 0, errors: ['فایل اکسل خالی است.'], items: [] };
+    return { success: false, importedCount: 0, updatedCount: 0, errors: ['The Excel file is empty.'], items: [] };
   }
   const worksheet = workbook.Sheets[sheetName];
   const rawRows: any[] = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
 
   if (!rawRows || rawRows.length === 0) {
-    return { success: false, importedCount: 0, updatedCount: 0, errors: ['سطری در فایل اکسل یافت نشد.'], items: [] };
+    return { success: false, importedCount: 0, updatedCount: 0, errors: ['No rows were found in the Excel file.'], items: [] };
   }
 
   const items: Partial<Customer>[] = [];
@@ -895,35 +898,35 @@ export function parseCustomersFromExcel(fileBuffer: ArrayBuffer): ExcelImportRes
 
   rawRows.forEach((rawRow, idx) => {
     const row = normalizeRowKeys(rawRow);
-    const rawName = getCell(row, ['نام و نام خانوادگی', 'نام مشتری', 'نام کامل', 'نام', 'name', 'full name']);
+    const rawName = getCell(row, ['full name', 'name', 'customer name', 'nome completo', 'nome']);
     if (!rawName) {
-      errors.push(`سطر ${idx + 2}: نام مشتری خالی است.`);
+      errors.push(`Row ${idx + 2}: Customer name is required.`);
       return;
     }
 
-    const rawPhone = getCell(row, ['شماره تماس', 'تلفن', 'تلفن همراه', 'موبایل', 'phone', 'mobile']);
-    const rawMobile = getCell(row, ['موبایل', 'تلفن همراه', 'mobile']) || rawPhone;
-    const rawEmail = getCell(row, ['ایمیل', 'پست الکترونیک', 'email']);
-    const rawAddress = getCell(row, ['آدرس', 'نشانی', 'address']);
-    const rawCity = getCell(row, ['شهر', 'city']);
-    const rawProvince = getCell(row, ['استان', 'province']);
-    const rawPostalCode = toEnglishDigits(getCell(row, ['کد پستی', 'کدپستی', 'postal code']));
-    const rawNotes = getCell(row, ['یادداشت', 'توضیحات', 'notes']);
-    const rawStatus = getCell(row, ['وضعیت', 'status']).toLowerCase();
-    const status = rawStatus === 'غیرفعال' || rawStatus === 'inactive' ? 'inactive' : 'active';
+    const rawPhone = getCell(row, ['phone', 'mobile', 'telefono', 'cellulare']);
+    const rawMobile = getCell(row, ['mobile', 'cellulare']) || rawPhone;
+    const rawEmail = getCell(row, ['email', 'e-mail']);
+    const rawAddress = getCell(row, ['address', 'indirizzo']);
+    const rawCity = getCell(row, ['city', 'citta']);
+    const rawProvince = getCell(row, ['state / province', 'province', 'state', 'provincia']);
+    const rawPostalCode = toEnglishDigits(getCell(row, ['postal code', 'zip', 'cap']));
+    const rawNotes = getCell(row, ['notes', 'note']);
+    const rawStatus = getCell(row, ['status', 'stato']).toLowerCase();
+    const status = rawStatus === 'inactive' || rawStatus === 'inattivo' ? 'inactive' : 'active';
 
     const addressParts = [
-      rawProvince,
-      rawCity,
       rawAddress,
-      rawPostalCode ? `کدپستی: ${rawPostalCode}` : '',
+      rawCity,
+      rawProvince,
+      rawPostalCode ? `ZIP: ${rawPostalCode}` : '',
     ].filter((part) => Boolean(part && part.trim()));
 
     items.push({
       name: rawName,
-      phone: normalizeIranianPhone(rawMobile || rawPhone),
+      phone: normalizePhone(rawMobile || rawPhone),
       email: rawEmail,
-      address: addressParts.join(' - ') || rawAddress,
+      address: addressParts.join(', ') || rawAddress,
       notes: rawNotes,
       status,
     });
@@ -937,5 +940,3 @@ export function parseCustomersFromExcel(fileBuffer: ArrayBuffer): ExcelImportRes
     items,
   };
 }
-
-

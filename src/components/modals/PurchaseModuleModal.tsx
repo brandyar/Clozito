@@ -7,6 +7,7 @@ import { useModuleAccess } from '../../hooks/useModuleAccess';
 import { useTranslation } from '../../i18n';
 import { formatModulePrice } from '../../utils/license';
 import { openExternalUrl } from '../../utils/desktop';
+import { getRequiredTierForModule, isModuleOfflinePurchasable } from '../../config/plans';
 import { Button } from '../ui/Button';
 import { Badge } from '../ui/Badge';
 import {
@@ -144,15 +145,18 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
       ? 'Modulo professionale aggiuntivo per il tuo flusso di lavoro moda e magazzino.'
       : 'Specialized add-on module built for apparel, footwear, and retail operations.');
 
-  const isIncludedInPro =
-    matchedOrgMod?.included_in_pro !== undefined
-      ? Boolean(matchedOrgMod.included_in_pro)
-      : Boolean(matchedSystemMod?.included_in_pro);
+  const canBuyOffline = isModuleOfflinePurchasable(moduleSlug);
+  const requiredTier = getRequiredTierForModule(moduleSlug);
+  const requiredTierLabel =
+    requiredTier === 'boutique'
+      ? 'Boutique Cloud (€29/mo)'
+      : isIt
+        ? 'Atelier & Produzione Cloud (€49/mese)'
+        : 'Atelier & Production Cloud (€49/mo)';
 
-  const formattedPrice = formatModulePrice(
-    matchedSystemMod || matchedOrgMod || { slug: moduleSlug },
-    locale
-  );
+  const formattedPrice = canBuyOffline
+    ? formatModulePrice(matchedSystemMod || matchedOrgMod || { slug: moduleSlug }, locale)
+    : '';
 
   const handleCopyHw = () => {
     navigator.clipboard.writeText(hardwareId);
@@ -235,6 +239,7 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
         organizationId: activeOrganization.id,
         moduleSlug,
         hardwareId,
+        locale,
       });
 
       if (res && res.success && res.paymentUrl) {
@@ -334,10 +339,16 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-neutral-900 dark:text-white">{resolvedName}</h2>
-                <Badge variant="default">{isIt ? 'Licenza Perpetua' : 'Lifetime License'}</Badge>
+                <Badge variant={canBuyOffline ? 'default' : 'info'}>
+                  {canBuyOffline
+                    ? isIt ? 'Licenza Desktop Offline' : 'Desktop Offline License'
+                    : isIt ? 'Abbonamento Cloud' : 'Cloud Subscription'}
+                </Badge>
               </div>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
-                {isIt ? 'Pagamento unico sicuro tramite Stripe' : 'One-time purchase secured via Stripe'}
+                {canBuyOffline
+                  ? isIt ? 'Acquisto una tantum per uso locale • Stripe EUR' : 'One-time Desktop Offline license • Stripe EUR'
+                  : isIt ? `Incluso in ${requiredTierLabel}` : `Included in ${requiredTierLabel}`}
               </p>
             </div>
           </div>
@@ -412,6 +423,38 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
                 </Button>
               </div>
             </div>
+          ) : !canBuyOffline ? (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed">{description}</p>
+              <div className="p-4 rounded-xl bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/60 space-y-2">
+                <div className="flex items-center gap-2 text-sm font-bold text-indigo-950 dark:text-indigo-200">
+                  <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
+                  <span>
+                    {isIt
+                      ? `Incluso in ${requiredTierLabel}`
+                      : `Included in ${requiredTierLabel}`}
+                  </span>
+                </div>
+                <p className="text-xs text-indigo-800/90 dark:text-indigo-300 leading-relaxed">
+                  {isIt
+                    ? 'Questo modulo utilizza server cloud e API online continue ed è incluso nell’abbonamento Cloud anziché come licenza offline una tantum.'
+                    : 'This module relies on continuous cloud hosting and online APIs, so it is included with a Cloud Subscription rather than a one-time offline license.'}
+                </p>
+              </div>
+              {onOpenProModal && (
+                <Button
+                  variant="primary"
+                  className="w-full py-3 gap-2 text-sm font-semibold"
+                  onClick={() => {
+                    onClose();
+                    onOpenProModal();
+                  }}
+                >
+                  <Sparkles className="w-4 h-4" />
+                  {isIt ? 'Scegli un Piano Cloud' : 'View Cloud Plans'}
+                </Button>
+              )}
+            </div>
           ) : (
             <>
               <p className="text-sm text-neutral-600 dark:text-neutral-300 leading-relaxed">{description}</p>
@@ -420,7 +463,7 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
               <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700/70 flex items-center justify-between gap-4">
                 <div>
                   <span className="text-xs font-medium uppercase tracking-wider text-neutral-500 dark:text-neutral-400">
-                    {isIt ? 'Licenza una tantum' : 'One-Time License Fee'}
+                    {isIt ? 'Licenza Desktop Offline (una tantum)' : 'Desktop Offline License (One-Time)'}
                   </span>
                   <div className="text-2xl font-extrabold text-neutral-900 dark:text-white mt-0.5">
                     {formattedPrice}
@@ -438,15 +481,15 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
                 </div>
               </div>
 
-              {/* Included in Pro hint */}
-              {isIncludedInPro && onOpenProModal && (
+              {/* Included in Cloud Tier hint */}
+              {onOpenProModal && (
                 <div className="flex items-center justify-between gap-3 p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50">
                   <div className="flex items-center gap-2 text-xs text-amber-900 dark:text-amber-200">
                     <Sparkles className="w-4 h-4 text-amber-600 shrink-0" />
                     <span>
                       {isIt
-                        ? 'Questo modulo è incluso nel piano Cloud Pro.'
-                        : 'This add-on is included with a Cloud Pro subscription.'}
+                        ? `Incluso anche in ${requiredTierLabel} insieme alla sincronizzazione cloud.`
+                        : `Also included in ${requiredTierLabel} along with multi-user Cloud Sync.`}
                     </span>
                   </div>
                   <Button
@@ -457,7 +500,7 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
                       onOpenProModal();
                     }}
                   >
-                    {isIt ? 'Vedi Pro' : 'View Pro'}
+                    {isIt ? 'Vedi Piani' : 'View Plans'}
                   </Button>
                 </div>
               )}
@@ -471,8 +514,8 @@ export const PurchaseModuleModal: React.FC<PurchaseModuleModalProps> = ({
               >
                 <CreditCard className="w-4 h-4" />
                 {isIt
-                  ? `Acquista con Stripe (${formattedPrice})`
-                  : `Buy with Stripe (${formattedPrice})`}
+                  ? `Acquista Licenza Offline (${formattedPrice})`
+                  : `Buy Offline License (${formattedPrice})`}
               </Button>
 
               {/* Hardware Fingerprint + Offline License Key */}

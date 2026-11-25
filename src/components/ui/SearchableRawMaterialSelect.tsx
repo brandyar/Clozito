@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { RawMaterial } from '../../types';
 import { useTranslation } from '../../i18n';
 import { Search, Check, ChevronDown, Boxes, X } from 'lucide-react';
-import { formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 
 export interface SearchableRawMaterialSelectProps {
   rawMaterials: RawMaterial[];
@@ -29,10 +29,9 @@ export const SearchableRawMaterialSelect: React.FC<SearchableRawMaterialSelectPr
   disabled,
   className = '',
   id,
-  currency = 'TOMAN',
+  currency = 'EUR',
 }) => {
-  const { t, locale } = useTranslation();
-  const isPersian = false;
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -45,14 +44,13 @@ export const SearchableRawMaterialSelect: React.FC<SearchableRawMaterialSelectPr
     return rawMaterials.find((r) => r.id === Number(value)) || null;
   }, [rawMaterials, value]);
 
-  // Normalize search helper
+  // Normalize search helper (accent-insensitive Latin)
   const normalize = (str?: string | null) => {
     if (!str) return '';
     return str
       .toLowerCase()
-      .replace(/ي/g, 'ی')
-      .replace(/ك/g, 'ک')
-      .replace(/ة/g, 'ه')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .trim();
   };
 
@@ -147,7 +145,7 @@ export const SearchableRawMaterialSelect: React.FC<SearchableRawMaterialSelectPr
                 {selectedMaterial.unit_cost > 0 && (
                   <>
                     <span>•</span>
-                    <span>{t('production.costPrefix')} {formatCurrency(selectedMaterial.unit_cost, currency, isPersian)}</span>
+                    <span>{t('production.costPrefix')} {formatCurrency(selectedMaterial.unit_cost, currency)}</span>
                   </>
                 )}
               </div>
@@ -228,12 +226,12 @@ export const SearchableRawMaterialSelect: React.FC<SearchableRawMaterialSelectPr
                         <div className="flex items-center gap-2 text-[11px] text-neutral-500 dark:text-neutral-400 font-mono mt-0.5">
                           <span>{t('production.unitPrefix')} {mat.unit}</span>
                           <span>•</span>
-                          <span>{t('production.stockPrefix')} {isPersian ? toPersianDigits(mat.current_stock) : mat.current_stock}</span>
+                          <span>{t('production.stockPrefix')} {mat.current_stock}</span>
                           {mat.unit_cost > 0 && (
                             <>
                               <span>•</span>
                               <span className="text-emerald-600 dark:text-emerald-400">
-                                {t('production.costPrefix')} {formatCurrency(mat.unit_cost, currency, isPersian)}
+                                {t('production.costPrefix')} {formatCurrency(mat.unit_cost, currency)}
                               </span>
                             </>
                           )}

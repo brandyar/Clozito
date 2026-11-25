@@ -24,7 +24,8 @@ import { AccountFormModal } from './components/AccountFormModal';
 import { TreasuryTransferModal } from './components/TreasuryTransferModal';
 
 export const FinancialAccountsPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const storage = storageManager.getAdapter();
   const { activeOrganization } = useOrganization();
 
@@ -244,11 +245,11 @@ export const FinancialAccountsPage: React.FC = () => {
           <button
             onClick={loadData}
             disabled={loading}
-            title={t('common.refresh') || 'بروزرسانی و همگام‌سازی'}
+            title={t('common.refresh', isIt ? 'Aggiorna e sincronizza' : 'Refresh & Sync')}
             className="flex items-center gap-1.5 px-3 py-2 text-xs font-medium rounded-lg border border-neutral-300 dark:border-neutral-700 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer shadow-xs"
           >
             <RefreshCw className={`w-3.5 h-3.5 text-neutral-500 ${loading ? 'animate-spin' : ''}`} />
-            <span className="hidden sm:inline">{t('common.refresh') || 'بروزرسانی'}</span>
+            <span className="hidden sm:inline">{t('common.refresh', isIt ? 'Aggiorna' : 'Refresh')}</span>
           </button>
 
           <button
@@ -278,7 +279,7 @@ export const FinancialAccountsPage: React.FC = () => {
           <Search className="w-4 h-4 absolute start-3 top-1/2 -translate-y-1/2 text-neutral-400" />
           <input
             type="text"
-            placeholder="جستجوی نام حساب، شماره کارت، شبا یا بانک..."
+            placeholder={isIt ? 'Cerca nome conto, IBAN, carta o banca...' : 'Search account name, IBAN, card, or bank...'}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full ps-9 pe-3 py-1.5 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-neutral-900 dark:focus:ring-white"
@@ -297,14 +298,14 @@ export const FinancialAccountsPage: React.FC = () => {
               }`}
             >
               {type === 'all'
-                ? 'همه حساب‌ها'
+                ? (isIt ? 'Tutti i conti' : 'All Accounts')
                 : type === 'cashbox'
-                ? 'صندوق‌ها'
+                ? (isIt ? 'Casse' : 'Cashboxes')
                 : type === 'bank'
-                ? 'بانک‌ها'
+                ? (isIt ? 'Banche' : 'Banks')
                 : type === 'pos'
-                ? 'کارتخوان‌ها'
-                : 'تنخواه'}
+                ? (isIt ? 'POS' : 'POS Terminals')
+                : (isIt ? 'Piccola cassa' : 'Petty Cash')}
             </button>
           ))}
         </div>
@@ -314,7 +315,7 @@ export const FinancialAccountsPage: React.FC = () => {
       {loading ? (
         <div className="py-20 flex flex-col items-center justify-center text-xs text-neutral-500">
           <RefreshCw className="w-5 h-5 animate-spin mb-3 text-neutral-400" />
-          <span>در حال بارگذاری حساب‌ها و موجودی‌ها...</span>
+          <span>{isIt ? 'Caricamento conti e saldi...' : 'Loading accounts and balances...'}</span>
         </div>
       ) : filteredAccounts.length === 0 ? (
         <div className="p-12 text-center bg-white dark:bg-neutral-900 rounded-xl border border-dashed border-neutral-300 dark:border-neutral-800">

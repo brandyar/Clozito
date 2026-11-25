@@ -1,5 +1,5 @@
 /**
- * TANKHOR (تن‌خور) - Media & Image File Manager
+ * Clozito - Media & Image File Manager
  * Handles hybrid desktop filesystem storage (Tauri @tauri-apps/plugin-fs),
  * local offline caching, and background cloud sync queues.
  */

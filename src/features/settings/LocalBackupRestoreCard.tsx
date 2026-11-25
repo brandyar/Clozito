@@ -9,7 +9,7 @@ import { BackupManager, InspectionResult, BackupCollectionKey } from '../../stor
 import { isTauriEnvironment } from '../../storage';
 import { CloudMigrationManager } from '../../storage/cloudMigrationManager';
 import { useAuth } from '../../context/AuthContext';
-import { toPersianDigits, formatDate } from '../../utils/formatters';
+import { formatDate } from '../../utils/formatters';
 import {
   Download,
   Upload,
@@ -37,8 +37,8 @@ export const LocalBackupRestoreCard: React.FC = () => {
   const { activeOrganization, refreshOrganizations } = useOrganization();
   const { isCloudAuthenticated } = useAuth();
   const isDesktop = isTauriEnvironment();
-  const isPersian = false;
-  const formatNum = (val: number | string) => (isPersian ? toPersianDigits(val) : String(val));
+  const isIt = locale === 'it';
+  const formatNum = (val: number | string) => String(val);
 
   // Storage statistics (supports Browser, Desktop SQLite, and Cloud modes)
   const [stats, setStats] = useState<Record<string, number>>({});
@@ -106,12 +106,16 @@ export const LocalBackupRestoreCard: React.FC = () => {
       setLastBackupTime(now);
       setFeedback({
         type: 'success',
-        message: `فایل پشتیبان سازمان "${activeOrganization?.name || 'فعلی'}" با ${formatNum(exportRes.totalRecords)} رکورد با موفقیت دانلود شد. این فایل را در مکانی امن نگهداری کنید.`,
+        message: isIt
+          ? `Backup dell'organizzazione "${activeOrganization?.name || 'corrente'}" (${formatNum(exportRes.totalRecords)} record) scaricato con successo. Conserva questo file in un luogo sicuro.`
+          : `Backup file for "${activeOrganization?.name || 'current'}" (${formatNum(exportRes.totalRecords)} records) downloaded successfully. Please store it safely.`,
       });
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: `خطا در تهیه فایل پشتیبان: ${err.message}`,
+        message: isIt
+          ? `Errore nella creazione del backup: ${err.message}`
+          : `Error creating backup file: ${err.message}`,
       });
     } finally {
       setIsExporting(false);
@@ -126,18 +130,24 @@ export const LocalBackupRestoreCard: React.FC = () => {
       if (!res.success || res.count === 0) {
         setFeedback({
           type: 'info',
-          message: `هیچ رکوردی در بخش "${label}" برای خروجی اکسل یافت نشد.`,
+          message: isIt
+            ? `Nessun record trovato in "${label}" per l'esportazione CSV.`
+            : `No records found in "${label}" for spreadsheet export.`,
         });
         return;
       }
       setFeedback({
         type: 'success',
-        message: `خروجی اکسل ${label} (${formatNum(res.count)} ردیف) با موفقیت دانلود شد.`,
+        message: isIt
+          ? `Esportazione ${label} (${formatNum(res.count)} righe) scaricata con successo.`
+          : `${label} spreadsheet (${formatNum(res.count)} rows) downloaded successfully.`,
       });
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: `خطا در دانلود خروجی اکسل: ${err.message}`,
+        message: isIt
+          ? `Errore nello scaricare l'esportazione: ${err.message}`
+          : `Error downloading spreadsheet export: ${err.message}`,
       });
     }
   };
@@ -154,7 +164,7 @@ export const LocalBackupRestoreCard: React.FC = () => {
       if (!result.valid) {
         setFeedback({
           type: 'error',
-          message: result.error || 'فایل نامعتبر است.',
+          message: result.error || (isIt ? 'File di backup non valido.' : 'Invalid backup file.'),
         });
         if (fileInputRef.current) fileInputRef.current.value = '';
         return;
@@ -183,18 +193,20 @@ export const LocalBackupRestoreCard: React.FC = () => {
           type: res.warning ? 'info' : 'success',
           message:
             res.warning ||
-            `اطلاعات با موفقیت بازیابی شد (${formatNum(res.restoredCount)} رکورد بازگردانی شد).`,
+            (isIt
+              ? `Dati ripristinati con successo (${formatNum(res.restoredCount)} record ripristinati).`
+              : `Data restored successfully (${formatNum(res.restoredCount)} records restored).`),
         });
       } else {
         setFeedback({
           type: 'error',
-          message: res.error || 'خطا در بازیابی اطلاعات',
+          message: res.error || (isIt ? 'Errore durante il ripristino dei dati' : 'Error restoring data'),
         });
       }
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: `خطا در بازگردانی داده‌ها: ${err.message}`,
+        message: isIt ? `Errore durante il ripristino: ${err.message}` : `Error restoring data: ${err.message}`,
       });
     } finally {
       setIsRestoring(false);
@@ -213,18 +225,20 @@ export const LocalBackupRestoreCard: React.FC = () => {
         loadStats();
         setFeedback({
           type: 'success',
-          message: `انتقال اطلاعات ابری به پایگاه‌داده محلی این سیستم با موفقیت انجام شد (${toPersianDigits(res.totalMigrated)} رکورد ذخیره گردید).`,
+          message: isIt
+            ? `Migrazione dei dati cloud al database locale completata (${res.totalMigrated} record salvati).`
+            : `Cloud data successfully migrated to this device's local database (${res.totalMigrated} records saved).`,
         });
       } else {
         setFeedback({
           type: 'error',
-          message: res.errors[0] || 'خطا در انتقال اطلاعات به پایگاه‌داده محلی',
+          message: res.errors[0] || (isIt ? 'Errore durante la migrazione al database locale' : 'Error migrating data to local database'),
         });
       }
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: `خطا در ارتباط با سرور ابری: ${err.message}`,
+        message: isIt ? `Errore di connessione al server cloud: ${err.message}` : `Cloud server connection error: ${err.message}`,
       });
     } finally {
       setIsMigratingCloudToLocal(false);
@@ -251,7 +265,7 @@ export const LocalBackupRestoreCard: React.FC = () => {
     } catch (err: any) {
       setFeedback({
         type: 'error',
-        message: `خطا: ${err.message}`,
+        message: `${isIt ? 'Errore' : 'Error'}: ${err.message}`,
       });
     } finally {
       setIsSeedingDemo(false);
@@ -281,7 +295,7 @@ export const LocalBackupRestoreCard: React.FC = () => {
       setClearConfirmModalOpen(false);
       setFeedback({
         type: 'error',
-        message: `خطا در پاکسازی: ${err.message}`,
+        message: isIt ? `Errore durante la pulizia dei dati: ${err.message}` : `Error clearing data: ${err.message}`,
       });
     }
   };
@@ -345,7 +359,7 @@ export const LocalBackupRestoreCard: React.FC = () => {
               </span>
               {lastBackupTime && (
                 <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
-                  {t('settings.lastBackupTime')} {formatDate(lastBackupTime, true)}
+                  {t('settings.lastBackupTime')} {formatDate(lastBackupTime, false, locale)}
                 </span>
               )}
             </div>
@@ -469,18 +483,18 @@ export const LocalBackupRestoreCard: React.FC = () => {
                       {t('settings.backupInventory')}
                     </button>
                     <button
-                      onClick={() => handleExportCsv('expenses', 'هزینه‌ها')}
+                      onClick={() => handleExportCsv('expenses', isIt ? 'Spese' : 'Expenses')}
                       className="px-2 py-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 font-medium text-neutral-700 dark:text-neutral-200 transition-colors flex items-center gap-1"
                     >
                       <FileSpreadsheet className="w-3 h-3 text-rose-600 dark:text-rose-400" />
-                      هزینه‌ها
+                      {isIt ? 'Spese' : 'Expenses'}
                     </button>
                     <button
-                      onClick={() => handleExportCsv('cheques', 'چک‌ها')}
+                      onClick={() => handleExportCsv('cheques', isIt ? 'Assegni / Cambiali' : 'Cheques / Notes')}
                       className="px-2 py-1 bg-white dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-700 font-medium text-neutral-700 dark:text-neutral-200 transition-colors flex items-center gap-1"
                     >
                       <FileSpreadsheet className="w-3 h-3 text-purple-600 dark:text-purple-400" />
-                      چک‌ها
+                      {isIt ? 'Assegni' : 'Cheques'}
                     </button>
                   </div>
                 </div>
@@ -523,11 +537,15 @@ export const LocalBackupRestoreCard: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <Database className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
                     <h4 className="text-xs sm:text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                      انتقال اطلاعات ابری به پایگاه‌داده محلی این سیستم (SQLite)
+                      {isIt
+                        ? 'Migra i dati cloud al database locale (SQLite)'
+                        : 'Migrate Cloud Data to Local Device Database (SQLite)'}
                     </h4>
                   </div>
                   <p className="text-xs text-neutral-600 dark:text-neutral-300 leading-relaxed">
-                    اگر اشتراک ابری سازمان به پایان رسیده یا می‌خواهید یک نسخه کامل و آفلاین از تمامی داده‌های سازمان روی این سیستم داشته باشید، با ۱ کلیک اطلاعات را از سرور دریافت و در دیتابیس محلی ذخیره نمایید.
+                    {isIt
+                      ? 'Se il tuo abbonamento cloud è scaduto o desideri una copia offline completa di tutti i dati aziendali su questo dispositivo, scarica e salva i dati nel database locale con un clic.'
+                      : 'If your cloud subscription has ended or you want a full offline copy of your organization data on this device, download and save all records to the local database in one click.'}
                   </p>
                 </div>
                 <Button
@@ -537,7 +555,7 @@ export const LocalBackupRestoreCard: React.FC = () => {
                   icon={<Download className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />}
                   className="font-bold text-xs py-2.5 px-4 border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 dark:hover:bg-emerald-950/40 shrink-0 cursor-pointer shadow-2xs"
                 >
-                  دریافت و ذخیره داده‌های ابری
+                  {isIt ? 'Scarica e salva dati cloud' : 'Download & Save Cloud Data'}
                 </Button>
               </div>
             )}
@@ -597,7 +615,10 @@ export const LocalBackupRestoreCard: React.FC = () => {
             <div>
               <p className="font-bold">{t('settings.restoreValidatedMsg')}</p>
               <p className="text-neutral-600 dark:text-neutral-300 text-[11px] mt-0.5">
-                {t('settings.backupCreatedDate')} {inspectedData?.metadata?.exported_at_jalali || '-'}
+                {t('settings.backupCreatedDate')}{' '}
+                {inspectedData?.metadata?.exported_at
+                  ? formatDate(inspectedData.metadata.exported_at, false, locale)
+                  : '-'}
                 {inspectedData?.metadata?.organization?.name && ` | ${t('settings.backupOrgLabel')} ${inspectedData.metadata.organization.name}`}
               </p>
             </div>

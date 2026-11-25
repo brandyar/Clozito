@@ -1,5 +1,12 @@
-import { Order, Organization } from '../types';
-import { formatCurrency, formatDate, resolveCurrencyCode } from './formatters';
+import { Customer, Order, Organization } from '../types';
+import {
+  formatCurrency,
+  formatDate,
+  getFiscalMetadataCache,
+  normalizeId,
+  resolveCurrencyCode,
+  roundCurrency,
+} from './formatters';
 import { printHtml } from './print';
 import { mediaManager } from './mediaManager';
 import { BRAND } from '../config/brand';
@@ -30,6 +37,12 @@ function isItalianDoc(): boolean {
   return typeof document !== 'undefined' && document.documentElement.lang === 'it';
 }
 
+function formatVatRateLabel(rate: number): string {
+  if (!Number.isFinite(rate) || rate <= 0) return '0%';
+  const rounded = roundCurrency(rate);
+  return Number.isInteger(rounded) ? `${rounded}%` : `${rounded.toFixed(2)}%`;
+}
+
 export function generateOrderInvoiceHtml(
   order: Order,
   items: OrderItemPrintData[],
@@ -37,37 +50,71 @@ export function generateOrderInvoiceHtml(
   _isPersian: boolean = false,
   format: 'standard' | 'thermal' = 'standard',
   resolvedLogoUrl?: string,
-  resolvedSignatureUrl?: string
+  resolvedSignatureUrl?: string,
+  customer?: Customer | null
 ): string {
   const isIt = isItalianDoc();
-  const currency = resolveCurrencyCode(organization?.currency);
+  const currency = resolveCurrencyCode(order.currency || organization?.currency);
+
+  const orgFiscalCache = getFiscalMetadataCache('org', organization?.id);
   const orgName = escapeHtml(organization?.name || BRAND.name);
   const orgPhone = escapeHtml(organization?.phone || '');
   const orgMobile = escapeHtml(organization?.mobile || '');
   const orgAddress = escapeHtml(organization?.address || '');
+  const orgVat = escapeHtml(organization?.vat_number || orgFiscalCache.vat_number || '');
+  const orgTaxCode = escapeHtml(organization?.tax_code || orgFiscalCache.tax_code || '');
+
+  const embeddedCustomer =
+    customer ||
+    (order.customer_id && typeof order.customer_id === 'object' ? (order.customer_id as Customer) : null);
+  const customerId = normalizeId(embeddedCustomer?.id ?? order.customer_id);
+  const custFiscalCache = getFiscalMetadataCache('customer', customerId);
+
+  const customerName = escapeHtml(
+    embeddedCustomer?.name || order.customer_name || (isIt ? 'Cliente di passaggio' : 'Walk-in Customer')
+  );
+  const customerPhone = escapeHtml(embeddedCustomer?.phone || (order as any).customer_phone || '');
+  const customerEmail = escapeHtml(embeddedCustomer?.email || (order as any).customer_email || '');
+  const customerAddress = escapeHtml(embeddedCustomer?.address || (order as any).customer_address || '');
+  const customerVat = escapeHtml(
+    embeddedCustomer?.vat_number || (order as any).customer_vat_number || custFiscalCache.vat_number || ''
+  );
+  const customerTaxCode = escapeHtml(
+    embeddedCustomer?.tax_code || (order as any).customer_tax_code || custFiscalCache.tax_code || ''
+  );
+
   const logoSrc = resolvedLogoUrl || (organization?.logo ? mediaManager.getDisplayUrlSync(organization.logo) : '');
   const signatureSrc = resolvedSignatureUrl || (organization?.signature ? mediaManager.getDisplayUrlSync(organization.signature) : '');
   const orderNumber = escapeHtml(order.order_number || `ORD-${order.id}`);
   const orderDate = escapeHtml(formatDate(order.date_created, false));
-  const customerName = escapeHtml(order.customer_name || (isIt ? 'Cliente di passaggio' : 'Walk-in Customer'));
   const warehouseName = escapeHtml((order as any).warehouse_name || (isIt ? 'Magazzino Principale' : 'Main Warehouse'));
-  const subtotal = Number(order.subtotal) || 0;
-  const discount = Number(order.discount) || 0;
-  const tax = Number(order.tax) || 0;
-  const total = Number(order.total) || 0;
+
+  const subtotal = roundCurrency(Number(order.subtotal) || 0);
+  const discount = roundCurrency(Number(order.discount) || 0);
+  const netAmount = roundCurrency(Math.max(0, subtotal - discount));
+  const tax = roundCurrency(Number(order.tax) || 0);
+  const total = roundCurrency(Number(order.total) || roundCurrency(netAmount + tax));
+  const effectiveVatRate = netAmount > 0 && tax > 0 ? roundCurrency((tax / netAmount) * 100) : 0;
+  const vatRateStr = formatVatRateLabel(effectiveVatRate);
+
   const notes = escapeHtml(order.notes || (isIt ? 'Grazie per il tuo acquisto.' : 'Thank you for your business.'));
 
   const L = isIt
     ? {
         receiptTitle: 'Ricevuta di Vendita',
         invoiceTitle: 'Fattura di Vendita',
+        sellerTitle: 'Fornitore / Emittente',
+        buyerTitle: 'Cliente / Destinatario',
         tel: 'Tel',
         mobile: 'Cell',
-        address: 'Indirizzo',
+        email: 'Email',
+        address: 'Sede / Indirizzo',
+        vatShort: 'P.IVA',
+        taxCodeShort: 'C.F.',
         number: 'N.',
         invoiceNo: 'Numero Fattura',
         issueDate: 'Data Emissione',
-        date: 'Data',
+        currencyLabel: 'Valuta',
         customer: 'Cliente',
         warehouse: 'Magazzino / Punto Vendita',
         item: 'Articolo',
@@ -77,8 +124,10 @@ export function generateOrderInvoiceHtml(
         discount: 'Sconto',
         amount: 'Importo',
         subtotal: 'Subtotale',
-        totalDiscount: 'Totale Sconti',
-        tax: 'IVA / Imposte',
+        totalDiscount: 'Sconto Totale',
+        netAmount: 'Imponibile (Netto)',
+        vatLabel: tax > 0 ? `IVA (${vatRateStr})` : 'IVA (0%)',
+        grossTotal: 'Totale Documento (Lordo)',
         grandTotal: 'Totale Dovuto',
         notesTitle: 'Note e Condizioni',
         sellerSig: 'Timbro e Firma Venditore',
@@ -90,15 +139,20 @@ export function generateOrderInvoiceHtml(
     : {
         receiptTitle: 'Sales Receipt',
         invoiceTitle: 'Sales Invoice',
+        sellerTitle: 'Seller / Issuer',
+        buyerTitle: 'Bill To / Customer',
         tel: 'Tel',
         mobile: 'Mobile',
+        email: 'Email',
         address: 'Address',
+        vatShort: 'VAT / P.IVA',
+        taxCodeShort: 'Tax Code / C.F.',
         number: 'No.',
         invoiceNo: 'Invoice No.',
         issueDate: 'Issue Date',
-        date: 'Date',
+        currencyLabel: 'Currency',
         customer: 'Customer',
-        warehouse: 'Warehouse / Store',
+        warehouse: 'Fulfillment Store / Warehouse',
         item: 'Item',
         itemDesc: 'Item Description',
         qty: 'Qty',
@@ -107,9 +161,11 @@ export function generateOrderInvoiceHtml(
         amount: 'Amount',
         subtotal: 'Subtotal',
         totalDiscount: 'Total Discount',
-        tax: 'VAT / Tax',
+        netAmount: 'Net Amount (Taxable)',
+        vatLabel: tax > 0 ? `VAT (${vatRateStr})` : 'VAT (0%)',
+        grossTotal: 'Gross Total (Incl. VAT)',
         grandTotal: 'Total Payable',
-        notesTitle: 'Notes & Terms',
+        notesTitle: 'Notes & Payment Terms',
         sellerSig: 'Seller Stamp & Signature',
         buyerSig: 'Customer / Recipient Signature',
         size: 'Size',
@@ -140,6 +196,13 @@ export function generateOrderInvoiceHtml(
         <div style="text-align: center; border-bottom: 1.5px dashed #000; padding-bottom: 6px; margin-bottom: 6px;">
           ${logoSrc ? `<div style="margin-bottom: 5px;"><img src="${escapeHtml(logoSrc)}" alt="Logo" style="max-height: 40px; max-width: 100px; object-fit: contain; margin: 0 auto;" /></div>` : ''}
           <h2 style="font-size: 14px; font-weight: 900; margin: 0 0 3px 0;">${orgName}</h2>
+          ${(orgVat || orgTaxCode) ? `
+            <div style="font-size: 9.5px; color: #111; font-family: monospace; margin-bottom: 2px;">
+              ${orgVat ? `<span>${L.vatShort}: ${orgVat}</span>` : ''}
+              ${(orgVat && orgTaxCode) ? ' · ' : ''}
+              ${orgTaxCode ? `<span>${L.taxCodeShort}: ${orgTaxCode}</span>` : ''}
+            </div>
+          ` : ''}
           ${(orgPhone || orgMobile) ? `
             <div style="font-size: 9.5px; color: #222; margin-bottom: 2px;">
               ${orgPhone ? `<span>${L.tel}: ${orgPhone}</span>` : ''}
@@ -157,6 +220,8 @@ export function generateOrderInvoiceHtml(
 
         <div style="margin-bottom: 6px; font-size: 10.5px; border-bottom: 1px dashed #ccc; padding-bottom: 4px;">
           <div><strong>${L.customer}:</strong> ${customerName}</div>
+          ${customerVat ? `<div style="font-size: 9.5px; font-family: monospace;"><strong>${L.vatShort}:</strong> ${customerVat}</div>` : ''}
+          ${customerTaxCode ? `<div style="font-size: 9.5px; font-family: monospace;"><strong>${L.taxCodeShort}:</strong> ${customerTaxCode}</div>` : ''}
           <div><strong>${L.warehouse}:</strong> ${warehouseName}</div>
         </div>
 
@@ -183,11 +248,14 @@ export function generateOrderInvoiceHtml(
             <span>${L.discount}:</span>
             <span style="font-family: monospace;">- ${formatCurrency(discount, currency, false)}</span>
           </div>` : ''}
-          ${tax > 0 ? `
           <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
-            <span>${L.tax}:</span>
-            <span style="font-family: monospace;">+ ${formatCurrency(tax, currency, false)}</span>
-          </div>` : ''}
+            <span>${L.netAmount}:</span>
+            <span style="font-family: monospace;">${formatCurrency(netAmount, currency, false)}</span>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+            <span>${L.vatLabel}:</span>
+            <span style="font-family: monospace;">${tax > 0 ? `+ ${formatCurrency(tax, currency, false)}` : formatCurrency(0, currency, false)}</span>
+          </div>
           <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 13px; border-top: 1.5px solid #000; padding-top: 4px; margin-top: 4px;">
             <span>${L.grandTotal}:</span>
             <span style="font-family: monospace;">${formatCurrency(total, currency, false)}</span>
@@ -208,7 +276,7 @@ export function generateOrderInvoiceHtml(
     `;
   }
 
-  // Standard Official A4 Invoice
+  // Standard Official A4 European B2B/B2C Invoice
   const rowsHtml = items.map((it, idx) => `
     <tr style="border-bottom: 1px solid #e2e8f0; font-size: 11px;">
       <td style="padding: 6px 8px; text-align: center; border-inline-end: 1px solid #e2e8f0; font-family: monospace;">
@@ -237,47 +305,59 @@ export function generateOrderInvoiceHtml(
 
   return `
     <div style="max-width: 210mm; margin: 0 auto; padding: 10mm 8mm; font-family: 'Inter', system-ui, sans-serif; direction: ltr; color: #0f172a; font-size: 12px; line-height: 1.5; background: #fff;">
-      <!-- Invoice Header -->
+      <!-- Invoice Top Bar -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #0f172a; padding-bottom: 12px; margin-bottom: 14px;">
         <div style="display: flex; align-items: center; gap: 14px;">
           ${logoSrc ? `
-            <div style="width: 70px; height: 70px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 4px; background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden;">
-              <img src="${escapeHtml(logoSrc)}" alt="Logo" style="max-height: 62px; max-width: 62px; object-fit: contain;" />
+            <div style="width: 68px; height: 68px; border: 1px solid #e2e8f0; border-radius: 10px; padding: 4px; background: #ffffff; display: flex; align-items: center; justify-content: center; overflow: hidden;">
+              <img src="${escapeHtml(logoSrc)}" alt="Logo" style="max-height: 60px; max-width: 60px; object-fit: contain;" />
             </div>
           ` : ''}
           <div>
-            <h1 style="font-size: 18px; font-weight: 900; margin: 0 0 4px 0; color: #0f172a; text-transform: uppercase; letter-spacing: 0.02em;">${L.invoiceTitle}</h1>
-            <div style="font-size: 13.5px; font-weight: bold; color: #1e293b;">${orgName}</div>
-            ${(orgPhone || orgMobile) ? `
-              <div style="font-size: 11px; color: #475569; margin-top: 2px;">
-                ${orgPhone ? `<span>${L.tel}: <strong>${orgPhone}</strong></span>` : ''}
-                ${(orgPhone && orgMobile) ? ' | ' : ''}
-                ${orgMobile ? `<span>${L.mobile}: <strong>${orgMobile}</strong></span>` : ''}
-              </div>
-            ` : ''}
-            ${orgAddress ? `
-              <div style="font-size: 10.5px; color: #64748b; margin-top: 2px; max-width: 500px;">
-                ${L.address}: ${orgAddress}
-              </div>
-            ` : ''}
+            <h1 style="font-size: 20px; font-weight: 900; margin: 0 0 3px 0; color: #0f172a; text-transform: uppercase; letter-spacing: 0.03em;">${L.invoiceTitle}</h1>
+            <div style="font-size: 13px; font-weight: 700; color: #1e293b;">${orgName}</div>
+            ${orgVat ? `<div style="font-size: 11px; color: #334155; font-family: monospace; margin-top: 2px;"><strong>${L.vatShort}:</strong> ${orgVat}${orgTaxCode ? ` · <strong>${L.taxCodeShort}:</strong> ${orgTaxCode}` : ''}</div>` : (orgTaxCode ? `<div style="font-size: 11px; color: #334155; font-family: monospace; margin-top: 2px;"><strong>${L.taxCodeShort}:</strong> ${orgTaxCode}</div>` : '')}
           </div>
         </div>
 
-        <div style="text-align: right; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; background: #f8fafc;">
+        <div style="text-align: right; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; background: #f8fafc; min-width: 195px;">
           <div><strong>${L.invoiceNo}:</strong> <span style="font-family: monospace; font-weight: bold;">${orderNumber}</span></div>
           <div><strong>${L.issueDate}:</strong> <span style="font-family: monospace;">${orderDate}</span></div>
+          <div><strong>${L.currencyLabel}:</strong> <span style="font-family: monospace; font-weight: bold;">${currency}</span></div>
         </div>
       </div>
 
-      <!-- Parties Information -->
-      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; background: #f8fafc; font-size: 11.5px;">
-        <div>
-          <span style="color: #64748b;">${L.customer}:</span>
-          <div style="font-size: 12.5px; font-weight: bold; color: #0f172a; margin-top: 2px;">${customerName}</div>
+      <!-- Seller & Buyer B2B Fiscal Boxes -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 14px; font-size: 11px;">
+        <!-- Seller Box -->
+        <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #f8fafc;">
+          <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; color: #64748b; margin-bottom: 4px;">${L.sellerTitle}</div>
+          <div style="font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 3px;">${orgName}</div>
+          ${orgVat ? `<div style="font-family: monospace; color: #1e293b;"><strong>${L.vatShort}:</strong> ${orgVat}</div>` : ''}
+          ${orgTaxCode ? `<div style="font-family: monospace; color: #1e293b;"><strong>${L.taxCodeShort}:</strong> ${orgTaxCode}</div>` : ''}
+          ${orgAddress ? `<div style="color: #475569; margin-top: 2px;">${orgAddress}</div>` : ''}
+          ${(orgPhone || orgMobile) ? `
+            <div style="color: #475569; margin-top: 2px; font-family: monospace; font-size: 10.5px;">
+              ${orgPhone ? `${L.tel}: ${orgPhone}` : ''}${(orgPhone && orgMobile) ? ' · ' : ''}${orgMobile ? `${L.mobile}: ${orgMobile}` : ''}
+            </div>
+          ` : ''}
+          <div style="color: #64748b; margin-top: 4px; font-size: 10px; border-top: 1px dashed #cbd5e1; padding-top: 3px;">
+            ${L.warehouse}: <strong>${warehouseName}</strong>
+          </div>
         </div>
-        <div>
-          <span style="color: #64748b;">${L.warehouse}:</span>
-          <div style="font-size: 12.5px; font-weight: bold; color: #0f172a; margin-top: 2px;">${warehouseName}</div>
+
+        <!-- Buyer Box -->
+        <div style="border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #f8fafc;">
+          <div style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 800; color: #64748b; margin-bottom: 4px;">${L.buyerTitle}</div>
+          <div style="font-size: 13px; font-weight: 800; color: #0f172a; margin-bottom: 3px;">${customerName}</div>
+          ${customerVat ? `<div style="font-family: monospace; color: #1e293b;"><strong>${L.vatShort}:</strong> ${customerVat}</div>` : ''}
+          ${customerTaxCode ? `<div style="font-family: monospace; color: #1e293b;"><strong>${L.taxCodeShort}:</strong> ${customerTaxCode}</div>` : ''}
+          ${customerAddress ? `<div style="color: #475569; margin-top: 2px;">${customerAddress}</div>` : ''}
+          ${(customerPhone || customerEmail) ? `
+            <div style="color: #475569; margin-top: 2px; font-family: monospace; font-size: 10.5px;">
+              ${customerPhone ? `${L.tel}: ${customerPhone}` : ''}${(customerPhone && customerEmail) ? ' · ' : ''}${customerEmail ? `${L.email}: ${customerEmail}` : ''}
+            </div>
+          ` : ''}
         </div>
       </div>
 
@@ -298,30 +378,33 @@ export function generateOrderInvoiceHtml(
         </tbody>
       </table>
 
-      <!-- Footer Summary & Remarks -->
+      <!-- Footer Summary (Net / VAT / Gross) & Remarks -->
       <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 14px; margin-bottom: 20px;">
-        <div style="flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #f8fafc; font-size: 11px; min-height: 75px;">
+        <div style="flex: 1; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #f8fafc; font-size: 11px; min-height: 92px;">
           <div style="font-weight: bold; color: #334155; margin-bottom: 4px;">${L.notesTitle}:</div>
           <div style="color: #64748b; line-height: 1.5;">${notes}</div>
         </div>
 
-        <div style="width: 260px; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #ffffff; font-size: 11.5px;">
+        <div style="width: 290px; border: 1.5px solid #cbd5e1; border-radius: 6px; padding: 10px 12px; background: #ffffff; font-size: 11.5px;">
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
             <span>${L.subtotal}:</span>
-            <span style="font-family: monospace; font-weight: bold;">${formatCurrency(subtotal, currency, false)}</span>
+            <span style="font-family: monospace; font-weight: 600;">${formatCurrency(subtotal, currency, false)}</span>
           </div>
           ${discount > 0 ? `
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #dc2626;">
             <span>${L.totalDiscount}:</span>
-            <span style="font-family: monospace; font-weight: bold;">- ${formatCurrency(discount, currency, false)}</span>
+            <span style="font-family: monospace; font-weight: 600;">- ${formatCurrency(discount, currency, false)}</span>
           </div>` : ''}
-          ${tax > 0 ? `
+          <div style="display: flex; justify-content: space-between; margin-bottom: 4px; padding-top: 4px; border-top: 1px dashed #e2e8f0; color: #1e293b; font-weight: 700;">
+            <span>${L.netAmount}:</span>
+            <span style="font-family: monospace;">${formatCurrency(netAmount, currency, false)}</span>
+          </div>
           <div style="display: flex; justify-content: space-between; margin-bottom: 4px; color: #475569;">
-            <span>${L.tax}:</span>
-            <span style="font-family: monospace; font-weight: bold;">+ ${formatCurrency(tax, currency, false)}</span>
-          </div>` : ''}
+            <span>${L.vatLabel}:</span>
+            <span style="font-family: monospace; font-weight: 600;">${tax > 0 ? `+ ${formatCurrency(tax, currency, false)}` : formatCurrency(0, currency, false)}</span>
+          </div>
           <div style="display: flex; justify-content: space-between; font-weight: 900; font-size: 13.5px; border-top: 1.5px solid #0f172a; padding-top: 6px; margin-top: 6px; color: #0f172a;">
-            <span>${L.grandTotal}:</span>
+            <span>${L.grossTotal}:</span>
             <span style="font-family: monospace; color: #059669;">${formatCurrency(total, currency, false)}</span>
           </div>
         </div>
@@ -358,7 +441,8 @@ export async function printOrderInvoice(
   items: OrderItemPrintData[],
   organization?: Organization | null,
   isPersian: boolean = false,
-  format: 'standard' | 'thermal' = 'standard'
+  format: 'standard' | 'thermal' = 'standard',
+  customer?: Customer | null
 ): Promise<void> {
   let resolvedLogoUrl = '';
   if (organization?.logo) {
@@ -383,7 +467,8 @@ export async function printOrderInvoice(
     isPersian,
     format,
     resolvedLogoUrl,
-    resolvedSignatureUrl
+    resolvedSignatureUrl,
+    customer
   );
   printHtml(html, {
     title: `Invoice_${order.order_number || order.id}`,

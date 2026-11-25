@@ -74,7 +74,7 @@ export class OnboardingManager {
       onSkip?: () => void;
     } = {}
   ): boolean {
-    const { orgId, isRtl = true, force = false, onComplete, onSkip } = options;
+    const { orgId, isRtl = false, force = false, onComplete, onSkip } = options;
 
     if (!force && this.isTourCompleted(tourName, orgId)) {
       return false;
@@ -117,16 +117,14 @@ export class OnboardingManager {
     // Enhance steps with localized step progress and button labels
     const localizedSteps = validSteps.map((step, index) => {
       const stepNumber = index + 1;
-      const progressText = isRtl
-        ? `مرحله ${toPersianDigits(stepNumber)} از ${toPersianDigits(totalSteps)}`
-        : `Step ${stepNumber} of ${totalSteps}`;
+      const progressText = `Step ${stepNumber} of ${totalSteps}`;
 
       return {
         ...step,
         popover: {
           ...step.popover,
-          nextBtnText: stepNumber === totalSteps ? t('onboarding.done', 'شروع کار') : t('onboarding.next', 'بعدی'),
-          prevBtnText: t('onboarding.prev', 'قبلی'),
+          nextBtnText: stepNumber === totalSteps ? t('onboarding.done', 'Get Started') : t('onboarding.next', 'Next'),
+          prevBtnText: t('onboarding.prev', 'Previous'),
           description: `
             <div class="driver-popover-custom-content">
               <p class="driver-popover-text-body">${step.popover.description || ''}</p>
@@ -147,8 +145,8 @@ export class OnboardingManager {
       allowClose: true,
       showProgress: false,
       showButtons: ['next', 'previous', 'close'],
-      nextBtnText: t('onboarding.next', 'بعدی'),
-      prevBtnText: t('onboarding.prev', 'قبلی'),
+      nextBtnText: t('onboarding.next', 'Next'),
+      prevBtnText: t('onboarding.prev', 'Previous'),
       popoverClass: `tankhor-driver-popover ${isRtl ? 'tankhor-driver-rtl' : 'tankhor-driver-ltr'}`,
       steps: localizedSteps,
       onDestroyStarted: () => {

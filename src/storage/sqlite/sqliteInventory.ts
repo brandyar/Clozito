@@ -33,7 +33,7 @@ export class SqliteInventoryStorage {
     const list = await this.base.getItems<Warehouse>('warehouses');
     const validId = typeof wh.id === 'number' && wh.id > 0 ? wh.id : this.base.generateUniqueId(list);
     const saved: Warehouse = {
-      name: wh.name || 'انبار جدید',
+      name: wh.name || 'New Warehouse',
       type: wh.type || 'warehouse',
       status: 'active',
       organization_id: wh.organization_id || 1,
@@ -74,7 +74,7 @@ export class SqliteInventoryStorage {
     const list = await this.base.getItems<WarehouseLocation>('warehouse_locations');
     const validId = typeof loc.id === 'number' && loc.id > 0 ? loc.id : this.base.generateUniqueId(list);
     const saved: WarehouseLocation = {
-      name: loc.name || 'موقعیت جدید',
+      name: loc.name || 'New Location',
       warehouse_id: loc.warehouse_id || 1,
       type: loc.type || 'rack',
       status: 'active',

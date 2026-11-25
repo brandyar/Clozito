@@ -435,7 +435,7 @@ export const ContractorsView: React.FC = () => {
                 </label>
                 <Input
                   type="text"
-                  placeholder="09121112233"
+                  placeholder="+39 347 123 4567"
                   value={formData.phone}
                   onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
                 />

@@ -1,5 +1,5 @@
 /**
- * TANKHOR (تن‌خور) - WooCommerce Integration Types
+ * Clozito - WooCommerce Integration Types
  */
 
 import { Organization } from './index';

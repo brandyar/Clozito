@@ -949,8 +949,9 @@ export class LocalOfflineAdapter implements IStorageProvider {
     const outOfStockCount = invItems.filter((i) => (Number(i.quantity) || 0) <= 0).length;
 
     const totalOrdersCount = orders.length;
-    const totalSalesRevenue = orders.reduce((acc, o) => acc + (Number(o.total) || 0), 0);
-    const averageOrderValue = totalOrdersCount > 0 ? Math.round(totalSalesRevenue / totalOrdersCount) : 0;
+    const totalSalesRevenue = Math.round((orders.reduce((acc, o) => acc + (Number(o.total) || 0), 0) + Number.EPSILON) * 100) / 100;
+    const averageOrderValue =
+      totalOrdersCount > 0 ? Math.round(((totalSalesRevenue / totalOrdersCount) + Number.EPSILON) * 100) / 100 : 0;
 
     return {
       totalProducts: products.length,

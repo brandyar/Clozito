@@ -530,6 +530,7 @@ class DirectusClient {
     locale?: 'en' | 'it';
     initial_category_name?: string;
     initial_warehouse_name?: string;
+    accepted_terms?: boolean;
   }): Promise<any> {
     const cleanEmail = data.email.toLowerCase().trim();
     let res: any;
@@ -743,7 +744,8 @@ class DirectusClient {
   public async checkOrganizationPlan(organizationId?: number): Promise<{
     success: boolean;
     organizationId: number;
-    plan: 'free' | 'pro';
+    plan: 'free' | 'boutique' | 'atelier' | 'pro';
+    planTier?: 'free' | 'boutique' | 'atelier';
     isPro: boolean;
     isTrial?: boolean;
     trialDaysRemaining?: number;
@@ -779,7 +781,8 @@ class DirectusClient {
   public async startFreeTrial(organizationId?: number): Promise<{
     success: boolean;
     message: string;
-    plan: 'pro';
+    plan: 'atelier' | 'pro';
+    planTier?: 'atelier';
     isPro: boolean;
     isTrial: boolean;
     trialDaysRemaining: number;
@@ -848,6 +851,8 @@ class DirectusClient {
   public async requestPayment(data: {
     organizationId: number;
     durationMonths: number;
+    planTier?: 'boutique' | 'atelier';
+    locale?: 'en' | 'it';
     simulate?: boolean;
     mobile?: string;
   }): Promise<{
@@ -855,6 +860,7 @@ class DirectusClient {
     sessionId?: string;
     trackId?: string | number;
     orderId?: string;
+    planTier?: 'boutique' | 'atelier';
     amountEur?: number;
     currency?: string;
     paymentUrl: string;
@@ -870,6 +876,7 @@ class DirectusClient {
     organizationId: number;
     moduleSlug: string;
     hardwareId?: string;
+    locale?: 'en' | 'it';
     simulate?: boolean;
     mobile?: string;
   }): Promise<{
@@ -883,6 +890,46 @@ class DirectusClient {
     error?: string;
   }> {
     return await this.request('/payment/request-module', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  public async createBillingPortalSession(
+    organizationId: number,
+    locale?: 'en' | 'it'
+  ): Promise<{
+    success: boolean;
+    portalUrl: string;
+    error?: string;
+  }> {
+    return await this.request('/payment/portal', {
+      method: 'POST',
+      body: JSON.stringify({ organizationId, locale }),
+    });
+  }
+
+  public async exportGdprData(organizationId?: number): Promise<any> {
+    const qs = organizationId ? `?organization_id=${organizationId}` : '';
+    return await this.request(`/auth/gdpr/export${qs}`, {
+      method: 'GET',
+      bypassCache: true,
+    });
+  }
+
+  public async deleteUserAccount(data: {
+    password: string;
+    confirmText: string;
+    deleteOwnedWorkspaces?: boolean;
+    locale?: 'en' | 'it';
+  }): Promise<{
+    success: boolean;
+    erasedUserId?: string;
+    deletedOrganizationIds?: number[];
+    anonymizedFallback?: boolean;
+    error?: string;
+  }> {
+    return await this.request('/auth/gdpr/delete-account', {
       method: 'POST',
       body: JSON.stringify(data),
     });
@@ -931,6 +978,9 @@ class DirectusClient {
     activeSubscription: any;
     isPro: boolean;
     remainingDays: number;
+    stripeSubscriptionStatus?: string | null;
+    hasBillingPortal?: boolean;
+    hasActiveStripeSubscription?: boolean;
   }> {
     const qs = organizationId ? `?organization_id=${organizationId}` : '';
     return await this.request(`/payment/subscriptions${qs}`);

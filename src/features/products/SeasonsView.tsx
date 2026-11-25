@@ -13,11 +13,12 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { DataTable, Column } from '../../components/ui/DataTable';
 import { Sun, Plus, Search, Edit, Trash2, Calendar } from 'lucide-react';
-import { toPersianDigits, formatDate } from '../../utils/formatters';
+import { formatDate } from '../../utils/formatters';
 import { confirmAction } from '../../utils/confirm';
 
 export const SeasonsView: React.FC = () => {
-  const { t, isPersian } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
 
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -161,9 +162,9 @@ export const SeasonsView: React.FC = () => {
       render: (season) => (
         <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-neutral-300 font-mono">
           <Calendar className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-500" />
-          <span>{season.start_date ? formatDate(season.start_date, isPersian) : t('products.undefinedDate')}</span>
+          <span>{season.start_date ? formatDate(season.start_date) : t('products.undefinedDate')}</span>
           <span className="text-slate-300 dark:text-neutral-600">{t('products.dateTo')}</span>
-          <span>{season.end_date ? formatDate(season.end_date, isPersian) : t('products.undefinedDate')}</span>
+          <span>{season.end_date ? formatDate(season.end_date) : t('products.undefinedDate')}</span>
         </div>
       ),
     },
@@ -261,9 +262,9 @@ export const SeasonsView: React.FC = () => {
 
                 <div className="flex items-center gap-1.5 text-xs text-slate-600 dark:text-neutral-300 font-mono p-2.5 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-100 dark:border-neutral-800">
                   <Calendar className="w-3.5 h-3.5 text-slate-400 dark:text-neutral-500 shrink-0" />
-                  <span>{season.start_date ? formatDate(season.start_date, isPersian) : t('products.undefinedDate')}</span>
+                  <span>{season.start_date ? formatDate(season.start_date) : t('products.undefinedDate')}</span>
                   <span className="text-slate-300 dark:text-neutral-600">{t('products.dateTo')}</span>
-                  <span>{season.end_date ? formatDate(season.end_date, isPersian) : t('products.undefinedDate')}</span>
+                  <span>{season.end_date ? formatDate(season.end_date) : t('products.undefinedDate')}</span>
                 </div>
 
                 <div className="flex items-center justify-end gap-1 pt-2 border-t border-neutral-100 dark:border-neutral-800">
@@ -308,8 +309,8 @@ export const SeasonsView: React.FC = () => {
       >
         <form id="season-form" onSubmit={handleSave} className="space-y-4">
           <Input
-            label={`${t('products.seasonName', 'عنوان فصل')} *`}
-            placeholder={isPersian ? "مثال: بهاره ۱۴۰۴ یا تابستانه" : "e.g. Spring 2025, FW25..."}
+            label={`${t('products.seasonName', 'Season Name')} *`}
+            placeholder={isIt ? 'es. Primavera 2026, AI26...' : 'e.g. Spring 2026, FW26...'}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -317,8 +318,8 @@ export const SeasonsView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label={t('products.seasonCode', 'کد اختصاری فصل')}
-              placeholder={isPersian ? "مثال: SS25 یا FW24" : "e.g. SS25 or FW24"}
+              label={t('products.seasonCode', 'Season Code')}
+              placeholder={isIt ? 'es. PE26 o AI26' : 'e.g. SS26 or FW26'}
               value={code}
               onChange={(e) => setCode(e.target.value)}
             />
@@ -338,13 +339,13 @@ export const SeasonsView: React.FC = () => {
               label={t('products.startDate')}
               value={startDate}
               onChange={(val) => setStartDate(val)}
-              placeholder={isPersian ? 'انتخاب تاریخ شروع...' : 'Select start date...'}
+              placeholder={isIt ? 'Seleziona data di inizio...' : 'Select start date...'}
             />
             <DateInput
               label={t('products.endDate')}
               value={endDate}
               onChange={(val) => setEndDate(val)}
-              placeholder={isPersian ? 'انتخاب تاریخ پایان...' : 'Select end date...'}
+              placeholder={isIt ? 'Seleziona data di fine...' : 'Select end date...'}
             />
           </div>
         </form>

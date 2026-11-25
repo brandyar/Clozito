@@ -24,7 +24,8 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { DataTable } from '../../components/ui/DataTable';
 import { Pagination } from '../../components/ui/Pagination';
-import { formatDate, formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { formatDate, formatCurrency, toPersianDigits, resolveCurrencyCode } from '../../utils/formatters';
+import { BRAND } from '../../config/brand';
 import { confirmAction } from '../../utils/confirm';
 import { printElement } from '../../utils/print';
 import { printOrderInvoice, OrderItemPrintData } from '../../utils/orderInvoicePrint';
@@ -78,6 +79,7 @@ interface OrderItemDisplay {
 export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) => {
   const { t, locale } = useTranslation();
   const { activeOrganization, permissions } = useOrganization();
+  const isIt = locale === 'it';
   const isPersian = false;
 
   const { hasAccess } = useModuleAccess();
@@ -248,7 +250,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               quantity: it.quantity,
               reference_type: 'order',
               reference_id: String(ord.id),
-              note: `مرجوعی به انبار بابت حذف فاکتور #${ord.order_number}`,
+              note: `Restocked due to order deletion #${ord.order_number}`,
             });
           }
         }
@@ -298,7 +300,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               quantity: it.quantity,
               reference_type: 'order',
               reference_id: String(ord.id),
-              note: `خروج از انبار بابت تایید فاکتور #${ord.order_number}`,
+              note: `Stock deducted upon confirming order #${ord.order_number}`,
             });
           }
         }
@@ -317,7 +319,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               quantity: it.quantity,
               reference_type: 'order',
               reference_id: String(ord.id),
-              note: `برگشت به انبار بابت تغییر وضعیت فاکتور #${ord.order_number} به ${newStatus}`,
+              note: `Restocked due to order status change #${ord.order_number} -> ${newStatus}`,
             });
           }
         }
@@ -356,7 +358,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
       await adapter.saveOrder({
         id: settleOrderTarget.id,
         payment_status: 'paid',
-        notes: `${settleOrderTarget.notes || ''} [تسویه فاکتور در تاریخ ${new Date().toLocaleDateString('fa-IR')}]`.trim(),
+        notes: `${settleOrderTarget.notes || ''} [Invoice settled on ${formatDate(new Date().toISOString())}]`.trim(),
       });
 
       // 2. If accounting module is active, record Treasury Deposit & Customer Ledger Credit
@@ -372,7 +374,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               type: 'deposit',
               amount: orderTotal,
               tracking_code: `SETTLE-${settleOrderTarget.order_number}`,
-              description: `تسویه حساب فاکتور #${settleOrderTarget.order_number} (${custName})`,
+              description: `Invoice settlement #${settleOrderTarget.order_number} (${custName})`,
               transaction_date: new Date().toISOString(),
             });
           } catch (trErr) {
@@ -396,7 +398,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               status: 'completed',
               reference_number: `SETTLE-${settleOrderTarget.order_number}`,
               order_id: settleOrderTarget.id,
-              description: `تسویه و دریافت وجه فاکتور فروش #${settleOrderTarget.order_number}`,
+              description: `Payment received for sales invoice #${settleOrderTarget.order_number}`,
               transaction_date: new Date().toISOString(),
             });
           } catch (ptErr) {
@@ -505,7 +507,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
       });
 
       setSelectedOrderItems(itemsDisplay);
-      printOrderInvoice(ord, itemsDisplay, activeOrganization, isPersian, receiptType);
+      const custId = typeof ord.customer_id === 'object' ? (ord.customer_id as any)?.id : ord.customer_id;
+      const matchedCustomer = custId ? customers.find((c) => Number(c.id) === Number(custId)) || null : null;
+      printOrderInvoice(ord, itemsDisplay, activeOrganization, isPersian, receiptType, matchedCustomer);
     } catch (err) {
       console.error('[OrdersView] Error loading order for direct print:', err);
     }
@@ -513,7 +517,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
 
   const triggerPrint = () => {
     if (!selectedOrder) return;
-    printOrderInvoice(selectedOrder, selectedOrderItems, activeOrganization, isPersian, receiptType);
+    const custId = typeof selectedOrder.customer_id === 'object' ? (selectedOrder.customer_id as any)?.id : selectedOrder.customer_id;
+    const matchedCustomer = custId ? customers.find((c) => Number(c.id) === Number(custId)) || null : null;
+    printOrderInvoice(selectedOrder, selectedOrderItems, activeOrganization, isPersian, receiptType, matchedCustomer);
   };
 
   const isReturnEligible = (status: OrderStatus) =>
@@ -632,25 +638,31 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
 
       const exportedCount = exportOrdersToExcel(
         filteredForExport,
-        `tankhor_orders_${new Date().toISOString().slice(0, 10)}.xlsx`,
-        { customers, warehouses, isPersian }
+        `${BRAND.name.toLowerCase()}_orders_${new Date().toISOString().slice(0, 10)}.xlsx`,
+        { customers, warehouses }
       );
 
       if (exportedCount === 0) {
         setExcelFeedback({
           type: 'info',
-          message: 'سفارشی مطابق فیلتر فعلی برای خروجی اکسل یافت نشد.',
+          message: isIt
+            ? 'Nessun ordine corrisponde ai filtri attuali per l’esportazione Excel.'
+            : 'No orders match the current filter for Excel export.',
         });
       } else {
         setExcelFeedback({
           type: 'success',
-          message: `فایل اکسل سفارشات (${isPersian ? toPersianDigits(exportedCount) : exportedCount} فاکتور) با موفقیت دانلود شد.`,
+          message: isIt
+            ? `File Excel degli ordini (${exportedCount} ordini) scaricato con successo.`
+            : `Orders Excel file (${exportedCount} orders) downloaded successfully.`,
         });
       }
     } catch (err: any) {
       setExcelFeedback({
         type: 'error',
-        message: `خطا در تهیه خروجی اکسل سفارشات: ${err?.message || err}`,
+        message: isIt
+          ? `Errore durante l’esportazione Excel degli ordini: ${err?.message || err}`
+          : `Failed to export orders to Excel: ${err?.message || err}`,
       });
     } finally {
       setIsExportingExcel(false);
@@ -669,7 +681,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
       if (!res.success || res.items.length === 0) {
         setExcelFeedback({
           type: 'error',
-          message: 'خطا در خواندن فایل اکسل سفارشات',
+          message: isIt ? 'Errore nella lettura del file Excel degli ordini.' : 'Failed to parse orders Excel file.',
           details: res.errors.slice(0, 10),
         });
         return;
@@ -706,7 +718,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
       if (!defaultWh) {
         defaultWh = await adapter.saveWarehouse({
           organization_id: orgId,
-          name: 'انبار مرکزی',
+          name: 'Main Warehouse',
           code: 'WH-MAIN',
           is_default: true,
           status: 'active',
@@ -722,10 +734,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
         try {
           // Resolve or create customer unless generic walk-in
           let customerId: number | undefined;
+          const lowerCust = normalize(row.customerName);
           const isGenericCustomer =
-            !row.customerName ||
-            row.customerName === 'مشتری عمومی' ||
-            row.customerName === 'مصرف‌کننده نهایی';
+            !lowerCust ||
+            lowerCust === 'walk-in customer' ||
+            lowerCust === 'general customer' ||
+            lowerCust === 'guest customer' ||
+            lowerCust === 'cliente occasionale';
 
           if (!isGenericCustomer || row.customerPhone) {
             let matchedCust =
@@ -735,7 +750,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
             if (!matchedCust) {
               matchedCust = await adapter.saveCustomer({
                 organization_id: orgId,
-                name: row.customerName || 'مشتری عمومی',
+                name: row.customerName || 'Walk-in Customer',
                 phone: row.customerPhone || '',
                 status: 'active',
               });
@@ -759,7 +774,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
             warehouse_id: matchedWh.id,
             status: row.status,
             payment_status: row.paymentStatus,
-            currency: existingOrder?.currency || 'TOMAN',
+            currency: resolveCurrencyCode(existingOrder?.currency || activeOrganization?.currency),
             subtotal: row.subtotal,
             discount: row.discount,
             tax: row.tax,
@@ -775,7 +790,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
             createdCount++;
           }
         } catch (rowErr: any) {
-          runtimeErrors.push(`سطر ${row.rowNumber} (${row.orderNumber}): ${rowErr?.message || 'خطا در ثبت سفارش'}`);
+          runtimeErrors.push(`Row ${row.rowNumber} (${row.orderNumber}): ${rowErr?.message || 'Failed to save order'}`);
         }
       }
 
@@ -783,13 +798,17 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
       const totalProcessed = createdCount + updatedCount;
       setExcelFeedback({
         type: totalProcessed > 0 ? 'success' : 'error',
-        message: `ورود اکسل سفارشات انجام شد (${isPersian ? toPersianDigits(createdCount) : createdCount} سفارش جدید، ${isPersian ? toPersianDigits(updatedCount) : updatedCount} به‌روزرسانی).`,
+        message: isIt
+          ? `Importazione ordini completata (${createdCount} nuovi, ${updatedCount} aggiornati).`
+          : `Orders Excel import completed (${createdCount} created, ${updatedCount} updated).`,
         details: runtimeErrors.slice(0, 10),
       });
     } catch (err: any) {
       setExcelFeedback({
         type: 'error',
-        message: `خطا در پردازش فایل اکسل: ${err?.message || err}`,
+        message: isIt
+          ? `Errore durante l’elaborazione del file Excel: ${err?.message || err}`
+          : `Error processing Excel file: ${err?.message || err}`,
       });
     } finally {
       setIsImportingExcel(false);
@@ -818,8 +837,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               isLoading={isImportingExcel}
               icon={<Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-500 dark:text-neutral-400" />}
             >
-              <span className="hidden sm:inline">ورود اکسل</span>
-              <span className="sm:hidden">ورود</span>
+              <span className="hidden sm:inline">{isIt ? 'Importa Excel' : 'Import Excel'}</span>
+              <span className="sm:hidden">{isIt ? 'Importa' : 'Import'}</span>
             </Button>
             <Button
               variant="outline"
@@ -828,8 +847,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               isLoading={isExportingExcel}
               icon={<FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />}
             >
-              <span className="hidden sm:inline">خروجی اکسل</span>
-              <span className="sm:hidden">خروجی</span>
+              <span className="hidden sm:inline">{isIt ? 'Esporta Excel' : 'Export Excel'}</span>
+              <span className="sm:hidden">{isIt ? 'Esporta' : 'Export'}</span>
             </Button>
             {permissions.canCreateOrders && (
               <Button
@@ -948,7 +967,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                 header: t('orders.totalAmount'),
                 render: (ord) => (
                   <div className="font-bold font-mono text-slate-900 dark:text-neutral-100 text-xs">
-                    {formatCurrency(ord.total, 'TOMAN', isPersian)}
+                    {formatCurrency(ord.total, resolveCurrencyCode(ord.currency || activeOrganization?.currency), isPersian)}
                   </div>
                 ),
               },
@@ -972,9 +991,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                     onClick={() => handleOpenSettleModal(ord)}
                     icon={<CreditCard className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
                     className="border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
-                    title="تسویه حساب فاکتور نسیه"
+                    title={isIt ? 'Salda fattura in sospeso' : 'Settle pending invoice'}
                   >
-                    تسویه
+                    {isIt ? 'Salda' : 'Settle'}
                   </Button>
                 )}
                 <Button
@@ -1057,7 +1076,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                   <div>
                     <span className="text-[10px] text-slate-400 block">{t('orders.totalAmount')}:</span>
                     <span className="font-mono font-extrabold text-slate-900 dark:text-neutral-100 text-sm">
-                      {formatCurrency(ord.total, 'TOMAN', isPersian)}
+                      {formatCurrency(ord.total, resolveCurrencyCode(ord.currency || activeOrganization?.currency), isPersian)}
                     </span>
                   </div>
                   <div className="shrink-0">
@@ -1076,7 +1095,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                         icon={<CreditCard className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />}
                         className="h-8 px-2 text-xs border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40"
                       >
-                        تسویه
+                        {isIt ? 'Salda' : 'Settle'}
                       </Button>
                     )}
                     <Button
@@ -1159,7 +1178,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                       onClick={() => handleOpenSettleModal(selectedOrder)}
                       className="px-2 py-0.5 rounded text-[10px] bg-emerald-600 hover:bg-emerald-500 text-white font-medium cursor-pointer"
                     >
-                      تسویه
+                      {isIt ? 'Salda' : 'Settle'}
                     </button>
                   )}
                 </div>
@@ -1169,21 +1188,21 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
             {/* Status & Inventory Sync Management Bar */}
             <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2">
               <div className="flex items-center gap-2">
-                <span className="text-slate-600 dark:text-neutral-300 font-medium">وضعیت فعلی سفارش:</span>
+                <span className="text-slate-600 dark:text-neutral-300 font-medium">{isIt ? 'Stato attuale ordine:' : 'Current Order Status:'}</span>
                 <div>{getOrderStatusBadge(selectedOrder.status)}</div>
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                <span className="text-slate-500 dark:text-neutral-400 text-[11px] whitespace-nowrap">تغییر وضعیت:</span>
+                <span className="text-slate-500 dark:text-neutral-400 text-[11px] whitespace-nowrap">{isIt ? 'Cambia stato:' : 'Change Status:'}</span>
                 <Select
                   value={selectedOrder.status}
                   onChange={(e) => handleUpdateOrderStatus(selectedOrder, e.target.value as OrderStatus)}
                   className="text-xs py-1"
                   options={[
-                    { value: 'draft', label: 'پیش‌نویس' },
-                    { value: 'confirmed', label: 'تأیید شده (کسر از انبار)' },
-                    { value: 'completed', label: 'تکمیل شده (کسر از انبار)' },
-                    { value: 'cancelled', label: 'لغو شده (برگشت به انبار)' },
+                    { value: 'draft', label: isIt ? 'Bozza' : 'Draft' },
+                    { value: 'confirmed', label: isIt ? 'Confermato (scarica magazzino)' : 'Confirmed (deduct stock)' },
+                    { value: 'completed', label: isIt ? 'Completato (scarica magazzino)' : 'Completed (deduct stock)' },
+                    { value: 'cancelled', label: isIt ? 'Annullato (ripristina magazzino)' : 'Cancelled (restock)' },
                   ]}
                 />
               </div>
@@ -1244,13 +1263,13 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                             ) : null}
                           </td>
                           <td className="p-2 text-end font-mono text-slate-800 dark:text-neutral-200">
-                            {formatCurrency(item.unitPrice, 'TOMAN', isPersian)}
+                            {formatCurrency(item.unitPrice, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}
                           </td>
                           <td className="p-2 text-end font-mono text-red-600 dark:text-red-400">
-                            {item.discount > 0 ? `- ${formatCurrency(item.discount * item.quantity, 'TOMAN', isPersian)}` : (isPersian ? '۰' : '0')}
+                            {item.discount > 0 ? `- ${formatCurrency(item.discount * item.quantity, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}` : '0'}
                           </td>
                           <td className="p-2 text-end font-bold font-mono text-slate-900 dark:text-neutral-100">
-                            {formatCurrency(item.total, 'TOMAN', isPersian)}
+                            {formatCurrency(item.total, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}
                           </td>
                         </tr>
                       ))}
@@ -1264,23 +1283,23 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
             <div className="p-3 bg-[#171717] text-white rounded-xl space-y-1.5 font-mono text-xs">
               <div className="flex justify-between text-neutral-400">
                 <span>{t('orders.subtotal')}:</span>
-                <span>{formatCurrency(selectedOrder.subtotal, 'TOMAN', isPersian)}</span>
+                <span>{formatCurrency(selectedOrder.subtotal, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
               </div>
               {selectedOrder.discount > 0 && (
                 <div className="flex justify-between text-emerald-400">
                   <span>{t('orders.totalDiscount')}</span>
-                  <span>- {formatCurrency(selectedOrder.discount, 'TOMAN', isPersian)}</span>
+                  <span>- {formatCurrency(selectedOrder.discount, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                 </div>
               )}
               {selectedOrder.tax > 0 && (
                 <div className="flex justify-between text-neutral-300">
                   <span>{t('orders.vatIncluded')}:</span>
-                  <span>+ {formatCurrency(selectedOrder.tax, 'TOMAN', isPersian)}</span>
+                  <span>+ {formatCurrency(selectedOrder.tax, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                 </div>
               )}
               <div className="flex justify-between items-center text-white font-bold text-sm pt-2 border-t border-neutral-800">
                 <span>{t('orders.payableAmount')}</span>
-                <span className="text-emerald-400 text-base">{formatCurrency(selectedOrder.total, 'TOMAN', isPersian)}</span>
+                <span className="text-emerald-400 text-base">{formatCurrency(selectedOrder.total, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
               </div>
             </div>
 
@@ -1309,9 +1328,9 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                         <div className="text-[10px] text-neutral-500 font-mono mt-0.5">
                           {formatDate(ret.return_date || ret.date_created, isPersian)} •{' '}
                           {ret.net_amount < 0
-                            ? `${t('orders.netRefundToCustomer')}: ${formatCurrency(Math.abs(ret.net_amount), 'TOMAN', isPersian)}`
+                            ? `${t('orders.netRefundToCustomer')}: ${formatCurrency(Math.abs(ret.net_amount), resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}`
                             : ret.net_amount > 0
-                            ? `${t('orders.netCollectFromCustomer')}: ${formatCurrency(ret.net_amount, 'TOMAN', isPersian)}`
+                            ? `${t('orders.netCollectFromCustomer')}: ${formatCurrency(ret.net_amount, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}`
                             : t('orders.netEvenExchange')}
                         </div>
                       </div>
@@ -1404,7 +1423,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               /* 80mm POS Thermal Receipt */
               <div className="w-[80mm] mx-auto text-xs space-y-3 font-mono leading-tight">
                 <div className="text-center border-b border-black pb-2">
-                  <h2 className="text-sm font-bold">{activeOrganization?.name || 'TANKHOR'}</h2>
+                  <h2 className="text-sm font-bold">{activeOrganization?.name || BRAND.name}</h2>
                   <p className="text-[10px]">{t('orders.posReceiptTitle')}</p>
                   <p className="text-[10px] mt-1">{t('orders.orderNumber')}: {selectedOrder.order_number}</p>
                   <p className="text-[10px]">{formatDate(selectedOrder.date_created, isPersian)}</p>
@@ -1434,7 +1453,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                           </div>
                         </td>
                         <td className="py-1 text-center">{isPersian ? toPersianDigits(it.quantity) : it.quantity}</td>
-                        <td className="py-1 text-end">{formatCurrency(it.total, 'TOMAN', isPersian)}</td>
+                        <td className="py-1 text-end">{formatCurrency(it.total, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1443,23 +1462,23 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                 <div className="space-y-1 text-start text-xs pt-1">
                   <div className="flex justify-between">
                     <span>{t('orders.subtotal')}:</span>
-                    <span>{formatCurrency(selectedOrder.subtotal, 'TOMAN', isPersian)}</span>
+                    <span>{formatCurrency(selectedOrder.subtotal, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                   </div>
                   {selectedOrder.discount > 0 && (
                     <div className="flex justify-between">
                       <span>{t('orders.discount')}:</span>
-                      <span>- {formatCurrency(selectedOrder.discount, 'TOMAN', isPersian)}</span>
+                      <span>- {formatCurrency(selectedOrder.discount, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                     </div>
                   )}
                   {selectedOrder.tax > 0 && (
                     <div className="flex justify-between">
                       <span>{t('orders.tax')}:</span>
-                      <span>+ {formatCurrency(selectedOrder.tax, 'TOMAN', isPersian)}</span>
+                      <span>+ {formatCurrency(selectedOrder.tax, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-bold text-sm pt-1 border-t border-black">
                     <span>{t('orders.payableAmount')}:</span>
-                    <span>{formatCurrency(selectedOrder.total, 'TOMAN', isPersian)}</span>
+                    <span>{formatCurrency(selectedOrder.total, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                   </div>
                 </div>
 
@@ -1467,7 +1486,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                   <div className="text-center pt-2">
                     <img
                       src={mediaManager.getDisplayUrlSync(activeOrganization.signature)}
-                      alt="مهر و امضا"
+                      alt="Stamp & Signature"
                       className="max-h-11 max-w-[120px] object-contain mx-auto"
                     />
                   </div>
@@ -1483,7 +1502,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                 <div className="flex justify-between items-center border-b-2 border-black pb-3">
                   <div>
                     <h1 className="text-xl font-black">{t('orders.officialSalesInvoice')}</h1>
-                    <p className="text-gray-600 text-xs mt-1">{activeOrganization?.name || 'TANKHOR'}</p>
+                    <p className="text-gray-600 text-xs mt-1">{activeOrganization?.name || BRAND.name}</p>
                   </div>
                   <div className="text-start font-mono text-xs space-y-1">
                     <p><strong>{t('orders.orderNumber')}:</strong> {selectedOrder.order_number}</p>
@@ -1508,8 +1527,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                       <th className="p-2 border-r border-gray-300">{t('orders.rowNumber')}</th>
                       <th className="p-2 border-r border-gray-300">{t('orders.itemTitleAndSpecs')}</th>
                       <th className="p-2 border-r border-gray-300 text-center">{t('orders.quantity')}</th>
-                      <th className="p-2 border-r border-gray-300 text-end">{t('orders.unitPrice')} ({t('common.toman')})</th>
-                      <th className="p-2 text-end">{t('orders.itemTotal')} ({t('common.toman')})</th>
+                      <th className="p-2 border-r border-gray-300 text-end">{t('orders.unitPrice')} ({resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency)})</th>
+                      <th className="p-2 text-end">{t('orders.itemTotal')} ({resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency)})</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1523,8 +1542,8 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                           </div>
                         </td>
                         <td className="p-2 border-r border-gray-300 text-center font-bold font-mono">{isPersian ? toPersianDigits(it.quantity) : it.quantity}</td>
-                        <td className="p-2 border-r border-gray-300 text-end font-mono">{formatCurrency(it.unitPrice, 'TOMAN', isPersian)}</td>
-                        <td className="p-2 text-end font-bold font-mono">{formatCurrency(it.total, 'TOMAN', isPersian)}</td>
+                        <td className="p-2 border-r border-gray-300 text-end font-mono">{formatCurrency(it.unitPrice, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</td>
+                        <td className="p-2 text-end font-bold font-mono">{formatCurrency(it.total, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1538,23 +1557,23 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                   <div className="w-1/2 border border-gray-300 rounded p-2 text-xs space-y-1">
                     <div className="flex justify-between">
                       <span>{t('orders.subtotal')}:</span>
-                      <span>{formatCurrency(selectedOrder.subtotal, 'TOMAN', isPersian)}</span>
+                      <span>{formatCurrency(selectedOrder.subtotal, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                     </div>
                     {selectedOrder.discount > 0 && (
                       <div className="flex justify-between text-red-600">
                         <span>{t('orders.discount')}:</span>
-                        <span>- {formatCurrency(selectedOrder.discount, 'TOMAN', isPersian)}</span>
+                        <span>- {formatCurrency(selectedOrder.discount, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                       </div>
                     )}
                     {selectedOrder.tax > 0 && (
                       <div className="flex justify-between">
                         <span>{t('orders.tax')}:</span>
-                        <span>+ {formatCurrency(selectedOrder.tax, 'TOMAN', isPersian)}</span>
+                        <span>+ {formatCurrency(selectedOrder.tax, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                       </div>
                     )}
                     <div className="flex justify-between font-bold text-sm pt-2 border-t border-black">
                       <span>{t('orders.payableAmount')}:</span>
-                      <span className="text-black">{formatCurrency(selectedOrder.total, 'TOMAN', isPersian)}</span>
+                      <span className="text-black">{formatCurrency(selectedOrder.total, resolveCurrencyCode(selectedOrder.currency || activeOrganization?.currency), isPersian)}</span>
                     </div>
                   </div>
                 </div>
@@ -1565,7 +1584,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                       <div className="h-16 flex items-center justify-center mb-1">
                         <img
                           src={mediaManager.getDisplayUrlSync(activeOrganization.signature)}
-                          alt="مهر و امضا"
+                          alt="Stamp & Signature"
                           className="max-h-16 max-w-[170px] object-contain"
                         />
                       </div>
@@ -1589,7 +1608,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
         </Modal>
       )}
 
-      {/* Modal: Settle Payment for Order (حسابداری و خزانه) */}
+      {/* Modal: Settle Payment for Order (Accounting & Treasury) */}
       {settleOrderTarget && (
         <Modal
           isOpen={isSettleModalOpen}
@@ -1599,19 +1618,19 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
               setSettleOrderTarget(null);
             }
           }}
-          title={`تسویه و دریافت وجه فاکتور #${settleOrderTarget.order_number}`}
+          title={isIt ? `Salda pagamento ordine #${settleOrderTarget.order_number}` : `Settle Payment for Order #${settleOrderTarget.order_number}`}
           maxWidth="max-w-md"
         >
           <div className="space-y-4 pt-1 text-xs">
             <div className="p-3 bg-slate-50 dark:bg-[#181a20] rounded-xl border border-slate-200 dark:border-neutral-800 space-y-2">
               <div className="flex justify-between items-center">
-                <span className="text-slate-500 dark:text-neutral-400">طرف حساب (مشتری):</span>
+                <span className="text-slate-500 dark:text-neutral-400">{isIt ? 'Cliente:' : 'Customer:'}</span>
                 <span className="font-bold text-slate-900 dark:text-neutral-100">{settleOrderTarget.customer_name}</span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-slate-500 dark:text-neutral-400">مبلغ قابل تسویه:</span>
+                <span className="text-slate-500 dark:text-neutral-400">{isIt ? 'Importo da saldare:' : 'Amount to settle:'}</span>
                 <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 text-sm">
-                  {formatCurrency(settleOrderTarget.total, 'TOMAN', isPersian)}
+                  {formatCurrency(settleOrderTarget.total, resolveCurrencyCode(settleOrderTarget.currency || activeOrganization?.currency), isPersian)}
                 </span>
               </div>
             </div>
@@ -1619,18 +1638,20 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
             {hasAccounting && financialAccounts.length > 0 && (
               <div className="space-y-1.5">
                 <label className="font-medium text-slate-700 dark:text-neutral-300 block">
-                  واریز به حساب بانکی / صندوق (خزانه داری):
+                  {isIt ? 'Deposita su conto bancario / cassa:' : 'Deposit to Bank Account / Cashbox:'}
                 </label>
                 <Select
                   value={selectedSettleAccountId}
                   onChange={(e) => setSelectedSettleAccountId(Number(e.target.value))}
                   options={financialAccounts.map((acc) => ({
                     value: acc.id,
-                    label: `${acc.name} (${acc.type === 'bank' ? 'بانک' : acc.type === 'cash' ? 'صندوق' : 'کارتخوان'}) - ${formatCurrency(acc.current_balance || 0, 'TOMAN', isPersian)}`,
+                    label: `${acc.name} (${acc.type === 'bank' ? 'Bank' : acc.type === 'cash' || acc.type === 'cashbox' ? 'Cash' : 'POS'}) - ${formatCurrency(acc.current_balance || 0, resolveCurrencyCode(activeOrganization?.currency), isPersian)}`,
                   }))}
                 />
                 <p className="text-[11px] text-slate-400 dark:text-neutral-500">
-                  وجه دریافتی مستقیماً به موجودی این حساب واریز شده و سند معین بستانکار مشتری ثبت می‌گردد.
+                  {isIt
+                    ? 'L’importo ricevuto sarà accreditato direttamente su questo conto e registrato nel partitario del cliente.'
+                    : 'The received amount will be deposited directly into this account and recorded as a credit on the customer ledger.'}
                 </p>
               </div>
             )}
@@ -1652,7 +1673,7 @@ export const OrdersView: React.FC<OrdersViewProps> = ({ onNavigateToCreate }) =>
                 icon={<CheckCircle2 className="w-4 h-4" />}
                 className="bg-emerald-600 hover:bg-emerald-500 text-white"
               >
-                تأیید و ثبت تسویه حساب
+                {isIt ? 'Conferma e registra saldo' : 'Confirm & Record Settlement'}
               </Button>
             </div>
           </div>

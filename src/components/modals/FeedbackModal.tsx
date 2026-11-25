@@ -15,6 +15,7 @@ import { useTranslation } from '../../i18n';
 import { useAuth } from '../../context/AuthContext';
 import { storageManager } from '../../storage';
 import { APP_VERSION } from '../../utils/version';
+import { BRAND } from '../../config/brand';
 
 interface FeedbackModalProps {
   isOpen: boolean;
@@ -24,7 +25,8 @@ interface FeedbackModalProps {
 type FeedbackType = 'feature' | 'bug' | 'ux' | 'other';
 
 export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const { user } = useAuth();
 
   const [feedbackType, setFeedbackType] = useState<FeedbackType>('feature');
@@ -46,25 +48,25 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
       type: 'feature',
       label: t('common.feedbackTypeFeature'),
       icon: Sparkles,
-      prefix: '[پیشنهاد قابلیت]',
+      prefix: '[Feature Request]',
     },
     {
       type: 'bug',
       label: t('common.feedbackTypeBug'),
       icon: Bug,
-      prefix: '[گزارش خطا]',
+      prefix: '[Bug Report]',
     },
     {
       type: 'ux',
       label: t('common.feedbackTypeUX'),
       icon: Palette,
-      prefix: '[تجربه کاربری]',
+      prefix: '[UX Feedback]',
     },
     {
       type: 'other',
       label: t('common.feedbackTypeOther'),
       icon: HelpCircle,
-      prefix: '[بازخورد عمومی]',
+      prefix: '[General Feedback]',
     },
   ];
 
@@ -89,7 +91,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
 
       await storageManager.submitFeedback({
         subject: formattedSubject,
-        message: `${trimmedMessage}\n\n---\n[اطلاعات سیستم: نسخه ${APP_VERSION} | کاربر: ${user?.email || user?.first_name || 'کاربر سیستم'}]`,
+        message: `${trimmedMessage}\n\n---\n[System Info: ${BRAND.name} v${APP_VERSION} | User: ${user?.email || user?.first_name || 'System User'}]`,
         user_id: user?.id || null,
         status: 'unread',
       });
@@ -177,7 +179,7 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
             {/* Category selection */}
             <div>
               <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-2">
-                نوع بازخورد:
+                {isIt ? 'Tipo di feedback:' : 'Feedback type:'}
               </label>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                 {typeCategories.map((cat) => {
@@ -237,11 +239,11 @@ export const FeedbackModal: React.FC<FeedbackModalProps> = ({ isOpen, onClose })
             <div className="flex items-center justify-between px-3 py-2 bg-slate-100/60 dark:bg-slate-800/40 rounded-xl text-[11px] text-slate-500 dark:text-slate-400">
               <div className="flex items-center gap-1.5">
                 <Info className="w-3.5 h-3.5 text-slate-400 shrink-0" />
-                <span>نسخه فعلی تن‌خور: <strong className="font-mono text-slate-700 dark:text-slate-300">v{APP_VERSION}</strong></span>
+                <span>{BRAND.name} <strong className="font-mono text-slate-700 dark:text-slate-300">v{APP_VERSION}</strong></span>
               </div>
               {user?.email && (
                 <span className="truncate max-w-[200px]" title={user.email}>
-                  ارسال با حساب: <span className="font-mono">{user.email}</span>
+                  {isIt ? 'Account:' : 'Account:'} <span className="font-mono">{user.email}</span>
                 </span>
               )}
             </div>

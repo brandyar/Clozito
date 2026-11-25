@@ -51,16 +51,16 @@ export class LocalOrgStorage {
     }
 
     // If saving a real organization and only default placeholder exists, purge placeholder
-    if (org.name && org.name !== 'سازمان اصلی' && list.length === 1 && list[0].slug === 'main-org') {
+    if (org.name && org.name !== 'Main Organization' && list.length === 1 && list[0].slug === 'main-org') {
       list = [];
     }
 
     const newOrg: Organization = {
       id: org.id || this.base.generateUniqueId(list),
-      name: org.name || 'سازمان جدید',
+      name: org.name || 'New Organization',
       slug: org.slug || 'new-org',
-      currency: org.currency || 'TOMAN',
-      timezone: org.timezone || 'Asia/Tehran',
+      currency: org.currency || 'EUR',
+      timezone: org.timezone || 'Europe/Rome',
       plan: org.plan || 'free',
       status: org.status || 'active',
       date_created: new Date().toISOString(),
@@ -333,7 +333,7 @@ export class LocalOrgStorage {
     const list = this.base.getItem<Feedback>('feedbacks', []);
     const newFeedback: Feedback = {
       id: this.base.generateUniqueId(list as Array<{ id: string | number }>),
-      subject: feedback.subject || 'بازخورد',
+      subject: feedback.subject || 'Feedback',
       message: feedback.message || '',
       status: feedback.status || 'unread',
       user_id: feedback.user_id || null,

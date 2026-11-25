@@ -5,6 +5,7 @@ import { SqliteStorageAdapter, isTauriEnvironment } from './sqliteAdapter';
 import { BackupManager } from './backupManager';
 import { swrCache } from '../api/swrCache';
 import { safeSetLocalStorageItem } from '../utils/profileCache';
+import { isPaidCloudPlan } from '../config/plans';
 
 export interface SetModeOptions {
   verifiedPro?: boolean;
@@ -47,7 +48,7 @@ class StorageManagerSingleton {
   }
 
   public isOrganizationPro(org: any): boolean {
-    if (!org || org.plan !== 'pro') return false;
+    if (!org || !isPaidCloudPlan(org.plan)) return false;
     if (org.trial_ends_at && !org.has_active_subscription) {
       const expiry = new Date(org.trial_ends_at).getTime();
       if (!Number.isNaN(expiry) && expiry <= Date.now()) {

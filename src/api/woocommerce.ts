@@ -52,7 +52,7 @@ export async function testWooCommerceConnection(params: {
     body: JSON.stringify(params),
   });
 
-  const data = await response.json().catch(() => ({ success: false, error: 'خطای نامشخص از سمت سرور' }));
+  const data = await response.json().catch(() => ({ success: false, error: 'Unknown server error' }));
   return data;
 }
 
@@ -75,7 +75,7 @@ export async function syncStockToWooCommerce(params: {
     body: JSON.stringify(params),
   });
 
-  const data = await response.json().catch(() => ({ success: false, error: 'خطای نامشخص در ارتباط با سرور' }));
+  const data = await response.json().catch(() => ({ success: false, error: 'Unknown server communication error' }));
   return data;
 }
 
@@ -97,7 +97,7 @@ export async function syncPricesToWooCommerce(params: {
     body: JSON.stringify(params),
   });
 
-  const data = await response.json().catch(() => ({ success: false, error: 'خطای نامشخص در ارتباط با سرور' }));
+  const data = await response.json().catch(() => ({ success: false, error: 'Unknown server communication error' }));
   return data;
 }
 
@@ -121,6 +121,6 @@ export async function importOrdersFromWooCommerce(params: {
     body: JSON.stringify(params),
   });
 
-  const data = await response.json().catch(() => ({ success: false, error: 'خطای نامشخص در ارتباط با سرور' }));
+  const data = await response.json().catch(() => ({ success: false, error: 'Unknown server communication error' }));
   return data;
 }

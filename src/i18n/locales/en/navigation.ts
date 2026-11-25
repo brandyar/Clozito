@@ -42,6 +42,7 @@ export const navigationEn = {
   settingsModules: 'Modules & Licenses',
   settingsSync: 'Database & Sync',
   settingsAppearance: 'Appearance & Theme',
+  settingsPrivacy: 'Privacy & GDPR',
   settingsUpdater: 'App Updater',
   lockedModulesGroup: 'Add-ons & Modules',
   lockedBadge: 'Module',

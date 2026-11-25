@@ -70,4 +70,10 @@ export const authEn = {
   completeRegistration: 'Complete Sign Up & Enter Workspace',
   multiTenantFooter: 'Isolated Organization Data (Multi-Tenant Architecture)',
   allRightsReserved: 'All Rights Reserved',
+  acceptTermsPrefix: 'I have read and accept the',
+  termsOfService: 'Terms of Service',
+  andLabel: 'and',
+  privacyPolicy: 'Privacy Policy (GDPR)',
+  cookiePolicy: 'Cookie Policy',
+  acceptTermsRequiredError: 'You must accept the Terms of Service and Privacy Policy to create an account.',
 };

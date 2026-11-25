@@ -19,7 +19,8 @@ import { Button } from '../../components/ui/Button';
 import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { ModuleLockedCard } from '../../components/modules/ModuleLockedCard';
-import { formatPersianDate, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency, formatDate, resolveCurrencyCode } from '../../utils/formatters';
+import { BRAND } from '../../config/brand';
 import {
   Globe,
   RefreshCw,
@@ -34,12 +35,10 @@ import {
   ExternalLink,
   ShieldCheck,
   HelpCircle,
-  Database,
   Layers,
   Clock,
   ArrowUpRight,
   ArrowDownLeft,
-  Search,
 } from 'lucide-react';
 
 export interface WooCommercePageProps {
@@ -52,11 +51,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   onNavigateTab,
 }) => {
   const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
   const { hasAccess } = useModuleAccess();
-  const isRtl = false;
 
   const hasWcAccess = hasAccess('woocommerce');
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
 
   // Tabs
   const [activeTab, setActiveTab] = useState<'overview' | 'settings' | 'mappings' | 'logs'>(initialTab);
@@ -87,13 +87,13 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   const [warehouses, setWarehouses] = useState<Warehouse[]>([]);
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
-  const [inventoryItems, setInventoryItems] = useState<InventoryItem[]>([]);
+  const [, setInventoryItems] = useState<InventoryItem[]>([]);
   const [logs, setLogs] = useState<WooCommerceLog[]>([]);
   const [loading, setLoading] = useState(true);
 
   // Connection & action states
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<TestConnectionResult | null>(null);
+  const [, setTestResult] = useState<TestConnectionResult | null>(null);
   const [isSyncingStock, setIsSyncingStock] = useState(false);
   const [isSyncingPrices, setIsSyncingPrices] = useState(false);
   const [isImportingOrders, setIsImportingOrders] = useState(false);
@@ -107,7 +107,7 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   // Webhook URL
   const webhookUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/api/woocommerce/webhook?org_id=${activeOrgId}`
-    : `https://my.tankhor.com/api/woocommerce/webhook?org_id=${activeOrgId}`;
+    : `${BRAND.websiteUrl}/api/woocommerce/webhook?org_id=${activeOrgId}`;
 
   // Load initial data
   const loadData = async () => {
@@ -145,7 +145,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   const handleTestConnection = async () => {
     if (!settings.site_url || !settings.consumer_key || !settings.consumer_secret) {
       setFeedbackMessage({
-        text: 'لطفاً ابتدا آدرس سایت، Consumer Key و Consumer Secret را در تب تنظیمات تکمیل کنید.',
+        text: isIt
+          ? 'Compila prima URL del sito, Consumer Key e Consumer Secret nella scheda Impostazioni.'
+          : 'Please complete the Site URL, Consumer Key, and Consumer Secret in the Settings tab first.',
         isError: true,
       });
       return;
@@ -164,18 +166,28 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
 
       setTestResult(res);
       if (res.success) {
-        setFeedbackMessage({ text: `اتصال موفق: ${res.store_name} (${res.wc_version})`, isError: false });
-        // Save connection status
+        setFeedbackMessage({
+          text: isIt
+            ? `Connessione riuscita: ${res.store_name} (${res.wc_version})`
+            : `Connected successfully: ${res.store_name} (${res.wc_version})`,
+          isError: false,
+        });
         await storageManager.saveWooCommerceSettings({
           ...settings,
           organization_id: activeOrgId,
           sync_status: 'connected',
         });
       } else {
-        setFeedbackMessage({ text: res.error || 'خطا در برقراری ارتباط با ووکامرس.', isError: true });
+        setFeedbackMessage({
+          text: res.error || (isIt ? 'Errore di connessione a WooCommerce.' : 'Failed to connect to WooCommerce.'),
+          isError: true,
+        });
       }
     } catch (err: any) {
-      setFeedbackMessage({ text: err.message || 'خطا در ارتباط با سرور.', isError: true });
+      setFeedbackMessage({
+        text: err.message || (isIt ? 'Errore di comunicazione con il server.' : 'Server communication error.'),
+        isError: true,
+      });
     } finally {
       setIsTesting(false);
     }
@@ -193,9 +205,15 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
         organization_id: activeOrgId,
       });
       setSettings(saved);
-      setFeedbackMessage({ text: t('woocommerce.saveSuccess', 'تنظیمات با موفقیت ذخیره شد.'), isError: false });
+      setFeedbackMessage({
+        text: t('woocommerce.saveSuccess', isIt ? 'Impostazioni salvate con successo.' : 'Settings saved successfully.'),
+        isError: false,
+      });
     } catch (err: any) {
-      setFeedbackMessage({ text: err.message || 'خطا در ذخیره تنظیمات.', isError: true });
+      setFeedbackMessage({
+        text: err.message || (isIt ? 'Errore nel salvataggio delle impostazioni.' : 'Failed to save settings.'),
+        isError: true,
+      });
     } finally {
       setIsSavingSettings(false);
     }
@@ -204,7 +222,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   // Sync Stock
   const handleSyncStock = async () => {
     if (!settings.site_url || !settings.consumer_key || !settings.consumer_secret) {
-      setFeedbackMessage({ text: 'تنظیمات ووکامرس کامل نیست. لطفاً ابتدا در تب تنظیمات آنها را تکمیل کنید.', isError: true });
+      setFeedbackMessage({
+        text: isIt
+          ? 'Le impostazioni WooCommerce sono incomplete. Compilale nella scheda Impostazioni.'
+          : 'WooCommerce settings are incomplete. Please configure them in the Settings tab first.',
+        isError: true,
+      });
       return;
     }
 
@@ -222,15 +245,23 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
 
       if (res.success) {
         setFeedbackMessage({
-          text: `موجودی با موفقیت ارسال شد: تعداد ${res.updatedCount} کالا/تنوع در ووکامرس بروز گردید (${res.missingSkuCount} قلم فاقد SKU بودند).`,
+          text: isIt
+            ? `Giacenze sincronizzate: ${res.updatedCount} prodotti/varianti aggiornati su WooCommerce (${res.missingSkuCount} senza SKU).`
+            : `Stock synced successfully: ${res.updatedCount} products/variants updated in WooCommerce (${res.missingSkuCount} skipped without SKU).`,
           isError: false,
         });
         await loadData();
       } else {
-        setFeedbackMessage({ text: res.error || 'خطا در ارسال موجودی به سایت.', isError: true });
+        setFeedbackMessage({
+          text: res.error || (isIt ? 'Errore durante la sincronizzazione delle giacenze.' : 'Failed to sync stock to WooCommerce.'),
+          isError: true,
+        });
       }
     } catch (err: any) {
-      setFeedbackMessage({ text: err.message || 'خطا در ارسال موجودی.', isError: true });
+      setFeedbackMessage({
+        text: err.message || (isIt ? 'Errore durante la sincronizzazione delle giacenze.' : 'Failed to sync stock.'),
+        isError: true,
+      });
     } finally {
       setIsSyncingStock(false);
     }
@@ -239,7 +270,10 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   // Sync Prices
   const handleSyncPrices = async () => {
     if (!settings.site_url || !settings.consumer_key || !settings.consumer_secret) {
-      setFeedbackMessage({ text: 'تنظیمات ووکامرس کامل نیست.', isError: true });
+      setFeedbackMessage({
+        text: isIt ? 'Impostazioni WooCommerce incomplete.' : 'WooCommerce settings are incomplete.',
+        isError: true,
+      });
       return;
     }
 
@@ -256,15 +290,23 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
 
       if (res.success) {
         setFeedbackMessage({
-          text: `قیمت‌ها با موفقیت ارسال شد: تعداد ${res.updatedCount} کالا بروزرسانی گردید.`,
+          text: isIt
+            ? `Prezzi sincronizzati: ${res.updatedCount} prodotti aggiornati.`
+            : `Prices synced successfully: ${res.updatedCount} products updated.`,
           isError: false,
         });
         await loadData();
       } else {
-        setFeedbackMessage({ text: res.error || 'خطا در ارسال قیمت‌ها به سایت.', isError: true });
+        setFeedbackMessage({
+          text: res.error || (isIt ? 'Errore durante la sincronizzazione dei prezzi.' : 'Failed to sync prices to WooCommerce.'),
+          isError: true,
+        });
       }
     } catch (err: any) {
-      setFeedbackMessage({ text: err.message || 'خطا در ارسال قیمت‌ها.', isError: true });
+      setFeedbackMessage({
+        text: err.message || (isIt ? 'Errore durante la sincronizzazione dei prezzi.' : 'Failed to sync prices.'),
+        isError: true,
+      });
     } finally {
       setIsSyncingPrices(false);
     }
@@ -273,7 +315,10 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   // Import Orders
   const handleImportOrders = async () => {
     if (!settings.site_url || !settings.consumer_key || !settings.consumer_secret) {
-      setFeedbackMessage({ text: 'تنظیمات ووکامرس کامل نیست.', isError: true });
+      setFeedbackMessage({
+        text: isIt ? 'Impostazioni WooCommerce incomplete.' : 'WooCommerce settings are incomplete.',
+        isError: true,
+      });
       return;
     }
 
@@ -292,15 +337,23 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
 
       if (res.success) {
         setFeedbackMessage({
-          text: `سفارشات آنلاین بررسی شد: تعداد ${res.importedOrdersCount} سفارش جدید دریافت گردید (${res.skippedCount} سفارش قبلاً ثبت شده بودند).`,
+          text: isIt
+            ? `Ordini online verificati: ${res.importedOrdersCount} nuovi ordini importati (${res.skippedCount} già registrati).`
+            : `Online orders checked: ${res.importedOrdersCount} new orders imported (${res.skippedCount} already recorded).`,
           isError: false,
         });
         await loadData();
       } else {
-        setFeedbackMessage({ text: res.error || 'خطا در دریافت سفارشات از سایت.', isError: true });
+        setFeedbackMessage({
+          text: res.error || (isIt ? 'Errore durante l’importazione degli ordini.' : 'Failed to import orders from WooCommerce.'),
+          isError: true,
+        });
       }
     } catch (err: any) {
-      setFeedbackMessage({ text: err.message || 'خطا در دریافت سفارشات.', isError: true });
+      setFeedbackMessage({
+        text: err.message || (isIt ? 'Errore durante l’importazione degli ordini.' : 'Failed to import orders.'),
+        isError: true,
+      });
     } finally {
       setIsImportingOrders(false);
     }
@@ -317,8 +370,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
     return (
       <ModuleLockedCard
         moduleSlug="woocommerce"
-        moduleName="همگام‌سازی با ووکامرس"
-        description="اتصال دوطرفه و خودکار انبار تن‌خور با وب‌سایت وردپرس ووکامرس: همگام‌سازی بلادرنگ موجودی، قیمت‌ها و دریافت خودکار سفارشات فروشگاه آنلاین."
+        moduleName={isIt ? 'Sincronizzazione WooCommerce' : 'WooCommerce Sync'}
+        description={
+          isIt
+            ? `Connessione bidirezionale automatica tra ${BRAND.name} e il tuo negozio WooCommerce: sincronizzazione in tempo reale di giacenze, prezzi e importazione automatica degli ordini online.`
+            : `Two-way automated integration between ${BRAND.name} and your WooCommerce store: real-time inventory sync, price updates, and automatic online order imports.`
+        }
         onUnlocked={loadData}
       />
     );
@@ -341,7 +398,7 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
   });
 
   return (
-    <div className="p-3.5 sm:p-6 max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in" dir={isRtl ? 'rtl' : 'ltr'}>
+    <div className="p-3.5 sm:p-6 max-w-7xl mx-auto space-y-5 sm:space-y-6 animate-fade-in" dir="ltr">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 border-b border-neutral-800 pb-4 sm:pb-5">
         <div className="flex items-center gap-2.5 sm:gap-3">
@@ -351,14 +408,21 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-lg sm:text-xl font-bold text-white tracking-tight">
-                {t('woocommerce.title', 'همگام‌سازی با ووکامرس (WooCommerce)')}
+                {t('woocommerce.title', isIt ? 'Sincronizzazione WooCommerce' : 'WooCommerce Sync')}
               </h1>
               <Badge variant="success" className="text-[10px] sm:text-xs">
-                {settings.site_url ? 'پیکربندی شده' : 'نیاز به تنظیمات'}
+                {settings.site_url
+                  ? isIt ? 'Configurato' : 'Configured'
+                  : isIt ? 'Configurazione richiesta' : 'Setup Required'}
               </Badge>
             </div>
             <p className="text-xs sm:text-sm text-neutral-400 mt-0.5 line-clamp-1 sm:line-clamp-none">
-              {t('woocommerce.subtitle', 'اتصال دوطرفه تن‌خور با فروشگاه اینترنتی وردپرس: همگام‌سازی موجودی، قیمت‌ها و دریافت خودکار سفارشات')}
+              {t(
+                'woocommerce.subtitle',
+                isIt
+                  ? `Integrazione bidirezionale tra ${BRAND.name} e WooCommerce per giacenze, prezzi e ordini`
+                  : `Two-way integration between ${BRAND.name} and WooCommerce for stock, prices, and orders`
+              )}
             </p>
           </div>
         </div>
@@ -371,8 +435,8 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
             disabled={loading}
             className="text-xs border-neutral-700 hover:bg-neutral-800 flex-1 sm:flex-initial justify-center h-8 sm:h-9"
           >
-            <RefreshCw className={`w-3.5 h-3.5 ml-1.5 ${loading ? 'animate-spin' : ''}`} />
-            <span>بروزرسانی داده‌ها</span>
+            <RefreshCw className={`w-3.5 h-3.5 me-1.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>{isIt ? 'Aggiorna dati' : 'Refresh Data'}</span>
           </Button>
 
           <Button
@@ -382,8 +446,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
             disabled={isTesting || !settings.site_url}
             className="text-xs bg-violet-600 hover:bg-violet-500 text-white border-0 flex-1 sm:flex-initial justify-center h-8 sm:h-9"
           >
-            <ShieldCheck className={`w-3.5 h-3.5 ml-1.5 ${isTesting ? 'animate-spin' : ''}`} />
-            <span>{isTesting ? 'در حال بررسی...' : 'بررسی اتصال ووکامرس'}</span>
+            <ShieldCheck className={`w-3.5 h-3.5 me-1.5 ${isTesting ? 'animate-spin' : ''}`} />
+            <span>
+              {isTesting
+                ? isIt ? 'Verifica in corso...' : 'Testing...'
+                : isIt ? 'Verifica connessione' : 'Test Connection'}
+            </span>
           </Button>
         </div>
       </div>
@@ -403,9 +471,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
           </div>
           <button
             onClick={() => setFeedbackMessage(null)}
-            className="text-xs opacity-70 hover:opacity-100 underline mr-4 shrink-0"
+            className="text-xs opacity-70 hover:opacity-100 underline ms-4 shrink-0"
           >
-            بستن
+            {isIt ? 'Chiudi' : 'Dismiss'}
           </button>
         </div>
       )}
@@ -413,10 +481,10 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
       {/* Navigation Tabs */}
       <div className="flex border-b border-neutral-800 gap-1 sm:gap-2 overflow-x-auto pb-px scrollbar-none">
         {[
-          { key: 'overview' as const, label: t('woocommerce.overviewTab', 'پیشخوان همگام‌سازی'), icon: Boxes },
-          { key: 'mappings' as const, label: t('woocommerce.mappingsTab', 'تطبیق کالاها و کد SKU'), icon: Layers },
-          { key: 'logs' as const, label: t('woocommerce.logsTab', 'گزارش و لاگ‌های رویداد'), icon: Clock },
-          { key: 'settings' as const, label: t('woocommerce.settingsTab', 'تنظیمات و احراز هویت'), icon: Settings },
+          { key: 'overview' as const, label: t('woocommerce.overviewTab', isIt ? 'Panoramica Sync' : 'Sync Overview'), icon: Boxes },
+          { key: 'mappings' as const, label: t('woocommerce.mappingsTab', isIt ? 'Mappatura SKU' : 'Product & SKU Mapping'), icon: Layers },
+          { key: 'logs' as const, label: t('woocommerce.logsTab', isIt ? 'Log eventi' : 'Sync Logs'), icon: Clock },
+          { key: 'settings' as const, label: t('woocommerce.settingsTab', isIt ? 'Impostazioni API' : 'Connection & Settings'), icon: Settings },
         ].map((tab) => {
           const Icon = tab.icon;
           const isActive = activeTab === tab.key;
@@ -434,7 +502,7 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
               <span>{tab.label}</span>
               {tab.key === 'logs' && logs.length > 0 && (
                 <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-neutral-800 text-neutral-300">
-                  {toPersianDigits(logs.length)}
+                  {logs.length}
                 </span>
               )}
             </button>
@@ -449,60 +517,75 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
           <div className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4">
             <Card className="p-3 sm:p-4 bg-neutral-900/60 border-neutral-800 space-y-1 sm:space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">وضعیت اتصال فروشگاه</span>
+                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">
+                  {isIt ? 'Stato connessione negozio' : 'Store Connection'}
+                </span>
                 <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-violet-400 shrink-0" />
               </div>
               <div className="flex items-baseline gap-1.5 sm:gap-2">
-                <span className="text-sm sm:text-base font-bold text-white truncate max-w-[150px] sm:max-w-[200px]" title={settings.site_url || 'تنظیم نشده'}>
-                  {settings.site_url ? settings.site_url.replace(/^https?:\/\//, '') : 'تنظیم نشده'}
+                <span
+                  className="text-sm sm:text-base font-bold text-white truncate max-w-[150px] sm:max-w-[200px]"
+                  title={settings.site_url || (isIt ? 'Non configurato' : 'Not configured')}
+                >
+                  {settings.site_url ? settings.site_url.replace(/^https?:\/\//, '') : isIt ? 'Non configurato' : 'Not configured'}
                 </span>
               </div>
               <div className="text-[10px] sm:text-xs text-neutral-500 flex items-center gap-1.5">
                 <span className={`w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full ${settings.site_url ? 'bg-emerald-400' : 'bg-neutral-600'}`} />
-                <span>{settings.site_url ? 'آماده همگام‌سازی' : 'نیازمند تکمیل آدرس'}</span>
+                <span>
+                  {settings.site_url
+                    ? isIt ? 'Pronto alla sincronizzazione' : 'Ready to sync'
+                    : isIt ? 'URL del negozio richiesto' : 'Store URL required'}
+                </span>
               </div>
             </Card>
 
             <Card className="p-3 sm:p-4 bg-neutral-900/60 border-neutral-800 space-y-1 sm:space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">کل تنوع‌های کالا</span>
+                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">
+                  {isIt ? 'Totale varianti' : 'Total Variants'}
+                </span>
                 <Boxes className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-400 shrink-0" />
               </div>
               <div className="flex items-baseline gap-1.5 sm:gap-2">
-                <span className="text-lg sm:text-2xl font-bold text-white">{toPersianDigits(totalVariantsCount)}</span>
-                <span className="text-[11px] sm:text-xs text-neutral-400">قلم</span>
+                <span className="text-lg sm:text-2xl font-bold text-white">{totalVariantsCount}</span>
+                <span className="text-[11px] sm:text-xs text-neutral-400">{isIt ? 'articoli' : 'items'}</span>
               </div>
               <div className="text-[10px] sm:text-xs text-emerald-400 line-clamp-1">
-                {toPersianDigits(withSkuCount)} دارای کد SKU
+                {withSkuCount} {isIt ? 'con codice SKU' : 'with SKU'}
               </div>
             </Card>
 
             <Card className="p-3 sm:p-4 bg-neutral-900/60 border-neutral-800 space-y-1 sm:space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">انبار متصل فروش</span>
+                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">
+                  {isIt ? 'Magazzino collegato' : 'Linked Warehouse'}
+                </span>
                 <ShoppingBag className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-400 shrink-0" />
               </div>
               <div className="flex items-baseline gap-1.5 sm:gap-2">
                 <span className="text-sm sm:text-base font-bold text-white line-clamp-1">
-                  {warehouses.find((w) => w.id === settings.warehouse_id)?.name || 'همه انبارها'}
+                  {warehouses.find((w) => w.id === settings.warehouse_id)?.name || (isIt ? 'Tutti i magazzini' : 'All Warehouses')}
                 </span>
               </div>
               <div className="text-[10px] sm:text-xs text-neutral-500 line-clamp-1">
-                کسر خودکار موجودی
+                {isIt ? 'Scarico automatico giacenze' : 'Automatic stock deduction'}
               </div>
             </Card>
 
             <Card className="p-3 sm:p-4 bg-neutral-900/60 border-neutral-800 space-y-1 sm:space-y-2">
               <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">رویدادها و لاگ‌ها</span>
+                <span className="text-[11px] sm:text-xs text-neutral-400 line-clamp-1">
+                  {isIt ? 'Eventi e log' : 'Sync Events'}
+                </span>
                 <Clock className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-400 shrink-0" />
               </div>
               <div className="flex items-baseline gap-1.5 sm:gap-2">
-                <span className="text-lg sm:text-2xl font-bold text-white">{toPersianDigits(logs.length)}</span>
-                <span className="text-[11px] sm:text-xs text-neutral-400">رکورد</span>
+                <span className="text-lg sm:text-2xl font-bold text-white">{logs.length}</span>
+                <span className="text-[11px] sm:text-xs text-neutral-400">{isIt ? 'voci' : 'records'}</span>
               </div>
               <div className="text-[10px] sm:text-xs text-neutral-500 line-clamp-1">
-                آخرین: {logs[0]?.date_created ? formatPersianDate(logs[0].date_created) : 'ندارد'}
+                {isIt ? 'Ultimo:' : 'Latest:'} {logs[0]?.date_created ? formatDate(logs[0].date_created) : isIt ? 'Nessuno' : 'None'}
               </div>
             </Card>
           </div>
@@ -511,10 +594,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
           <Card className="p-4 sm:p-6 bg-gradient-to-br from-neutral-900 via-neutral-900/90 to-[#18181c] border-neutral-800">
             <h2 className="text-sm sm:text-base font-bold text-white mb-1.5 sm:mb-2 flex items-center gap-2">
               <ArrowUpDown className="w-4 h-4 text-violet-400" />
-              عملیات همگام‌سازی دستی و آنی
+              {isIt ? 'Azioni di sincronizzazione manuale' : 'Manual Instant Sync Actions'}
             </h2>
             <p className="text-xs text-neutral-400 mb-4 sm:mb-6">
-              با استفاده از دکمه‌های زیر می‌توانید اطلاعات انبار و سفارشات را به سرعت بین تن‌خور و ووکامرس یکسان‌سازی نمایید:
+              {isIt
+                ? `Usa i pulsanti qui sotto per sincronizzare istantaneamente inventario, prezzi e ordini tra ${BRAND.name} e WooCommerce:`
+                : `Use the controls below to immediately sync inventory, prices, and orders between ${BRAND.name} and WooCommerce:`}
             </p>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 sm:gap-4">
@@ -523,10 +608,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-white font-medium text-xs sm:text-sm">
                     <Boxes className="w-4 h-4 text-blue-400 shrink-0" />
-                    <span>ارسال موجودی انبار به سایت</span>
+                    <span>{isIt ? 'Invia giacenze al negozio' : 'Push Stock to Store'}</span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-neutral-400 mt-2 leading-relaxed">
-                    موجودی فعلی کالاها در انبار منتخب محاسبه شده و بر اساس SKU در فروشگاه ووکامرس بروزرسانی می‌شود.
+                    {isIt
+                      ? 'Calcola le giacenze disponibili nel magazzino selezionato e aggiorna i prodotti su WooCommerce tramite SKU.'
+                      : 'Calculates available stock in the selected warehouse and updates matching SKU quantities in WooCommerce.'}
                   </p>
                 </div>
                 <Button
@@ -537,7 +624,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                   icon={<Boxes className={`w-3.5 h-3.5 ${isSyncingStock ? 'animate-spin' : ''}`} />}
                   className="mt-3.5 sm:mt-4 w-full justify-center bg-blue-600 hover:bg-blue-500 text-white text-xs border-0 cursor-pointer h-8 sm:h-9"
                 >
-                  {isSyncingStock ? 'در حال ارسال موجودی...' : 'همگام‌سازی موجودی انبار'}
+                  {isSyncingStock
+                    ? isIt ? 'Invio giacenze...' : 'Syncing Stock...'
+                    : isIt ? 'Sincronizza giacenze' : 'Sync Inventory Stock'}
                 </Button>
               </div>
 
@@ -546,10 +635,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-white font-medium text-xs sm:text-sm">
                     <ArrowUpRight className="w-4 h-4 text-emerald-400 shrink-0" />
-                    <span>ارسال قیمت‌های فروش به سایت</span>
+                    <span>{isIt ? 'Invia prezzi al negozio' : 'Push Prices to Store'}</span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-neutral-400 mt-2 leading-relaxed">
-                    آخرین قیمت‌های فروش تعریف شده برای تنوع‌ها به قیمت عادی (Regular Price) محصولات ووکامرس منتقل می‌گردد.
+                    {isIt
+                      ? 'Aggiorna il prezzo di listino (Regular Price) su WooCommerce con i prezzi delle varianti.'
+                      : 'Pushes current variant selling prices to the Regular Price field of matching products in WooCommerce.'}
                   </p>
                 </div>
                 <Button
@@ -560,7 +651,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                   icon={<ArrowUpRight className={`w-3.5 h-3.5 ${isSyncingPrices ? 'animate-spin' : ''}`} />}
                   className="mt-3.5 sm:mt-4 w-full justify-center border-neutral-700 hover:bg-neutral-800 text-white text-xs cursor-pointer h-8 sm:h-9"
                 >
-                  {isSyncingPrices ? 'در حال ارسال قیمت‌ها...' : 'همگام‌سازی قیمت‌ها'}
+                  {isSyncingPrices
+                    ? isIt ? 'Invio prezzi...' : 'Syncing Prices...'
+                    : isIt ? 'Sincronizza prezzi' : 'Sync Prices'}
                 </Button>
               </div>
 
@@ -569,10 +662,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                 <div>
                   <div className="flex items-center gap-2 text-white font-medium text-xs sm:text-sm">
                     <ShoppingBag className="w-4 h-4 text-violet-400 shrink-0" />
-                    <span>دریافت سفارشات ووکامرس</span>
+                    <span>{isIt ? 'Importa ordini WooCommerce' : 'Import WooCommerce Orders'}</span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-neutral-400 mt-2 leading-relaxed">
-                    سفارشات جدید و در حال پردازش سایت دریافت شده و به عنوان فاکتور فروش اینترنتی در تن‌خور درج می‌شوند.
+                    {isIt
+                      ? `Importa gli ordini online nuovi e in lavorazione come ordini di vendita in ${BRAND.name}.`
+                      : `Fetches new and processing storefront orders and records them as sales orders in ${BRAND.name}.`}
                   </p>
                 </div>
                 <Button
@@ -583,7 +678,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                   icon={<ShoppingBag className={`w-3.5 h-3.5 ${isImportingOrders ? 'animate-spin' : ''}`} />}
                   className="mt-3.5 sm:mt-4 w-full justify-center bg-violet-600 hover:bg-violet-500 text-white text-xs border-0 cursor-pointer h-8 sm:h-9"
                 >
-                  {isImportingOrders ? 'در حال دریافت سفارشات...' : 'دریافت سفارشات آنلاین'}
+                  {isImportingOrders
+                    ? isIt ? 'Importazione ordini...' : 'Importing Orders...'
+                    : isIt ? 'Importa ordini online' : 'Import Online Orders'}
                 </Button>
               </div>
             </div>
@@ -595,10 +692,14 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
               <AlertCircle className="w-4 h-4 sm:w-5 sm:h-5 text-amber-400 shrink-0 mt-0.5" />
               <div>
                 <h3 className="text-xs sm:text-sm font-bold text-amber-300">
-                  {toPersianDigits(missingSkuCount)} قلم کالا فاقد کد SKU یا بارکد هستند
+                  {isIt
+                    ? `${missingSkuCount} varianti non hanno un codice SKU o barcode`
+                    : `${missingSkuCount} variants are missing an SKU or barcode`}
                 </h3>
                 <p className="text-[11px] sm:text-xs text-neutral-400 mt-1">
-                  ووکامرس تطبیق محصولات را از طریق فیلد SKU (شناسه محصول) انجام می‌دهد. برای اینکه موجودی و قیمت این کالاها به طور خودکار همگام شود، لطفاً در بخش محصولات برای آنها کد SKU اختصاص دهید.
+                  {isIt
+                    ? 'WooCommerce abbina i prodotti tramite il campo SKU. Assegna un SKU alle varianti nella sezione Prodotti per sincronizzare automaticamente giacenze e prezzi.'
+                    : 'WooCommerce matches products using the SKU field. Assign SKUs to these variants in the Products section to enable automatic stock and price syncing.'}
                 </p>
                 <Button
                   variant="ghost"
@@ -606,7 +707,7 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                   onClick={() => handleTabChange('mappings')}
                   className="mt-2 text-xs text-amber-400 hover:text-amber-300 p-0 h-auto underline"
                 >
-                  مشاهده کالاهای بدون SKU در تب تطبیق کالاها
+                  {isIt ? 'Visualizza articoli senza SKU nella scheda Mappatura' : 'View items missing SKU in Product Mapping'}
                 </Button>
               </div>
             </div>
@@ -620,18 +721,18 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
           <Card className="p-4 sm:p-6 bg-neutral-900/60 border-neutral-800">
             <h2 className="text-sm sm:text-base font-bold text-white mb-3 sm:mb-4 flex items-center gap-2">
               <Settings className="w-4 h-4 text-violet-400" />
-              تنظیمات احراز هویت REST API ووکامرس
+              {isIt ? 'Credenziali WooCommerce REST API' : 'WooCommerce REST API Authentication'}
             </h2>
 
             <form onSubmit={handleSaveSettings} className="space-y-4 sm:space-y-5">
               {/* Site URL */}
               <div>
                 <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                  آدرس وب‌سایت فروشگاه (Site URL) <span className="text-rose-400">*</span>
+                  {isIt ? 'URL del negozio (Site URL)' : 'Store Website URL'} <span className="text-rose-400">*</span>
                 </label>
                 <Input
                   type="url"
-                  placeholder="https://example.com"
+                  placeholder="https://yourstore.eu"
                   value={settings.site_url || ''}
                   onChange={(e) => setSettings({ ...settings, site_url: e.target.value })}
                   dir="ltr"
@@ -639,7 +740,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                   required
                 />
                 <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1">
-                  آدرس کامل دامنه فروشگاه با https یا http (مثال: https://myshop.ir)
+                  {isIt
+                    ? 'Dominio completo del negozio con https:// (es. https://yourstore.eu)'
+                    : 'Full store domain including https:// (e.g., https://yourstore.eu)'}
                 </p>
               </div>
 
@@ -647,7 +750,7 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4">
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    کلید مصرف‌کننده (Consumer Key) <span className="text-rose-400">*</span>
+                    Consumer Key <span className="text-rose-400">*</span>
                   </label>
                   <Input
                     type="text"
@@ -662,7 +765,7 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
 
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    رمز مصرف‌کننده (Consumer Secret) <span className="text-rose-400">*</span>
+                    Consumer Secret <span className="text-rose-400">*</span>
                   </label>
                   <Input
                     type="password"
@@ -679,10 +782,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
               <div className="p-3 sm:p-3.5 rounded-xl bg-neutral-950 border border-neutral-800/80 text-[11px] sm:text-xs text-neutral-400 space-y-1">
                 <span className="font-semibold text-neutral-300 flex items-center gap-1.5">
                   <HelpCircle className="w-3.5 h-3.5 text-violet-400 shrink-0" />
-                  نحوه دریافت کلیدها از وردپرس:
+                  {isIt ? 'Come generare le chiavi API in WordPress:' : 'How to generate API keys in WordPress:'}
                 </span>
                 <p className="leading-relaxed">
-                  وارد مدیریت وردپرس شوید ➔ ووکامرس ➔ پیکربندی ➔ تب پیشرفته ➔ کلیدهای REST API ➔ دکمه «افزودن کلید» ➔ دسترسی را روی «خواندن/نوشتن (Read/Write)» قرار دهید.
+                  {isIt
+                    ? 'Apri WordPress Admin → WooCommerce → Impostazioni → Avanzate → REST API → "Aggiungi chiave" → imposta i permessi su "Lettura/Scrittura (Read/Write)".'
+                    : 'Go to WordPress Admin → WooCommerce → Settings → Advanced → REST API → "Add key" → set Permissions to "Read/Write".'}
                 </p>
               </div>
 
@@ -690,35 +795,37 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3 sm:gap-4 pt-3 border-t border-neutral-800">
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    انبار متصل جهت بررسی موجودی و ثبت خروج
+                    {isIt ? 'Magazzino collegato per giacenze e scarichi' : 'Linked Warehouse for Stock & Fulfillment'}
                   </label>
                   <select
                     value={settings.warehouse_id || ''}
                     onChange={(e) => setSettings({ ...settings, warehouse_id: e.target.value ? Number(e.target.value) : null })}
                     className="w-full h-9 sm:h-10 px-3 rounded-lg bg-neutral-950 border border-neutral-800 text-white text-xs sm:text-sm focus:outline-none focus:border-violet-500"
                   >
-                    <option value="">همه انبارها (موجودی تجمیعی)</option>
+                    <option value="">{isIt ? 'Tutti i magazzini (giacenza aggregata)' : 'All Warehouses (Combined Stock)'}</option>
                     {warehouses.map((w) => (
                       <option key={w.id} value={w.id}>
-                        {w.name} {w.is_default ? '(انبار پیش‌فرض)' : ''}
+                        {w.name} {w.is_default ? (isIt ? '(Predefinito)' : '(Default)') : ''}
                       </option>
                     ))}
                   </select>
                   <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1">
-                    موجودی ارسالی به سایت از این انبار استخراج می‌شود.
+                    {isIt
+                      ? 'Le quantità inviate al negozio vengono calcolate da questo magazzino.'
+                      : 'Inventory quantities synced to WooCommerce are read from this warehouse.'}
                   </p>
                 </div>
 
                 <div>
                   <label className="block text-xs font-medium text-neutral-300 mb-1.5">
-                    حساب بانکی یا درگاه پیش‌فرض تسویه سفارشات
+                    {isIt ? 'Conto bancario predefinito per incassi online' : 'Default Settlement Bank / Gateway Account'}
                   </label>
                   <select
                     value={settings.financial_account_id || ''}
                     onChange={(e) => setSettings({ ...settings, financial_account_id: e.target.value ? Number(e.target.value) : null })}
                     className="w-full h-9 sm:h-10 px-3 rounded-lg bg-neutral-950 border border-neutral-800 text-white text-xs sm:text-sm focus:outline-none focus:border-violet-500"
                   >
-                    <option value="">بدون ثبت دریافت مالی خودکار</option>
+                    <option value="">{isIt ? 'Nessun deposito automatico' : 'No automatic treasury deposit'}</option>
                     {financialAccounts.map((a) => (
                       <option key={a.id} value={a.id}>
                         {a.name} ({a.type})
@@ -726,14 +833,18 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                     ))}
                   </select>
                   <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1">
-                    در صورت انتخاب، مبالغ سفارشات آنلاین بلافاصله به این حساب بستانکار می‌شود.
+                    {isIt
+                      ? 'Se selezionato, gli incassi degli ordini pagati online saranno accreditati automaticamente su questo conto.'
+                      : 'When selected, paid online orders automatically credit this financial account.'}
                   </p>
                 </div>
               </div>
 
               {/* Automatic toggles */}
               <div className="pt-3 border-t border-neutral-800 space-y-3">
-                <h3 className="text-xs font-semibold text-neutral-300">رفتار و خودکارسازی</h3>
+                <h3 className="text-xs font-semibold text-neutral-300">
+                  {isIt ? 'Automazione e comportamento' : 'Automation Behavior'}
+                </h3>
 
                 <label className="flex items-start sm:items-center gap-2.5 sm:gap-3 cursor-pointer">
                   <input
@@ -743,9 +854,13 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                     className="rounded border-neutral-700 bg-neutral-900 text-violet-600 focus:ring-0 w-4 h-4 mt-0.5 sm:mt-0"
                   />
                   <div>
-                    <span className="text-xs font-medium text-white">ارسال خودکار تغییرات موجودی انبار</span>
+                    <span className="text-xs font-medium text-white">
+                      {isIt ? 'Invia automaticamente le variazioni di giacenza' : 'Auto-push stock level changes'}
+                    </span>
                     <p className="text-[10px] sm:text-[11px] text-neutral-500">
-                      هنگام ثبت فاکتور یا ورود/خروج کالا، موجودی جدید در ووکامرس ثبت شود.
+                      {isIt
+                        ? 'Aggiorna WooCommerce automaticamente ad ogni movimento o vendita.'
+                        : 'Automatically update WooCommerce whenever stock moves or orders are placed.'}
                     </p>
                   </div>
                 </label>
@@ -758,9 +873,13 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                     className="rounded border-neutral-700 bg-neutral-900 text-violet-600 focus:ring-0 w-4 h-4 mt-0.5 sm:mt-0"
                   />
                   <div>
-                    <span className="text-xs font-medium text-white">ارسال خودکار تغییرات قیمت</span>
+                    <span className="text-xs font-medium text-white">
+                      {isIt ? 'Invia automaticamente le modifiche di prezzo' : 'Auto-push price changes'}
+                    </span>
                     <p className="text-[10px] sm:text-[11px] text-neutral-500">
-                      با ویرایش قیمت کالا در تن‌خور، قیمت عادی محصول در ووکامرس بروزرسانی شود.
+                      {isIt
+                        ? `Quando aggiorni un prezzo in ${BRAND.name}, aggiorna il Regular Price su WooCommerce.`
+                        : `When editing a product price in ${BRAND.name}, update the regular price in WooCommerce.`}
                     </p>
                   </div>
                 </label>
@@ -773,9 +892,13 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                     className="rounded border-neutral-700 bg-neutral-900 text-violet-600 focus:ring-0 w-4 h-4 mt-0.5 sm:mt-0"
                   />
                   <div>
-                    <span className="text-xs font-medium text-white">دریافت خودکار سفارشات جدید (وب‌هوک)</span>
+                    <span className="text-xs font-medium text-white">
+                      {isIt ? 'Importa automaticamente i nuovi ordini (Webhook)' : 'Auto-import new orders (Webhook)'}
+                    </span>
                     <p className="text-[10px] sm:text-[11px] text-neutral-500">
-                      به محض ثبت سفارش در سایت ووکامرس، فاکتور در تن‌خور ایجاد و موجودی کسر گردد.
+                      {isIt
+                        ? `Crea subito l’ordine in ${BRAND.name} e scala la giacenza quando arriva un ordine su WooCommerce.`
+                        : `Create orders in ${BRAND.name} and deduct stock immediately when an order is placed on WooCommerce.`}
                     </p>
                   </div>
                 </label>
@@ -789,7 +912,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                   disabled={isSavingSettings}
                   className="bg-violet-600 hover:bg-violet-500 text-white text-xs sm:text-sm flex-1 sm:flex-initial justify-center h-8 sm:h-9"
                 >
-                  {isSavingSettings ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}
+                  {isSavingSettings
+                    ? isIt ? 'Salvataggio...' : 'Saving...'
+                    : isIt ? 'Salva impostazioni' : 'Save Settings'}
                 </Button>
 
                 <Button
@@ -799,7 +924,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                   disabled={isTesting || !settings.site_url}
                   className="text-xs sm:text-sm border-neutral-700 hover:bg-neutral-800 flex-1 sm:flex-initial justify-center h-8 sm:h-9"
                 >
-                  {isTesting ? 'در حال تست...' : 'تست اتصال'}
+                  {isTesting
+                    ? isIt ? 'Verifica...' : 'Testing...'
+                    : isIt ? 'Testa connessione' : 'Test Connection'}
                 </Button>
               </div>
             </form>
@@ -809,10 +936,12 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
           <Card className="p-4 sm:p-6 bg-neutral-900/60 border-neutral-800">
             <h2 className="text-sm sm:text-base font-bold text-white mb-2 flex items-center gap-2">
               <ExternalLink className="w-4 h-4 text-emerald-400" />
-              تنظیم وب‌هوک سفارشات لحظه‌ای در ووکامرس
+              {isIt ? 'Configurazione Webhook ordini in tempo reale' : 'Real-Time Order Webhook Setup'}
             </h2>
             <p className="text-[11px] sm:text-xs text-neutral-400 leading-relaxed">
-              برای اینکه به محض پرداخت یا ثبت هر سفارش در سایت ووکامرس، سفارش بدون تأخیر در تن‌خور ثبت شود، آدرس زیر را در وردپرس کپی کنید:
+              {isIt
+                ? `Per ricevere istantaneamente gli ordini WooCommerce in ${BRAND.name} non appena vengono effettuati, copia l’URL qui sotto in WordPress:`
+                : `To record WooCommerce orders in ${BRAND.name} instantly as soon as they are placed, copy the URL below into WordPress:`}
             </p>
 
             <div className="mt-3 sm:mt-4 flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
@@ -829,17 +958,33 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                 onClick={handleCopyWebhook}
                 className="shrink-0 border-neutral-700 hover:bg-neutral-800 text-xs text-white justify-center h-8 sm:h-9"
               >
-                {copiedWebhook ? <Check className="w-3.5 h-3.5 text-emerald-400 ml-1.5" /> : <Copy className="w-3.5 h-3.5 ml-1.5" />}
-                {copiedWebhook ? 'کپی شد' : 'کپی لینک'}
+                {copiedWebhook ? <Check className="w-3.5 h-3.5 text-emerald-400 me-1.5" /> : <Copy className="w-3.5 h-3.5 me-1.5" />}
+                {copiedWebhook ? (isIt ? 'Copiato' : 'Copied') : isIt ? 'Copia URL' : 'Copy URL'}
               </Button>
             </div>
 
             <div className="mt-3 sm:mt-4 p-3 rounded-lg bg-neutral-950 border border-neutral-800 text-[11px] sm:text-xs text-neutral-400 space-y-1">
-              <span className="font-semibold text-neutral-300">مراحل در وردپرس:</span>
-              <p>۱. منوی ووکامرس ➔ پیکربندی ➔ پیشرفته ➔ وب‌هوک‌ها ➔ افزودن وب‌هوک</p>
-              <p>۲. وضعیت را روی <strong>«فعال»</strong> بگذارید.</p>
-              <p>۳. موضوع (Topic) را <strong>«سفارش ایجاد شد (Order created)»</strong> انتخاب کنید.</p>
-              <p>۴. آدرس تحویل (Delivery URL) را برابر لینک بالا قرار داده و ذخیره نمایید.</p>
+              <span className="font-semibold text-neutral-300">
+                {isIt ? 'Passaggi in WordPress:' : 'Steps in WordPress:'}
+              </span>
+              <p>
+                {isIt
+                  ? '1. Vai su WooCommerce → Impostazioni → Avanzate → Webhook → Aggiungi webhook'
+                  : '1. Go to WooCommerce → Settings → Advanced → Webhooks → Add webhook'}
+              </p>
+              <p>
+                {isIt ? '2. Imposta lo stato su ' : '2. Set Status to '}
+                <strong>{isIt ? 'Attivo (Active)' : 'Active'}</strong>.
+              </p>
+              <p>
+                {isIt ? '3. Seleziona Topic: ' : '3. Set Topic to '}
+                <strong>{isIt ? 'Ordine creato (Order created)' : 'Order created'}</strong>.
+              </p>
+              <p>
+                {isIt
+                  ? '4. Incolla l’URL sopra nel campo Delivery URL e salva.'
+                  : '4. Paste the URL above into Delivery URL and save.'}
+              </p>
             </div>
           </Card>
         </div>
@@ -850,15 +995,19 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-white">تطبیق و شناسایی کالاها (SKU)</h2>
+              <h2 className="text-sm sm:text-base font-bold text-white">
+                {isIt ? 'Mappatura prodotti e SKU' : 'Product & SKU Mapping'}
+              </h2>
               <p className="text-[11px] sm:text-xs text-neutral-400">
-                هر کالایی که در تن‌خور دارای کد SKU باشد با شناسه محصول متناظر در ووکامرس منطبق می‌شود.
+                {isIt
+                  ? `Ogni variante con codice SKU in ${BRAND.name} viene abbinata al prodotto corrispondente su WooCommerce.`
+                  : `Every variant with an SKU in ${BRAND.name} is automatically matched to its corresponding WooCommerce product.`}
               </p>
             </div>
 
             <div className="w-full sm:w-72">
               <Input
-                placeholder="جستجو در عنوان یا SKU..."
+                placeholder={isIt ? 'Cerca per nome o SKU...' : 'Search by title or SKU...'}
                 value={searchMapping}
                 onChange={(e) => setSearchMapping(e.target.value)}
                 className="bg-neutral-900 border-neutral-800 text-xs sm:text-sm h-8 sm:h-9"
@@ -868,22 +1017,22 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
 
           <Card className="bg-neutral-900/60 border-neutral-800 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-right">
+              <table className="w-full text-xs text-start">
                 <thead className="bg-neutral-950 border-b border-neutral-800 text-neutral-400">
                   <tr>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">شناسه</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">نام و تنوع کالا</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">کد SKU</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">بارکد</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">وضعیت تطبیق</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">قیمت در تن‌خور</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">ID</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Prodotto / Variante' : 'Product & Variant'}</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">SKU</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Barcode' : 'Barcode'}</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Stato mappatura' : 'Sync Readiness'}</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? `Prezzo in ${BRAND.name}` : `${BRAND.name} Price`}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-800/60 text-neutral-300">
                   {filteredVariants.length === 0 ? (
                     <tr>
                       <td colSpan={6} className="py-8 text-center text-neutral-500">
-                        هیچ کالایی یافت نشد.
+                        {isIt ? 'Nessun prodotto trovato.' : 'No products found.'}
                       </td>
                     </tr>
                   ) : (
@@ -894,7 +1043,9 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                       return (
                         <tr key={v.id} className="hover:bg-neutral-800/30 transition-colors">
                           <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-neutral-500 font-mono">#{v.id}</td>
-                          <td className="py-2.5 sm:py-3 px-3 sm:px-4 font-medium text-white">{v.product_title || v.sku || `تنوع #${v.id}`}</td>
+                          <td className="py-2.5 sm:py-3 px-3 sm:px-4 font-medium text-white">
+                            {v.product_title || v.sku || `${isIt ? 'Variante' : 'Variant'} #${v.id}`}
+                          </td>
                           <td className="py-2.5 sm:py-3 px-3 sm:px-4 font-mono text-neutral-300" dir="ltr">
                             {v.sku || <span className="text-neutral-600">-</span>}
                           </td>
@@ -904,17 +1055,17 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                           <td className="py-2.5 sm:py-3 px-3 sm:px-4">
                             {hasSku ? (
                               <Badge variant="success" className="text-[10px]">
-                                <CheckCircle2 className="w-3 h-3 ml-1" />
-                                قابل همگام‌سازی با SKU
+                                <CheckCircle2 className="w-3 h-3 me-1" />
+                                {isIt ? 'Pronto per SKU sync' : 'SKU Sync Ready'}
                               </Badge>
                             ) : (
                               <Badge variant="warning" className="text-[10px]">
-                                فاقد کد SKU
+                                {isIt ? 'SKU mancante' : 'Missing SKU'}
                               </Badge>
                             )}
                           </td>
-                          <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-neutral-300">
-                            {v.price ? `${toPersianDigits(Number(v.price).toLocaleString())} تومان` : '-'}
+                          <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-neutral-300 font-mono">
+                            {v.price ? formatCurrency(Number(v.price), activeCurrency) : '-'}
                           </td>
                         </tr>
                       );
@@ -932,9 +1083,13 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
         <div className="space-y-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5 sm:gap-3">
             <div>
-              <h2 className="text-sm sm:text-base font-bold text-white">لاگ‌ها و وقایع همگام‌سازی</h2>
+              <h2 className="text-sm sm:text-base font-bold text-white">
+                {isIt ? 'Log eventi di sincronizzazione' : 'Sync Logs & Events'}
+              </h2>
               <p className="text-[11px] sm:text-xs text-neutral-400">
-                تاریخچه تراکنش‌های ارسال موجودی، قیمت و دریافت سفارشات از ووکامرس
+                {isIt
+                  ? 'Cronologia di sincronizzazioni giacenze, prezzi e importazioni ordini da WooCommerce'
+                  : 'History of stock pushes, price updates, and order imports with WooCommerce'}
               </p>
             </div>
             <Button
@@ -944,27 +1099,27 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
               icon={<RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />}
               className="text-xs border-neutral-700 hover:bg-neutral-800 cursor-pointer h-8 sm:h-9"
             >
-              بروزرسانی لاگ‌ها
+              {isIt ? 'Aggiorna log' : 'Refresh Logs'}
             </Button>
           </div>
 
           <Card className="bg-neutral-900/60 border-neutral-800 overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full text-xs text-right">
+              <table className="w-full text-xs text-start">
                 <thead className="bg-neutral-950 border-b border-neutral-800 text-neutral-400">
                   <tr>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">زمان رویداد</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">نوع عملیات</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">جهت</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">وضعیت</th>
-                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">توضیحات و جزئیات</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Data e ora' : 'Timestamp'}</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Operazione' : 'Action'}</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Direzione' : 'Direction'}</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Stato' : 'Status'}</th>
+                    <th className="py-2.5 sm:py-3 px-3 sm:px-4">{isIt ? 'Dettagli' : 'Details'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-800/60 text-neutral-300">
                   {logs.length === 0 ? (
                     <tr>
                       <td colSpan={5} className="py-8 text-center text-neutral-500">
-                        هنوز هیچ رویدادی برای همگام‌سازی ووکامرس ثبت نشده است.
+                        {isIt ? 'Nessun evento WooCommerce registrato finora.' : 'No WooCommerce sync events recorded yet.'}
                       </td>
                     </tr>
                   ) : (
@@ -972,33 +1127,33 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
                       const isSuccess = log.status === 'success' || log.status === 'info';
                       return (
                         <tr key={log.id} className="hover:bg-neutral-800/30 transition-colors">
-                          <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-neutral-400 whitespace-nowrap">
-                            {formatPersianDate(log.date_created)}
+                          <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-neutral-400 whitespace-nowrap font-mono">
+                            {formatDate(log.date_created)}
                           </td>
                           <td className="py-2.5 sm:py-3 px-3 sm:px-4 font-medium text-white whitespace-nowrap">
-                            {log.action === 'sync_stock' && 'همگام‌سازی موجودی'}
-                            {log.action === 'sync_prices' && 'همگام‌سازی قیمت‌ها'}
-                            {log.action === 'import_orders' && 'دریافت سفارشات'}
-                            {log.action === 'webhook_order' && 'وب‌هوک سفارش آنی'}
-                            {log.action === 'test_connection' && 'تست اتصال'}
+                            {log.action === 'sync_stock' && (isIt ? 'Sync giacenze' : 'Stock Sync')}
+                            {log.action === 'sync_prices' && (isIt ? 'Sync prezzi' : 'Price Sync')}
+                            {log.action === 'import_orders' && (isIt ? 'Importazione ordini' : 'Order Import')}
+                            {log.action === 'webhook_order' && (isIt ? 'Webhook ordine' : 'Order Webhook')}
+                            {log.action === 'test_connection' && (isIt ? 'Test connessione' : 'Connection Test')}
                             {!['sync_stock', 'sync_prices', 'import_orders', 'webhook_order', 'test_connection'].includes(log.action) && log.action}
                           </td>
                           <td className="py-2.5 sm:py-3 px-3 sm:px-4 whitespace-nowrap">
                             {log.direction === 'inbound' ? (
                               <span className="flex items-center gap-1 text-violet-400">
                                 <ArrowDownLeft className="w-3.5 h-3.5" />
-                                ورودی به تن‌خور
+                                {isIt ? `In ingresso su ${BRAND.name}` : `Inbound to ${BRAND.name}`}
                               </span>
                             ) : (
                               <span className="flex items-center gap-1 text-blue-400">
                                 <ArrowUpRight className="w-3.5 h-3.5" />
-                                ارسال به ووکامرس
+                                {isIt ? 'In uscita su WooCommerce' : 'Outbound to WooCommerce'}
                               </span>
                             )}
                           </td>
                           <td className="py-2.5 sm:py-3 px-3 sm:px-4 whitespace-nowrap">
                             <Badge variant={isSuccess ? 'success' : 'error'} className="text-[10px]">
-                              {isSuccess ? 'موفق' : 'خطا'}
+                              {isSuccess ? (isIt ? 'Riuscito' : 'Success') : isIt ? 'Errore' : 'Error'}
                             </Badge>
                           </td>
                           <td className="py-2.5 sm:py-3 px-3 sm:px-4 text-neutral-300 leading-relaxed">

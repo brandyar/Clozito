@@ -1,6 +1,5 @@
 import React from 'react';
 import { useTranslation } from '../../i18n';
-import { toPersianDigits } from '../../utils/formatters';
 
 export interface PaginationProps {
   currentPage: number;
@@ -23,16 +22,15 @@ export const Pagination: React.FC<PaginationProps> = ({
   pageSizeOptions = [10, 25, 50, 100],
   className = '',
 }) => {
-  const { t, isPersian } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
 
   if (totalItems <= 0) return null;
 
   const startItem = totalItems === 0 ? 0 : (currentPage - 1) * pageSize + 1;
   const endItem = Math.min(currentPage * pageSize, totalItems);
 
-  const formatNum = (num: number) => {
-    return isPersian ? toPersianDigits(num) : num.toString();
-  };
+  const formatNum = (num: number) => num.toString();
 
   // Generate pagination buttons array with smart ellipsis
   const getPageNumbers = (): (number | string)[] => {
@@ -71,11 +69,11 @@ export const Pagination: React.FC<PaginationProps> = ({
       {/* Items Summary & Page Size Selector */}
       <div className="flex flex-wrap items-center justify-center sm:justify-start gap-3 w-full sm:w-auto">
         <span className="text-neutral-600 dark:text-neutral-300 font-medium whitespace-nowrap">
-          {isPersian ? (
+          {isIt ? (
             <>
-              نمایش <strong className="text-neutral-900 dark:text-white font-bold">{formatNum(startItem)}</strong> تا{' '}
-              <strong className="text-neutral-900 dark:text-white font-bold">{formatNum(endItem)}</strong> از{' '}
-              <strong className="text-neutral-900 dark:text-white font-bold">{formatNum(totalItems)}</strong> مورد
+              Mostrando <strong className="text-neutral-900 dark:text-white font-bold">{formatNum(startItem)}</strong>–
+              <strong className="text-neutral-900 dark:text-white font-bold">{formatNum(endItem)}</strong> di{' '}
+              <strong className="text-neutral-900 dark:text-white font-bold">{formatNum(totalItems)}</strong> elementi
             </>
           ) : (
             <>

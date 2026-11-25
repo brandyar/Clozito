@@ -80,16 +80,16 @@ export const CreateOrderHeader: React.FC<CreateOrderHeaderProps> = ({
             className={`text-xs px-2.5 sm:px-3 h-8 sm:h-9 ${
               activeShift ? 'bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600' : ''
             }`}
-            title={isPersian ? (activeShift ? `شیفت فعال #${activeShift.id}` : 'مدیریت شیفت کاری') : 'POS Shift'}
+            title={locale === 'it' ? (activeShift ? `Turno attivo #${activeShift.id}` : 'Turno cassa') : (activeShift ? `Active Shift #${activeShift.id}` : 'POS Shift')}
           >
             {activeShift ? (
               <span className="flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse" />
-                <span className="hidden sm:inline">{isPersian ? `شیفت #${activeShift.id}` : `Shift #${activeShift.id}`}</span>
+                <span className="hidden sm:inline">{locale === 'it' ? `Turno #${activeShift.id}` : `Shift #${activeShift.id}`}</span>
                 <span className="sm:hidden font-mono text-[11px]">#{activeShift.id}</span>
               </span>
             ) : (
-              <span>{isPersian ? 'شیفت' : 'Shift'}</span>
+              <span>{locale === 'it' ? 'Turno' : 'Shift'}</span>
             )}
           </Button>
 

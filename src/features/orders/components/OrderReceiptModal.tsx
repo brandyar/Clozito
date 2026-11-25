@@ -1,10 +1,11 @@
 import React from 'react';
 import { useTranslation } from '../../../i18n';
 import { useOrganization } from '../../../context/OrganizationContext';
-import { Order, OrderItem, ProductVariant } from '../../../types';
+import { Customer, Order, OrderItem, ProductVariant } from '../../../types';
 import { Modal } from '../../../components/ui/Modal';
 import { Button } from '../../../components/ui/Button';
-import { formatDate, formatCurrency } from '../../../utils/formatters';
+import { formatDate, formatCurrency, resolveCurrencyCode } from '../../../utils/formatters';
+import { BRAND } from '../../../config/brand';
 import { printElement } from '../../../utils/print';
 import { printOrderInvoice, OrderItemPrintData } from '../../../utils/orderInvoicePrint';
 import { mediaManager } from '../../../utils/mediaManager';
@@ -12,6 +13,7 @@ import { CheckCircle2, FileText, Receipt, Printer } from 'lucide-react';
 
 export interface SavedOrderData {
   order: Order;
+  customer?: Customer | null;
   customerName: string;
   warehouseName: string;
   items: {
@@ -46,6 +48,8 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
 
   if (!lastSavedOrder) return null;
 
+  const receiptCurrency = resolveCurrencyCode(lastSavedOrder.order.currency || activeOrganization?.currency);
+
   const triggerPrint = () => {
     if (lastSavedOrder) {
       const itemsData: OrderItemPrintData[] = lastSavedOrder.items.map((it, idx) => ({
@@ -62,13 +66,15 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
       printOrderInvoice(
         {
           ...lastSavedOrder.order,
+          currency: receiptCurrency,
           customer_name: lastSavedOrder.customerName,
           warehouse_name: lastSavedOrder.warehouseName,
         } as any,
         itemsData,
-        activeOrganization || ({ name: organizationName || 'تن‌خور (TANKHOR)' } as any),
+        activeOrganization || ({ name: organizationName || BRAND.name, currency: receiptCurrency } as any),
         isPersian,
-        receiptType
+        receiptType,
+        lastSavedOrder.customer || null
       );
     } else {
       printElement('printable-create-order-invoice', {
@@ -85,7 +91,7 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
           /* 80mm POS Thermal Receipt */
           <div className="w-[80mm] mx-auto text-xs space-y-3 font-mono leading-tight">
             <div className="text-center border-b border-black pb-2">
-              <h2 className="text-sm font-bold">{organizationName || 'TANKHOR'}</h2>
+              <h2 className="text-sm font-bold">{organizationName || BRAND.name}</h2>
               <p className="text-[10px]">{t('orders.posReceiptTitle')}</p>
               <p className="text-[10px] mt-1">{t('orders.orderNumber')}: {lastSavedOrder.order.order_number}</p>
               <p className="text-[10px]">{formatDate(lastSavedOrder.order.date_created, isPersian)}</p>
@@ -115,7 +121,7 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
                       </div>
                     </td>
                     <td className="py-1 text-center">{it.quantity}</td>
-                    <td className="py-1 text-left">{formatCurrency(it.quantity * it.unitPrice, 'TOMAN', isPersian)}</td>
+                    <td className="py-1 text-left">{formatCurrency(it.quantity * it.unitPrice, receiptCurrency, isPersian)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -124,23 +130,23 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
             <div className="space-y-1 text-left text-xs pt-1">
               <div className="flex justify-between">
                 <span>{t('orders.subtotal')}:</span>
-                <span>{formatCurrency(lastSavedOrder.order.subtotal, 'TOMAN', isPersian)}</span>
+                <span>{formatCurrency(lastSavedOrder.order.subtotal, receiptCurrency, isPersian)}</span>
               </div>
               {lastSavedOrder.order.discount > 0 && (
                 <div className="flex justify-between">
                   <span>{t('orders.discount')}:</span>
-                  <span>- {formatCurrency(lastSavedOrder.order.discount, 'TOMAN', isPersian)}</span>
+                  <span>- {formatCurrency(lastSavedOrder.order.discount, receiptCurrency, isPersian)}</span>
                 </div>
               )}
               {lastSavedOrder.order.tax > 0 && (
                 <div className="flex justify-between">
                   <span>{t('orders.tax')}:</span>
-                  <span>+ {formatCurrency(lastSavedOrder.order.tax, 'TOMAN', isPersian)}</span>
+                  <span>+ {formatCurrency(lastSavedOrder.order.tax, receiptCurrency, isPersian)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-sm pt-1 border-t border-black">
                 <span>{t('orders.payableAmount')}</span>
-                <span>{formatCurrency(lastSavedOrder.order.total, 'TOMAN', isPersian)}</span>
+                <span>{formatCurrency(lastSavedOrder.order.total, receiptCurrency, isPersian)}</span>
               </div>
             </div>
 
@@ -148,7 +154,7 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
               <div className="text-center pt-2">
                 <img
                   src={mediaManager.getDisplayUrlSync(activeOrganization.signature)}
-                  alt="مهر و امضا"
+                  alt="Signature"
                   className="max-h-11 max-w-[120px] object-contain mx-auto"
                 />
               </div>
@@ -164,7 +170,7 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
             <div className="flex justify-between items-center border-b-2 border-black pb-3">
               <div>
                 <h1 className="text-xl font-black">{t('orders.invoiceTitle')}</h1>
-                <p className="text-gray-600 text-xs mt-1">{organizationName || 'TANKHOR'}</p>
+                <p className="text-gray-600 text-xs mt-1">{organizationName || BRAND.name}</p>
               </div>
               <div className="text-left font-mono text-xs space-y-1">
                 <p><strong>{t('orders.orderNumber')}:</strong> {lastSavedOrder.order.order_number}</p>
@@ -204,8 +210,8 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
                       </div>
                     </td>
                     <td className="p-2 border-r border-gray-300 text-center font-bold font-mono">{it.quantity}</td>
-                    <td className="p-2 border-r border-gray-300 text-left font-mono">{formatCurrency(it.unitPrice, 'TOMAN', isPersian)}</td>
-                    <td className="p-2 text-left font-bold font-mono">{formatCurrency(it.quantity * it.unitPrice, 'TOMAN', isPersian)}</td>
+                    <td className="p-2 border-r border-gray-300 text-left font-mono">{formatCurrency(it.unitPrice, receiptCurrency, isPersian)}</td>
+                    <td className="p-2 text-left font-bold font-mono">{formatCurrency(it.quantity * it.unitPrice, receiptCurrency, isPersian)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -219,23 +225,23 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
               <div className="w-2/5 space-y-1 text-left font-mono text-xs">
                 <div className="flex justify-between py-1 border-b border-gray-200">
                   <span>{t('orders.subtotal')}:</span>
-                  <span>{formatCurrency(lastSavedOrder.order.subtotal, 'TOMAN', isPersian)}</span>
+                  <span>{formatCurrency(lastSavedOrder.order.subtotal, receiptCurrency, isPersian)}</span>
                 </div>
                 {lastSavedOrder.order.discount > 0 && (
                   <div className="flex justify-between py-1 border-b border-gray-200 text-red-600">
                     <span>{t('orders.totalDiscount')}</span>
-                    <span>- {formatCurrency(lastSavedOrder.order.discount, 'TOMAN', isPersian)}</span>
+                    <span>- {formatCurrency(lastSavedOrder.order.discount, receiptCurrency, isPersian)}</span>
                   </div>
                 )}
                 {lastSavedOrder.order.tax > 0 && (
                   <div className="flex justify-between py-1 border-b border-gray-200">
                     <span>{t('orders.vatIncluded')}:</span>
-                    <span>+ {formatCurrency(lastSavedOrder.order.tax, 'TOMAN', isPersian)}</span>
+                    <span>+ {formatCurrency(lastSavedOrder.order.tax, receiptCurrency, isPersian)}</span>
                   </div>
                 )}
                 <div className="flex justify-between py-2 font-bold text-sm border-t-2 border-black text-black">
                   <span>{t('orders.payableAmount')}</span>
-                  <span>{formatCurrency(lastSavedOrder.order.total, 'TOMAN', isPersian)}</span>
+                  <span>{formatCurrency(lastSavedOrder.order.total, receiptCurrency, isPersian)}</span>
                 </div>
               </div>
             </div>
@@ -246,7 +252,7 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
                   <div className="h-16 flex items-center justify-center mb-1">
                     <img
                       src={mediaManager.getDisplayUrlSync(activeOrganization.signature)}
-                      alt="مهر و امضا"
+                      alt="Stamp & Signature"
                       className="max-h-16 max-w-[170px] object-contain"
                     />
                   </div>
@@ -332,7 +338,7 @@ export const OrderReceiptModal: React.FC<OrderReceiptModalProps> = ({
             </div>
             <div className="flex justify-between font-bold pt-1 border-t border-[#ebebeb] dark:border-neutral-800">
               <span className="text-[#171717] dark:text-neutral-100">{t('orders.totalAmount')}:</span>
-              <span className="text-emerald-700 dark:text-emerald-400">{formatCurrency(lastSavedOrder.order.total, 'TOMAN', isPersian)}</span>
+              <span className="text-emerald-700 dark:text-emerald-400">{formatCurrency(lastSavedOrder.order.total, receiptCurrency, isPersian)}</span>
             </div>
           </div>
 

@@ -1,7 +1,8 @@
 import React from 'react';
 import { useTranslation } from '../../../i18n';
+import { useOrganization } from '../../../context/OrganizationContext';
 import { FinancialAccount } from '../../../types/accounting';
-import { formatCurrency } from '../../../utils/formatters';
+import { formatCurrency, resolveCurrencyCode } from '../../../utils/formatters';
 import {
   Wallet,
   Landmark,
@@ -38,7 +39,10 @@ export const AccountCard: React.FC<AccountCardProps> = ({
   copiedField,
   onCopy,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
+  const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
 
   const getAccountTypeIcon = (type: string) => {
     switch (type) {
@@ -71,7 +75,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
     (typeof account.warehouse_id === 'object' && account.warehouse_id
       ? (account.warehouse_id as any)?.name
       : account.warehouse_id
-      ? `انبار #${account.warehouse_id}`
+      ? `${isIt ? 'Magazzino' : 'Warehouse'} #${account.warehouse_id}`
       : null);
 
   return (
@@ -117,7 +121,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           {/* Linked Warehouse */}
           {warehouseName && (
             <div className="flex items-center justify-between text-neutral-600 dark:text-neutral-400">
-              <span>انبار متصل:</span>
+              <span>{isIt ? 'Magazzino collegato:' : 'Linked Warehouse:'}</span>
               <div className="flex items-center gap-1 font-medium text-neutral-900 dark:text-neutral-100 bg-neutral-100 dark:bg-neutral-800 px-2 py-0.5 rounded-md">
                 <Building2 className="w-3 h-3 text-neutral-500" />
                 <span>{warehouseName}</span>
@@ -127,7 +131,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
           {account.card_number && (
             <div className="flex items-center justify-between text-neutral-600 dark:text-neutral-400">
-              <span>شماره کارت:</span>
+              <span>{isIt ? 'Numero carta:' : 'Card Number:'}</span>
               <div className="flex items-center gap-1.5 font-mono">
                 <span>{account.card_number}</span>
                 <button
@@ -147,14 +151,14 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
           {account.account_number && (
             <div className="flex items-center justify-between text-neutral-600 dark:text-neutral-400">
-              <span>شماره حساب:</span>
+              <span>{isIt ? 'Numero conto:' : 'Account No.:'}</span>
               <span className="font-mono">{account.account_number}</span>
             </div>
           )}
 
           {account.shaba_number && (
             <div className="flex items-center justify-between text-neutral-600 dark:text-neutral-400">
-              <span>شماره شبا:</span>
+              <span>IBAN:</span>
               <div className="flex items-center gap-1.5 font-mono text-[10px]">
                 <span>{account.shaba_number}</span>
                 <button
@@ -174,7 +178,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
           {account.pos_terminal_id && (
             <div className="flex items-center justify-between text-neutral-600 dark:text-neutral-400">
-              <span>کد ترمینال پوز:</span>
+              <span>{isIt ? 'ID Terminale POS:' : 'POS Terminal ID:'}</span>
               <span className="font-mono">{account.pos_terminal_id}</span>
             </div>
           )}
@@ -182,10 +186,9 @@ export const AccountCard: React.FC<AccountCardProps> = ({
 
         {/* Balance Display */}
         <div className="mt-3 flex items-baseline justify-between">
-          <span className="text-xs text-neutral-500">موجودی لحظه‌ای:</span>
+          <span className="text-xs text-neutral-500">{isIt ? 'Saldo attuale:' : 'Current Balance:'}</span>
           <div className="text-base font-extrabold text-neutral-900 dark:text-white font-mono">
-            {formatCurrency(account.current_balance)}{' '}
-            <span className="text-xs font-normal text-neutral-500">{t('accounting.toman')}</span>
+            {formatCurrency(account.current_balance, activeCurrency)}
           </div>
         </div>
       </div>
@@ -196,7 +199,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           <button
             type="button"
             onClick={() => onDeposit(account.id)}
-            title="واریز مستقیم به حساب"
+            title={isIt ? 'Versamento diretto' : 'Direct Deposit'}
             className="p-1.5 rounded-lg text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 transition-colors cursor-pointer"
           >
             <ArrowDownLeft className="w-4 h-4" />
@@ -204,7 +207,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           <button
             type="button"
             onClick={() => onWithdrawal(account.id)}
-            title="برداشت مستقیم از حساب"
+            title={isIt ? 'Prelievo diretto' : 'Direct Withdrawal'}
             className="p-1.5 rounded-lg text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/40 transition-colors cursor-pointer"
           >
             <ArrowUpRight className="w-4 h-4" />
@@ -212,7 +215,7 @@ export const AccountCard: React.FC<AccountCardProps> = ({
           <button
             type="button"
             onClick={() => onViewHistory(account)}
-            title="مشاهده ریز گردش و تراکنش‌ها"
+            title={isIt ? 'Visualizza movimenti e storico' : 'View transaction history'}
             className="p-1.5 rounded-lg text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
           >
             <History className="w-4 h-4" />

@@ -27,7 +27,8 @@ interface UserProfileModalProps {
 }
 
 export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onClose }) => {
-  const { t, isPersian } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const { user, isCloudAuthenticated, updateUserProfile } = useAuth();
   const { userRole } = useOrganization();
 
@@ -73,11 +74,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
     if (activeTab === 'security') {
       if (!newPassword || newPassword.length < 6) {
-        setErrorMsg(t('auth.passTooShort', 'رمز عبور جدید باید حداقل ۶ کاراکتر باشد.'));
+        setErrorMsg(t('auth.passTooShort', isIt ? 'La nuova password deve avere almeno 6 caratteri.' : 'New password must be at least 6 characters.'));
         return;
       }
       if (newPassword !== confirmPassword) {
-        setErrorMsg(t('auth.passwordsDoNotMatch', 'رمز عبور جدید با تکرار آن یکسان نیست.'));
+        setErrorMsg(t('auth.passwordsDoNotMatch', isIt ? 'Le password non coincidono.' : 'Passwords do not match.'));
         return;
       }
     }
@@ -93,12 +94,12 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         });
 
         if (res.success) {
-          setSuccessMsg(t('auth.profileUpdatedSuccess', 'مشخصات حساب با موفقیت ذخیره شد.'));
+          setSuccessMsg(t('auth.profileUpdatedSuccess', isIt ? 'Profilo aggiornato con successo.' : 'Profile updated successfully.'));
           setTimeout(() => {
             setSuccessMsg(null);
           }, 4000);
         } else {
-          setErrorMsg(res.error || t('common.unknownError', 'خطا در بروزرسانی مشخصات'));
+          setErrorMsg(res.error || t('common.unknownError', isIt ? 'Errore durante l’aggiornamento del profilo.' : 'Failed to update profile.'));
         }
       } else {
         // Changing Password
@@ -108,7 +109,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
         });
 
         if (res.success) {
-          setSuccessMsg(t('auth.passwordChangedSuccess', 'رمز عبور با موفقیت تغییر کرد.'));
+          setSuccessMsg(t('auth.passwordChangedSuccess', isIt ? 'Password aggiornata con successo.' : 'Password changed successfully.'));
           setCurrentPassword('');
           setNewPassword('');
           setConfirmPassword('');
@@ -116,11 +117,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             setSuccessMsg(null);
           }, 4000);
         } else {
-          setErrorMsg(res.error || t('common.unknownError', 'خطا در تغییر رمز عبور'));
+          setErrorMsg(res.error || t('common.unknownError', isIt ? 'Errore durante il cambio password.' : 'Failed to change password.'));
         }
       }
     } catch (err: any) {
-      setErrorMsg(err?.message || t('common.unknownError', 'خطا در انجام عملیات'));
+      setErrorMsg(err?.message || t('common.unknownError', isIt ? 'Si è verificato un errore.' : 'An error occurred.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -133,7 +134,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
       title={
         <div className="flex items-center gap-2 text-sm font-bold text-neutral-900 dark:text-neutral-100">
           <User className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-          <span>{t('auth.userProfileTitle', 'پروفایل و مشخصات کاربر')}</span>
+          <span>{t('auth.userProfileTitle', isIt ? 'Profilo Utente' : 'User Profile')}</span>
         </div>
       }
       maxWidth="lg"
@@ -147,7 +148,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               {avatar ? (
                 <img src={avatar} alt="User Avatar" className="w-full h-full object-cover" />
               ) : (
-                user?.first_name ? user.first_name[0] : 'T'
+                user?.first_name ? user.first_name[0] : 'C'
               )}
             </div>
             <div className="min-w-0">
@@ -165,18 +166,18 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               {isCloudAuthenticated ? (
                 <span className="flex items-center gap-1">
                   <Cloud className="w-3 h-3" />
-                  <span>{t('common.cloudSynced', 'حساب آنلاین')}</span>
+                  <span>{t('common.cloudSynced', isIt ? 'Account Cloud' : 'Cloud Account')}</span>
                 </span>
               ) : (
                 <span className="flex items-center gap-1">
                   <HardDrive className="w-3 h-3" />
-                  <span>{t('common.localOffline', 'آفلاین')}</span>
+                  <span>{t('common.localOffline', isIt ? 'Offline' : 'Offline')}</span>
                 </span>
               )}
             </Badge>
             {userRole && (
               <span className="text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
-                نقش: <strong className="text-neutral-800 dark:text-neutral-200">{userRole}</strong>
+                {isIt ? 'Ruolo:' : 'Role:'} <strong className="text-neutral-800 dark:text-neutral-200 capitalize">{userRole}</strong>
               </span>
             )}
           </div>
@@ -198,7 +199,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             }`}
           >
             <User className="w-3.5 h-3.5" />
-            <span>{t('auth.tabProfileInfo', 'اطلاعات فردی')}</span>
+            <span>{t('auth.tabProfileInfo', isIt ? 'Informazioni Personali' : 'Personal Info')}</span>
           </button>
 
           <button
@@ -215,7 +216,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
             }`}
           >
             <Key className="w-3.5 h-3.5" />
-            <span>{t('auth.tabSecurityPass', 'تغییر رمز عبور')}</span>
+            <span>{t('auth.tabSecurityPass', isIt ? 'Cambia Password' : 'Change Password')}</span>
           </button>
         </div>
 
@@ -241,28 +242,28 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    {t('auth.firstName', 'نام')}
+                    {t('auth.firstName', isIt ? 'Nome' : 'First Name')}
                   </label>
                   <input
                     type="text"
                     required
                     value={firstName}
                     onChange={(e) => setFirstName(e.target.value)}
-                    placeholder="مثال: علی"
+                    placeholder={isIt ? 'es. Marco' : 'e.g. Marco'}
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:focus:ring-blue-500"
                   />
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    {t('auth.lastName', 'نام خانوادگی')}
+                    {t('auth.lastName', isIt ? 'Cognome' : 'Last Name')}
                   </label>
                   <input
                     type="text"
                     required
                     value={lastName}
                     onChange={(e) => setLastName(e.target.value)}
-                    placeholder="مثال: محمدی"
+                    placeholder={isIt ? 'es. Rossi' : 'e.g. Rossi'}
                     className="w-full px-3.5 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:focus:ring-blue-500"
                   />
                 </div>
@@ -271,14 +272,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    {t('auth.jobTitle', 'سمت یا عنوان شغلی')}
+                    {t('auth.jobTitle', isIt ? 'Ruolo / Qualifica' : 'Job Title')}
                   </label>
                   <div className="relative">
                     <input
                       type="text"
                       value={title}
                       onChange={(e) => setTitle(e.target.value)}
-                      placeholder="مدیر فروشگاه، حسابدار، انباردار..."
+                      placeholder={isIt ? 'Store Manager, Contabile, Magazziniere...' : 'Store Manager, Accountant, Warehouse Lead...'}
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:focus:ring-blue-500 ps-9"
                     />
                     <Briefcase className="w-4 h-4 text-neutral-400 absolute start-3 top-3 pointer-events-none" />
@@ -287,7 +288,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    {t('auth.email', 'پست الکترونیکی')}
+                    {t('auth.email', 'Email')}
                   </label>
                   <div className="relative">
                     <input
@@ -306,11 +307,11 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               <div>
                 <ImageUpload
                   mode="avatar"
-                  label={t('auth.avatarLabel', 'تصویر نمایه / آواتار')}
-                  subtitle={t('auth.avatarSubtitle', 'تصویر شخصی شما در نوار بالایی و بخش مدیریت اعضا نمایش داده می‌شود.')}
+                  label={t('auth.avatarLabel', isIt ? 'Immagine Profilo / Avatar' : 'Profile Photo / Avatar')}
+                  subtitle={t('auth.avatarSubtitle', isIt ? 'La tua foto appare nella barra superiore e nella gestione del team.' : 'Your photo appears in the top bar and team members list.')}
                   value={avatar}
                   onChange={(val) => setAvatar(val)}
-                  helperText={t('auth.avatarHelper', 'فرمت‌های PNG، JPG، WEBP (حداکثر حجم: ۲ مگابایت)')}
+                  helperText={t('auth.avatarHelper', isIt ? 'Formati PNG, JPG, WEBP (max 2 MB)' : 'PNG, JPG, WEBP formats (max 2 MB)')}
                   maxSizeInMB={2}
                 />
               </div>
@@ -321,7 +322,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               {isCloudAuthenticated && (
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    {t('auth.currentPassword', 'رمز عبور فعلی')}
+                    {t('auth.currentPassword', isIt ? 'Password Attuale' : 'Current Password')}
                   </label>
                   <div className="relative">
                     <input
@@ -347,7 +348,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    {t('auth.newPassword', 'رمز عبور جدید')}
+                    {t('auth.newPassword', isIt ? 'Nuova Password' : 'New Password')}
                   </label>
                   <div className="relative">
                     <input
@@ -355,7 +356,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
                       required
                       value={newPassword}
                       onChange={(e) => setNewPassword(e.target.value)}
-                      placeholder="حداقل ۶ کاراکتر"
+                      placeholder={isIt ? 'Minimo 6 caratteri' : 'At least 6 characters'}
                       dir="ltr"
                       className="w-full px-3.5 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 focus:outline-none focus:ring-2 focus:ring-blue-600 dark:focus:ring-blue-500 ps-9 pe-9"
                     />
@@ -372,7 +373,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
 
                 <div>
                   <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-                    {t('auth.confirmNewPassword', 'تکرار رمز عبور جدید')}
+                    {t('auth.confirmNewPassword', isIt ? 'Conferma Nuova Password' : 'Confirm New Password')}
                   </label>
                   <div className="relative">
                     <input
@@ -392,10 +393,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               <div className="p-3 rounded-xl bg-neutral-50 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800 text-[11px] text-neutral-600 dark:text-neutral-400 space-y-1">
                 <p className="font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-blue-500" />
-                  <span>{t('auth.passwordHintTitle', 'نکات امنیتی رمز عبور:')}</span>
+                  <span>{t('auth.passwordHintTitle', isIt ? 'Sicurezza Password:' : 'Password Security Tips:')}</span>
                 </p>
-                <p>• حداقل از ۶ کاراکتر شامل حروف و اعداد استفاده کنید.</p>
-                <p>• رمز عبور در پایگاه داده سرور ابری به‌صورت هش رمزنگاری شده ذخیره می‌گردد.</p>
+                <p>• {isIt ? 'Usa almeno 6 caratteri combinando lettere e numeri.' : 'Use at least 6 characters combining letters and numbers.'}</p>
+                <p>• {isIt ? 'La tua password viene salvata in modo sicuro e crittografato sul server cloud.' : 'Your password is securely hashed and encrypted on the cloud server.'}</p>
               </div>
             </div>
           )}
@@ -409,7 +410,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               disabled={isSubmitting}
               className="text-xs"
             >
-              {t('common.cancel', 'انصراف')}
+              {t('common.cancel', isIt ? 'Annulla' : 'Cancel')}
             </Button>
             <Button
               type="submit"
@@ -417,7 +418,7 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ isOpen, onCl
               disabled={isSubmitting}
               className="text-xs font-bold bg-blue-600 hover:bg-blue-700 text-white min-w-[100px]"
             >
-              {isSubmitting ? t('common.saving', 'در حال ذخیره...') : t('common.saveChanges', 'ذخیره تغییرات')}
+              {isSubmitting ? t('common.saving', isIt ? 'Salvataggio...' : 'Saving...') : t('common.saveChanges', isIt ? 'Salva Modifiche' : 'Save Changes')}
             </Button>
           </div>
         </form>

@@ -57,7 +57,7 @@ export interface PersonTransaction {
   customer_id?: number | Customer | string | null;
   supplier_id?: number | Supplier | string | null;
   financial_account_id?: number | FinancialAccount | null;
-  type?: 'debtor' | 'creditor'; // debtor = بدهکار (+), creditor = بستانکار (-)
+  type?: 'debtor' | 'creditor'; // debtor (+), creditor (-)
   transaction_type: PersonTransactionType | string;
   amount: number;
   debit_amount?: number;
@@ -84,21 +84,21 @@ export interface ProfitLossSummary {
   startDate?: string;
   endDate?: string;
   total_revenue?: number;
-  totalRevenue?: number; // مجموع درآمد فروش
+  totalRevenue?: number;
   total_cogs?: number;
-  totalCogs?: number; // بهای تمام‌شده کالای فروش‌رفته (COGS)
+  totalCogs?: number;
   gross_profit?: number;
-  grossProfit?: number; // سود ناخالص (Revenue - COGS)
+  grossProfit?: number;
   gross_margin_percentage?: number;
-  grossMarginPercent?: number; // درصد حاشیه سود ناخالص
+  grossMarginPercent?: number;
   total_expenses?: number;
-  totalExpenses?: number; // مجموع هزینه‌های جاری
+  totalExpenses?: number;
   expenses_by_category?: { category_id: number; category_title: string; amount: number; percentage: number }[];
   expensesByCategory?: { categoryId: number; title: string; amount: number; percentage: number }[];
   net_profit?: number;
-  netProfit?: number; // سود خالص (Gross Profit - Total Expenses)
+  netProfit?: number;
   net_margin_percentage?: number;
-  netMarginPercent?: number; // درصد حاشیه سود خالص
+  netMarginPercent?: number;
   total_receivables?: number;
   total_payables?: number;
   orders_count?: number;
@@ -168,7 +168,7 @@ export interface Cheque {
   id: number;
   organization_id: number | Organization;
   type: ChequeType | string;
-  sayad_id: string; // 16-digit Sayad ID
+  sayad_id: string; // Cheque tracking / reference ID
   cheque_number: string;
   bank_name: string;
   branch_name?: string | null;
@@ -271,7 +271,7 @@ export interface VatReportSummary {
   }[];
 }
 
-export type AccountingExportFormat = 'moadian' | 'sepidar' | 'holo' | 'general_journal';
+export type AccountingExportFormat = 'general_journal' | 'csv' | 'excel' | 'vat_summary' | string;
 
 export interface AccountingJournalEntry {
   id: number | string;

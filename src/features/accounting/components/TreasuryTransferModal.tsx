@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from '../../../i18n';
+import { useOrganization } from '../../../context/OrganizationContext';
 import { FinancialAccount, TreasuryTransaction, TreasuryTransactionType } from '../../../types/accounting';
-import { formatCurrency } from '../../../utils/formatters';
+import { formatCurrency, resolveCurrencyCode } from '../../../utils/formatters';
 import { DateInput } from '../../../components/ui/DateInput';
 import { X } from 'lucide-react';
 
@@ -22,7 +23,10 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
   accounts,
   onSave,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
+  const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [transferType, setTransferType] = useState<TreasuryTransactionType>(initialType);
@@ -103,7 +107,7 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
           <div className="p-4 space-y-3.5">
             <div>
               <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                نوع عملیات
+                {isIt ? 'Tipo di operazione' : 'Operation Type'}
               </label>
               <div className="grid grid-cols-3 gap-2">
                 {[
@@ -148,10 +152,10 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
                   onChange={(e) => setSourceAccountId(Number(e.target.value))}
                   className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden"
                 >
-                  <option value="">انتخاب حساب مبدأ...</option>
+                  <option value="">{isIt ? 'Seleziona conto di origine...' : 'Select source account...'}</option>
                   {accounts.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.name} (موجودی: {formatCurrency(a.current_balance)} تومان)
+                      {a.name} ({isIt ? 'Saldo' : 'Balance'}: {formatCurrency(a.current_balance, activeCurrency)})
                     </option>
                   ))}
                 </select>
@@ -169,7 +173,7 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
                   onChange={(e) => setDestinationAccountId(Number(e.target.value))}
                   className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden"
                 >
-                  <option value="">انتخاب حساب مقصد...</option>
+                  <option value="">{isIt ? 'Seleziona conto di destinazione...' : 'Select destination account...'}</option>
                   {accounts.map((a) => (
                     <option
                       key={a.id}
@@ -178,7 +182,7 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
                         transferType === 'transfer' && Number(a.id) === Number(sourceAccountId)
                       }
                     >
-                      {a.name} (موجودی: {formatCurrency(a.current_balance)} تومان)
+                      {a.name} ({isIt ? 'Saldo' : 'Balance'}: {formatCurrency(a.current_balance, activeCurrency)})
                     </option>
                   ))}
                 </select>
@@ -188,13 +192,14 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
             <div className="grid grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  {t('accounting.transferAmount')} ({t('accounting.toman')}) *
+                  {t('accounting.transferAmount')} ({activeCurrency}) *
                 </label>
                 <input
                   type="number"
                   required
-                  min={1}
-                  placeholder="0"
+                  min={0.01}
+                  step="0.01"
+                  placeholder="0.00"
                   value={transferAmount}
                   onChange={(e) =>
                     setTransferAmount(e.target.value === '' ? '' : Number(e.target.value))
@@ -224,11 +229,11 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
 
             <div>
               <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                توضیحات و بابت
+                {isIt ? 'Note e descrizione' : 'Description & Notes'}
               </label>
               <textarea
                 rows={2}
-                placeholder="شرح عملیات بانکی یا انتقال وجه..."
+                placeholder={isIt ? 'Dettagli del trasferimento o operazione bancaria...' : 'Bank transfer or treasury movement notes...'}
                 value={transferDescription}
                 onChange={(e) => setTransferDescription(e.target.value)}
                 className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden resize-none"
@@ -242,14 +247,14 @@ export const TreasuryTransferModal: React.FC<TreasuryTransferModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
             >
-              انصراف
+              {t('common.cancel', isIt ? 'Annulla' : 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
               className="px-5 py-2 text-xs font-semibold rounded-lg bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 transition-colors cursor-pointer disabled:opacity-50"
             >
-              ثبت گردش وجه
+              {isIt ? 'Registra movimento' : 'Save Movement'}
             </button>
           </div>
         </form>

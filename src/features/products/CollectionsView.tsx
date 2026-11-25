@@ -19,7 +19,7 @@ import { Layers, Plus, Search, Edit, Trash2 } from 'lucide-react';
 
 export const CollectionsView: React.FC = () => {
   const { t, locale } = useTranslation();
-  const isPersian = false;
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
 
   const [collections, setCollections] = useState<Collection[]>([]);
@@ -305,8 +305,8 @@ export const CollectionsView: React.FC = () => {
       >
         <form id="collection-form" onSubmit={handleSave} className="space-y-4">
           <Input
-            label={`${t('products.collectionName', 'عنوان مجموعه')} *`}
-            placeholder={isPersian ? "مثال: کالکشن بهاره ۱۴۰۴ یا عیدانه" : "Spring/Summer"}
+            label={`${t('products.collectionName', 'Collection Name')} *`}
+            placeholder={isIt ? 'Primavera / Estate 2026' : 'Spring / Summer 2026'}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required

@@ -179,7 +179,7 @@ export const InventoryPerformancePage: React.FC = () => {
           const szId = getEntityId(v.size_id);
           const sz = szId !== undefined ? sizeMap.get(szId) : null;
 
-          const unitCost = v.cost || (v.price ? v.price * 0.6 : 150000);
+          const unitCost = v.cost || (v.price ? v.price * 0.6 : 0);
           const tiedCap = stockCount * unitCost;
 
           totalTiedCapital += tiedCap;
@@ -211,7 +211,7 @@ export const InventoryPerformancePage: React.FC = () => {
 
   const handlePrint = () => {
     printElement('dead-stock-report-container', {
-      title: isPersian ? 'گزارش_کالاهای_راکد_تن‌خور' : 'Tankhor_Dead_Stock_Report',
+      title: 'Clozito_Dead_Stock_Report',
     });
   };
 
@@ -220,8 +220,8 @@ export const InventoryPerformancePage: React.FC = () => {
       {/* Header & Controls */}
       <div className="no-print">
         <PageHeader
-          title={t('reports.tabInventoryPerformance', 'عملکرد انبار و کالاهای راکد')}
-          subtitle={t('reports.deadStockSectionSubtitle', 'شناسایی اقلام بدون گردش به تفکیک سایز، رنگ و ارزش سرمایه بلوکه‌شده')}
+          title={t('reports.tabInventoryPerformance', 'Inventory Performance & Dead Stock')}
+          subtitle={t('reports.deadStockSectionSubtitle', 'Identify slow-moving items by size, color, and tied-up capital')}
           actions={
             <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
               {/* Threshold Selector */}
@@ -447,13 +447,13 @@ export const InventoryPerformancePage: React.FC = () => {
 
                     <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between text-xs">
                       <div>
-                        <span className="text-[10px] text-neutral-400 block">موجودی راکد</span>
+                        <span className="text-[10px] text-neutral-400 block">{t('reports.colStockDead')}</span>
                         <span className="font-bold font-mono text-red-600 dark:text-red-400">
-                          {formatNumber(item.stockQty)} عدد
+                          {formatNumber(item.stockQty)} {t('reports.unitsUnit')}
                         </span>
                       </div>
                       <div className="text-end">
-                        <span className="text-[10px] text-neutral-400 block">سرمایه بلوکه‌شده</span>
+                        <span className="text-[10px] text-neutral-400 block">{t('reports.colBlockedCapital')}</span>
                         <span className="font-bold font-mono text-neutral-900 dark:text-white">
                           {formatCurrency(item.totalTiedCapital, activeOrganization?.currency, isPersian)}
                         </span>

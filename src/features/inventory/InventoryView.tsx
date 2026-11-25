@@ -57,6 +57,7 @@ export const InventoryView: React.FC = () => {
   const [isWebcamScannerOpen, setIsWebcamScannerOpen] = useState(false);
 
   const isPersian = false;
+  const isIt = locale === 'it';
 
   const getColorHex = (colorId?: number | Color | null, colorName?: string) => {
     const cId = typeof colorId === 'number' ? colorId : (colorId as any)?.id;
@@ -67,36 +68,34 @@ export const InventoryView: React.FC = () => {
     if (colorName && colorName !== '-') {
       const lower = colorName.trim().toLowerCase();
       const colorMap: Record<string, string> = {
-        'مشکی': '#18181b',
-        'سیاه': '#18181b',
         'black': '#18181b',
-        'سفید': '#ffffff',
+        'nero': '#18181b',
         'white': '#ffffff',
-        'قرمز': '#ef4444',
+        'bianco': '#ffffff',
         'red': '#ef4444',
-        'آبی': '#3b82f6',
+        'rosso': '#ef4444',
         'blue': '#3b82f6',
-        'سبز': '#22c55e',
+        'blu': '#3b82f6',
         'green': '#22c55e',
-        'زرد': '#eab308',
+        'verde': '#22c55e',
         'yellow': '#eab308',
-        'نارنجی': '#f97316',
+        'giallo': '#eab308',
         'orange': '#f97316',
-        'طوسی': '#9ca3af',
-        'خاکستری': '#6b7280',
+        'arancione': '#f97316',
         'grey': '#6b7280',
         'gray': '#6b7280',
-        'سرمه‌ای': '#1e3a8a',
+        'grigio': '#6b7280',
         'navy': '#1e3a8a',
-        'قهوه‌ای': '#78350f',
+        'blu navy': '#1e3a8a',
         'brown': '#78350f',
-        'کرم': '#fef08a',
-        'بژ': '#d6d3d1',
+        'marrone': '#78350f',
+        'cream': '#fef08a',
+        'crema': '#fef08a',
         'beige': '#d6d3d1',
-        'صورتی': '#ec4899',
         'pink': '#ec4899',
-        'بنفش': '#a855f7',
+        'rosa': '#ec4899',
         'purple': '#a855f7',
+        'viola': '#a855f7',
       };
       if (colorMap[lower]) return colorMap[lower];
     }
@@ -419,18 +418,24 @@ export const InventoryView: React.FC = () => {
       if (exportedCount === 0) {
         setExcelFeedback({
           type: 'info',
-          message: 'موردی مطابق فیلتر فعلی برای خروجی اکسل یافت نشد.',
+          message: isIt
+            ? 'Nessun articolo trovato con i filtri correnti per l\'esportazione Excel.'
+            : 'No items matching the current filters found for Excel export.',
         });
       } else {
         setExcelFeedback({
           type: 'success',
-          message: `فایل اکسل موجودی انبار با ${isPersian ? toPersianDigits(exportedCount) : exportedCount} ردیف با موفقیت دانلود شد.`,
+          message: isIt
+            ? `File Excel inventario scaricato con successo (${exportedCount} righe).`
+            : `Inventory Excel file downloaded successfully (${exportedCount} rows).`,
         });
       }
     } catch (err: any) {
       setExcelFeedback({
         type: 'error',
-        message: `خطا در تهیه خروجی اکسل موجودی: ${err?.message || err}`,
+        message: isIt
+          ? `Errore durante l'esportazione Excel dell'inventario: ${err?.message || err}`
+          : `Error exporting inventory Excel: ${err?.message || err}`,
       });
     } finally {
       setIsExportingExcel(false);
@@ -449,7 +454,7 @@ export const InventoryView: React.FC = () => {
       if (!res.success || res.items.length === 0) {
         setExcelFeedback({
           type: 'error',
-          message: 'خطا در خواندن فایل اکسل موجودی',
+          message: isIt ? 'Errore durante la lettura del file Excel inventario' : 'Error reading inventory Excel file',
           details: res.errors.slice(0, 10),
         });
         return;
@@ -488,7 +493,7 @@ export const InventoryView: React.FC = () => {
       if (!defaultWarehouse) {
         defaultWarehouse = await adapter.saveWarehouse({
           organization_id: orgId,
-          name: 'انبار مرکزی',
+          name: 'Main Warehouse',
           code: 'WH-MAIN',
           is_default: true,
           status: 'active',
@@ -508,7 +513,9 @@ export const InventoryView: React.FC = () => {
 
           if (!variant) {
             runtimeErrors.push(
-              `سطر ${row.rowNumber}: تنوع با شناسه "${row.sku || row.barcode}" در سیستم یافت نشد.`
+              isIt
+                ? `Riga ${row.rowNumber}: variante con codice "${row.sku || row.barcode}" non trovata nel sistema.`
+                : `Row ${row.rowNumber}: variant with identifier "${row.sku || row.barcode}" was not found.`
             );
             continue;
           }
@@ -553,7 +560,7 @@ export const InventoryView: React.FC = () => {
                 type: 'adjustment',
                 quantity: row.quantity,
                 reference_type: 'manual',
-                note: 'تعدیل موجودی از طریق ورود فایل اکسل',
+                note: 'Stock adjustment via Excel import',
               });
             }
 
@@ -602,12 +609,16 @@ export const InventoryView: React.FC = () => {
               type: 'adjustment',
               quantity: row.quantity,
               reference_type: 'manual',
-              note: 'ثبت اولیه موجودی از طریق ورود فایل اکسل',
+              note: 'Initial stock entry via Excel import',
             });
             createdCount++;
           }
         } catch (rowErr: any) {
-          runtimeErrors.push(`سطر ${row.rowNumber}: ${rowErr?.message || 'خطا در ذخیره‌سازی'}`);
+          runtimeErrors.push(
+            isIt
+              ? `Riga ${row.rowNumber}: ${rowErr?.message || 'Errore di salvataggio'}`
+              : `Row ${row.rowNumber}: ${rowErr?.message || 'Save error'}`
+          );
         }
       }
 
@@ -615,13 +626,17 @@ export const InventoryView: React.FC = () => {
       const totalProcessed = createdCount + updatedCount;
       setExcelFeedback({
         type: totalProcessed > 0 ? 'success' : 'error',
-        message: `ورود اکسل موجودی انجام شد (${isPersian ? toPersianDigits(createdCount) : createdCount} ثبت جدید، ${isPersian ? toPersianDigits(updatedCount) : updatedCount} به‌روزرسانی).`,
+        message: isIt
+          ? `Importazione Excel completata (${createdCount} nuovi, ${updatedCount} aggiornati).`
+          : `Inventory Excel import completed (${createdCount} created, ${updatedCount} updated).`,
         details: runtimeErrors.slice(0, 10),
       });
     } catch (err: any) {
       setExcelFeedback({
         type: 'error',
-        message: `خطا در پردازش فایل اکسل: ${err?.message || err}`,
+        message: isIt
+          ? `Errore durante l'elaborazione del file Excel: ${err?.message || err}`
+          : `Error processing Excel file: ${err?.message || err}`,
       });
     } finally {
       setIsImportingExcel(false);
@@ -650,8 +665,8 @@ export const InventoryView: React.FC = () => {
               isLoading={isImportingExcel}
               icon={<Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-500 dark:text-neutral-400" />}
             >
-              <span className="hidden sm:inline">ورود اکسل</span>
-              <span className="sm:hidden">ورود</span>
+              <span className="hidden sm:inline">{isIt ? 'Importa Excel' : 'Import Excel'}</span>
+              <span className="sm:hidden">{isIt ? 'Importa' : 'Import'}</span>
             </Button>
             <Button
               variant="outline"
@@ -660,8 +675,8 @@ export const InventoryView: React.FC = () => {
               isLoading={isExportingExcel}
               icon={<FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />}
             >
-              <span className="hidden sm:inline">خروجی اکسل</span>
-              <span className="sm:hidden">خروجی</span>
+              <span className="hidden sm:inline">{isIt ? 'Esporta Excel' : 'Export Excel'}</span>
+              <span className="sm:hidden">{isIt ? 'Esporta' : 'Export'}</span>
             </Button>
             <Button
               size="sm"
@@ -669,7 +684,7 @@ export const InventoryView: React.FC = () => {
               icon={<RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
             >
               <span className="hidden sm:inline">{t('inventory.stockAdjustment')}</span>
-              <span className="sm:hidden">تعدیل موجودی</span>
+              <span className="sm:hidden">{isIt ? 'Rettifica' : 'Adjust'}</span>
             </Button>
           </div>
         }
@@ -746,7 +761,7 @@ export const InventoryView: React.FC = () => {
 
         <Card className="hover:shadow-vercel-md transition-shadow">
           <div className="flex items-center justify-between">
-            <p className="caption-mono text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400">{t('inventory.damagedQuantity', 'ضایعات و آسیب')}</p>
+            <p className="caption-mono text-[11px] sm:text-xs text-neutral-500 dark:text-neutral-400">{t('inventory.damagedQuantity', isIt ? 'Danneggiati' : 'Damaged')}</p>
             <AlertTriangle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-500 dark:text-neutral-400" />
           </div>
           <p className="text-xl sm:text-2xl font-extrabold text-neutral-900 dark:text-neutral-100 tracking-tight font-mono mt-1.5 sm:mt-2">
@@ -923,7 +938,7 @@ export const InventoryView: React.FC = () => {
                     {/* Product Thumbnail */}
                     <ProductImage
                       src={v?.image}
-                      fallbackText={sku || 'TN'}
+                      fallbackText={sku || 'CLZ'}
                       containerClassName="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl overflow-hidden bg-neutral-100 dark:bg-neutral-800 flex items-center justify-center shrink-0 border border-neutral-200/90 dark:border-neutral-700/90 shadow-2xs"
                     />
                   </div>
@@ -934,15 +949,15 @@ export const InventoryView: React.FC = () => {
                       {/* Status Pill */}
                       {isOutOfStock ? (
                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200/80 dark:border-rose-800/60">
-                          {t('inventory.statusOutOfStock', 'ناموجود')}
+                          {t('inventory.statusOutOfStock', 'Out of Stock')}
                         </span>
                       ) : isLow ? (
                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/60">
-                          {t('inventory.statusLowStock', 'موجودی کم')}
+                          {t('inventory.statusLowStock', 'Low Stock')}
                         </span>
                       ) : (
                         <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 border border-emerald-200/80 dark:border-emerald-800/60">
-                          {t('inventory.statusInStock', 'موجود')}
+                          {t('inventory.statusInStock', 'In Stock')}
                         </span>
                       )}
 
@@ -961,7 +976,7 @@ export const InventoryView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleOpenAdjustment(item)}
-                        title={t('inventory.stockAdjustment', 'اصلاح و تعدیل موجودی')}
+                        title={t('inventory.stockAdjustment', 'Adjust Stock')}
                         className="w-9 h-9 rounded-xl border border-indigo-200/90 dark:border-indigo-800/90 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-2xs"
                       >
                         <RefreshCw className="w-4 h-4" />
@@ -970,7 +985,7 @@ export const InventoryView: React.FC = () => {
                       <button
                         type="button"
                         onClick={() => handleOpenThresholdModal(item)}
-                        title={t('inventory.editThresholds', 'تنظیم حد سفارش')}
+                        title={t('inventory.editThresholds', 'Edit Thresholds')}
                         className="w-9 h-9 rounded-xl border border-neutral-200/90 dark:border-neutral-700/90 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 hover:text-neutral-900 dark:text-neutral-300 dark:hover:text-neutral-100 flex items-center justify-center transition-colors cursor-pointer shrink-0 shadow-2xs"
                       >
                         <SlidersHorizontal className="w-4 h-4" />
@@ -982,39 +997,37 @@ export const InventoryView: React.FC = () => {
                   <div className="grid grid-cols-4 divide-x divide-neutral-200 dark:divide-neutral-800 rtl:divide-x-reverse pt-3 border-t border-neutral-200/80 dark:border-neutral-800 text-center">
                     <div className="px-1">
                       <p className="text-xs text-neutral-700 dark:text-neutral-300 font-medium">
-                        کل
+                        {isIt ? 'Totale' : 'Total'}
                       </p>
                       <p className="text-base font-bold text-neutral-900 dark:text-neutral-100 font-mono mt-0.5">
-                        {isPersian ? toPersianDigits(item.quantity) : item.quantity}
+                        {item.quantity}
                       </p>
                     </div>
 
                     <div className="px-1">
                       <p className="text-xs text-emerald-700 dark:text-emerald-400 font-bold">
-                        قابل فروش
+                        {isIt ? 'Disponibile' : 'Available'}
                       </p>
                       <p className="text-base font-extrabold text-emerald-700 dark:text-emerald-400 font-mono mt-0.5">
-                        {isPersian
-                          ? toPersianDigits(item.available_quantity ?? item.quantity)
-                          : (item.available_quantity ?? item.quantity)}
+                        {item.available_quantity ?? item.quantity}
                       </p>
                     </div>
 
                     <div className="px-1">
                       <p className="text-xs text-neutral-700 dark:text-neutral-300 font-medium">
-                        رزرو
+                        {isIt ? 'Riservato' : 'Reserved'}
                       </p>
                       <p className="text-base font-bold text-neutral-700 dark:text-neutral-300 font-mono mt-0.5">
-                        {isPersian ? toPersianDigits(item.reserved_quantity || 0) : (item.reserved_quantity || 0)}
+                        {item.reserved_quantity || 0}
                       </p>
                     </div>
 
                     <div className="px-1">
                       <p className="text-xs text-neutral-700 dark:text-neutral-300 font-medium">
-                        ضایعات
+                        {isIt ? 'Danneggiati' : 'Damaged'}
                       </p>
                       <p className={`text-base font-bold font-mono mt-0.5 ${item.damaged_quantity > 0 ? 'text-rose-600 dark:text-rose-400' : 'text-neutral-700 dark:text-neutral-300'}`}>
-                        {isPersian ? toPersianDigits(item.damaged_quantity || 0) : (item.damaged_quantity || 0)}
+                        {item.damaged_quantity || 0}
                       </p>
                     </div>
                   </div>

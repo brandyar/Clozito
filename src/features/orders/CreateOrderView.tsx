@@ -20,7 +20,7 @@ import { FinancialAccount } from '../../types/accounting';
 import { useModuleAccess } from '../../hooks/useModuleAccess';
 import { PosShiftModal } from '../../components/modals/PosShiftModal';
 import { confirmAction } from '../../utils/confirm';
-import { toPersianDigits, matchesSearchQuery, formatCurrency } from '../../utils/formatters';
+import { toPersianDigits, matchesSearchQuery, formatCurrency, resolveCurrencyCode, roundCurrency, getOrganizationTaxRate } from '../../utils/formatters';
 import { Button } from '../../components/ui/Button';
 import { ShoppingCart, ChevronUp, X } from 'lucide-react';
 
@@ -39,6 +39,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
   const { activeOrganization, organizationUsers } = useOrganization();
   const { user } = useAuth();
   const isPersian = false;
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
 
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -226,11 +227,15 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
   const [isWebcamScannerOpen, setIsWebcamScannerOpen] = useState(false);
   const [scannerToast, setScannerToast] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
 
-  // Financial Calculations
+  // Financial Calculations (Dynamic EU VAT per organization)
   const [hasTax, setHasTax] = useState<boolean>(false);
-  const taxPercent = 9; // Standard 9% VAT in Iran
+  const [taxPercent, setTaxPercent] = useState<number>(() => getOrganizationTaxRate(activeOrganization));
   const [extraDiscount, setExtraDiscount] = useState<number>(0);
   const [cashReceived, setCashReceived] = useState<number>(0);
+
+  useEffect(() => {
+    setTaxPercent(getOrganizationTaxRate(activeOrganization));
+  }, [activeOrganization?.id, activeOrganization?.default_tax_rate]);
 
   // Saving & Post-Order States
   const [isSaving, setIsSaving] = useState(false);
@@ -560,14 +565,14 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
     }
   };
 
-  // Cart Financial Calculations
-  const subtotal = cart.reduce((sum, c) => sum + c.quantity * c.unitPrice, 0);
-  const itemsDiscount = cart.reduce((sum, c) => sum + c.quantity * c.discount, 0);
-  const totalDiscount = itemsDiscount + extraDiscount;
-  const taxableSubtotal = Math.max(0, subtotal - totalDiscount);
-  const taxAmount = hasTax ? (taxableSubtotal * taxPercent) / 100 : 0;
-  const grandTotal = Math.max(0, taxableSubtotal + taxAmount);
-  const cashChange = Math.max(0, cashReceived - grandTotal);
+  // Cart Financial Calculations (2-decimal cents precision)
+  const subtotal = roundCurrency(cart.reduce((sum, c) => sum + c.quantity * c.unitPrice, 0));
+  const itemsDiscount = roundCurrency(cart.reduce((sum, c) => sum + c.quantity * c.discount, 0));
+  const totalDiscount = roundCurrency(itemsDiscount + extraDiscount);
+  const taxableSubtotal = roundCurrency(Math.max(0, subtotal - totalDiscount));
+  const taxAmount = hasTax ? roundCurrency((taxableSubtotal * taxPercent) / 100) : 0;
+  const grandTotal = roundCurrency(Math.max(0, taxableSubtotal + taxAmount));
+  const cashChange = roundCurrency(Math.max(0, cashReceived - grandTotal));
 
   const handlePreviewPrint = () => {
     if (cart.length === 0) return;
@@ -584,7 +589,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
         order_number: `ORD-DRAFT`,
         status: orderStatus,
         payment_status: paymentStatus,
-        currency: 'TOMAN',
+        currency: activeCurrency,
         subtotal,
         discount: totalDiscount,
         tax: taxAmount,
@@ -592,6 +597,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
         notes: orderNotes,
         date_created: new Date().toISOString(),
       },
+      customer: selectedCust || null,
       customerName,
       warehouseName,
       items: [...cart],
@@ -620,9 +626,9 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
         setErrorMsg(
           t('orders.insufficientStockNotice', {
             title: item.productTitle,
-            available: isPersian ? toPersianDigits(available) : available,
-            requested: isPersian ? toPersianDigits(item.quantity) : item.quantity,
-          }) || `موجودی کالای «${item.productTitle}» در انبار انتخابی کافی نیست (موجودی: ${available}، درخواستی: ${item.quantity}).`
+            available,
+            requested: item.quantity,
+          }) || `Insufficient stock for "${item.productTitle}" in the selected warehouse (available: ${available}, requested: ${item.quantity}).`
         );
         return;
       }
@@ -668,7 +674,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
         order_number: orderNumber,
         status: orderStatus,
         payment_status: actualPaymentStatus,
-        currency: 'TOMAN',
+        currency: activeCurrency,
         subtotal,
         discount: totalDiscount,
         tax: taxAmount,
@@ -684,17 +690,17 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
             : paymentType === 'card_to_card'
             ? t('orders.cardToCard')
             : t('orders.storeCredit')
-        }]${currentShift ? ` [${isPersian ? `شیفت #${currentShift.id}` : `Shift #${currentShift.id}`}]` : ''} ${orderNotes}`.trim(),
+        }]${currentShift ? ` [Shift #${currentShift.id}]` : ''} ${orderNotes}`.trim(),
       };
 
       const orderItems: Partial<OrderItem>[] = cart.map((c) => ({
         organization_id: orgId,
         variant_id: c.variant.id,
         quantity: c.quantity,
-        unit_price: c.unitPrice,
-        unit_cost: c.variant.cost !== undefined ? Number(c.variant.cost) : undefined,
-        discount: c.discount,
-        total: c.quantity * c.unitPrice - c.discount * c.quantity,
+        unit_price: roundCurrency(c.unitPrice),
+        unit_cost: c.variant.cost !== undefined ? roundCurrency(Number(c.variant.cost)) : undefined,
+        discount: roundCurrency(c.discount),
+        total: roundCurrency(c.quantity * c.unitPrice - c.discount * c.quantity),
       }));
 
       const savedOrder = await adapter.saveOrder(orderData, orderItems);
@@ -740,7 +746,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
               type: 'deposit',
               amount: grandTotal,
               tracking_code: `ORD-${orderNumber}`,
-              description: `دریافت وجه فاکتور فروش #${orderNumber} (${customerName !== t('orders.generalCustomer') ? customerName : 'مشتری حضوری'})`,
+              description: `Sales invoice payment #${orderNumber} (${customerName !== t('orders.generalCustomer') ? customerName : 'Walk-in Customer'})`,
               transaction_date: new Date().toISOString(),
             });
           }
@@ -749,7 +755,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
         }
       }
 
-      // 2. Keep Customer Ledger (معین اشخاص) synchronized
+      // 2. Keep Customer Ledger synchronized
       if (selectedCustomerId) {
         try {
           if (paymentType === 'credit') {
@@ -765,7 +771,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
               status: 'pending',
               reference_number: orderNumber,
               order_id: savedOrder.id,
-              description: `فاکتور فروش نسیه #${orderNumber}`,
+              description: `Credit sales invoice #${orderNumber}`,
               transaction_date: new Date().toISOString(),
             });
           } else if (isCashOrElectronic) {
@@ -782,7 +788,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
               status: 'completed',
               reference_number: orderNumber,
               order_id: savedOrder.id,
-              description: `فاکتور فروش #${orderNumber} (تسویه نقدی/کارتخوان)`,
+              description: `Sales invoice #${orderNumber} (Cash / Card)`,
               transaction_date: new Date().toISOString(),
             });
 
@@ -799,7 +805,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
               status: 'completed',
               reference_number: `REC-${orderNumber}`,
               order_id: savedOrder.id,
-              description: `دریافت وجه فاکتور فروش #${orderNumber}`,
+              description: `Payment received for sales invoice #${orderNumber}`,
               transaction_date: new Date().toISOString(),
             });
           }
@@ -825,8 +831,10 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
         console.warn('[CreateOrderView] Could not refresh inventory items:', invErr);
       }
 
+      const matchedCust = customers.find((c) => Number(c.id) === Number(selectedCustomerId)) || null;
       setLastSavedOrder({
         order: savedOrder,
+        customer: matchedCust,
         customerName,
         warehouseName,
         items: [...cart],
@@ -907,7 +915,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
               if (exceeding.length > 0) {
                 showToast(
                   'error',
-                  `توجه: موجودی ${exceeding.length} قلم از کالاهای سبد خرید در انبار انتخابی کافی نیست.`
+                  `Warning: Insufficient stock for ${exceeding.length} cart item(s) in the selected warehouse.`
                 );
               }
             }
@@ -936,8 +944,10 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
           totalDiscount={totalDiscount}
           hasTax={hasTax}
           setHasTax={setHasTax}
+          taxPercent={taxPercent}
           taxAmount={taxAmount}
           grandTotal={grandTotal}
+          currency={activeCurrency}
           paymentType={paymentType}
           onPaymentTypeChange={handlePaymentTypeChange}
           cashReceived={cashReceived}
@@ -997,6 +1007,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
           cart={cart}
           onAddToCart={handleAddToCart}
           isLoading={isLoading}
+          currency={activeCurrency}
         />
 
         {/* Right Side: Digital Receipt & POS Checkout Terminal (5 cols) - Desktop View */}
@@ -1011,7 +1022,10 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
               setExtraDiscount={setExtraDiscount}
               hasTax={hasTax}
               setHasTax={setHasTax}
+              taxPercent={taxPercent}
+              setTaxPercent={setTaxPercent}
               taxAmount={taxAmount}
+              currency={activeCurrency}
             />
 
             <OrderPaymentSection
@@ -1027,7 +1041,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
                   if (exceeding.length > 0) {
                     showToast(
                       'error',
-                      `توجه: موجودی ${exceeding.length} قلم از کالاهای سبد خرید در انبار انتخابی کافی نیست.`
+                      `Warning: Insufficient stock for ${exceeding.length} cart item(s) in the selected warehouse.`
                     );
                   }
                 }
@@ -1047,8 +1061,10 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
               subtotal={subtotal}
               totalDiscount={totalDiscount}
               hasTax={hasTax}
+              taxPercent={taxPercent}
               taxAmount={taxAmount}
               grandTotal={grandTotal}
+              currency={activeCurrency}
               isSaving={isSaving}
               cartLength={cart.length}
               onPreviewPrint={handlePreviewPrint}
@@ -1082,11 +1098,11 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
                 {cart.length > 0 ? (
                   <span>{t('orders.itemsCount', { count: isPersian ? toPersianDigits(cart.length) : cart.length })}</span>
                 ) : (
-                  <span>{t('orders.cart')} ({isPersian ? 'خالی' : 'Empty'})</span>
+                  <span>{t('orders.cart')} ({locale === 'it' ? 'Vuoto' : 'Empty'})</span>
                 )}
               </div>
               <div className="text-sm font-bold text-neutral-900 dark:text-neutral-100 font-mono truncate">
-                {formatCurrency(grandTotal, 'TOMAN', isPersian)}
+                {formatCurrency(grandTotal, activeCurrency, isPersian)}
               </div>
             </div>
           </div>
@@ -1147,7 +1163,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
                   type="button"
                   onClick={() => setIsMobileCartDrawerOpen(false)}
                   className="p-1.5 rounded-full bg-neutral-100 hover:bg-neutral-200 dark:bg-neutral-800 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-300 transition-colors"
-                  aria-label="بستن"
+                  aria-label="Close"
                 >
                   <X className="w-5 h-5" />
                 </button>
@@ -1166,7 +1182,10 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
                   setExtraDiscount={setExtraDiscount}
                   hasTax={hasTax}
                   setHasTax={setHasTax}
+                  taxPercent={taxPercent}
+                  setTaxPercent={setTaxPercent}
                   taxAmount={taxAmount}
+                  currency={activeCurrency}
                 />
 
                 <OrderPaymentSection
@@ -1182,7 +1201,7 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
                       if (exceeding.length > 0) {
                         showToast(
                           'error',
-                          `توجه: موجودی ${exceeding.length} قلم از کالاهای سبد خرید در انبار انتخابی کافی نیست.`
+                          `Warning: Insufficient stock for ${exceeding.length} item(s) in the selected warehouse.`
                         );
                       }
                     }
@@ -1202,8 +1221,10 @@ export const CreateOrderView: React.FC<{ onOrderCreated?: () => void }> = ({ onO
                   subtotal={subtotal}
                   totalDiscount={totalDiscount}
                   hasTax={hasTax}
+                  taxPercent={taxPercent}
                   taxAmount={taxAmount}
                   grandTotal={grandTotal}
+                  currency={activeCurrency}
                   isSaving={isSaving}
                   cartLength={cart.length}
                   onPreviewPrint={handlePreviewPrint}

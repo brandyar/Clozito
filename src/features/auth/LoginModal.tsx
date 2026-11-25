@@ -21,6 +21,8 @@ import {
   Sparkles,
 } from 'lucide-react';
 import { AuthLanguageDropdown } from './AuthLanguageDropdown';
+import { LegalModal } from '../legal/LegalDocumentView';
+import { LegalDocType } from '../legal/legalContent';
 
 export const LoginModal: React.FC = () => {
   const { t, locale } = useTranslation();
@@ -65,6 +67,8 @@ export const LoginModal: React.FC = () => {
     setInitialWarehouseName(t('auth.initialWarehouseDefault'));
   }, [locale]);
 
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [legalModalDoc, setLegalModalDoc] = useState<LegalDocType | null>(null);
   const [formValidationError, setFormValidationError] = useState<string | null>(null);
 
   const getEffectiveEmail = (): string => (email || emailRef.current?.value || '').trim();
@@ -135,6 +139,11 @@ export const LoginModal: React.FC = () => {
       return;
     }
 
+    if (!acceptedTerms) {
+      setFormValidationError(t('auth.acceptTermsRequiredError'));
+      return;
+    }
+
     await register({
       firstName: effFirst,
       lastName: effLast,
@@ -147,6 +156,7 @@ export const LoginModal: React.FC = () => {
       locale,
       initialCategoryName: initialCategoryName.trim(),
       initialWarehouseName: initialWarehouseName.trim(),
+      acceptedTerms: true,
     });
   };
 
@@ -571,6 +581,46 @@ export const LoginModal: React.FC = () => {
                 </div>
               </div>
 
+              {/* Mandatory GDPR Consent Checkbox */}
+              <label className="flex items-start gap-2.5 p-3 rounded-xl bg-neutral-50 dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700/80 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(e) => {
+                    setAcceptedTerms(e.target.checked);
+                    if (e.target.checked && formValidationError === t('auth.acceptTermsRequiredError')) {
+                      setFormValidationError(null);
+                    }
+                  }}
+                  className="mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-neutral-900 dark:text-white focus:ring-neutral-900 cursor-pointer shrink-0"
+                />
+                <span className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                  {t('auth.acceptTermsPrefix')}{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setLegalModalDoc('terms');
+                    }}
+                    className="font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    {t('auth.termsOfService')}
+                  </button>{' '}
+                  {t('auth.andLabel')}{' '}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setLegalModalDoc('privacy');
+                    }}
+                    className="font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                  >
+                    {t('auth.privacyPolicy')}
+                  </button>
+                  . <span className="text-red-500">*</span>
+                </span>
+              </label>
+
               {/* Step 2 Form Buttons */}
               <div className="pt-2 flex items-center gap-2">
                 <Button
@@ -600,14 +650,45 @@ export const LoginModal: React.FC = () => {
           <AuthLanguageDropdown placement="up" />
         </div>
 
-        {/* Footer info */}
-        <div className="text-center pt-2 border-t border-neutral-100 dark:border-neutral-800">
+        {/* Footer info & Legal links */}
+        <div className="text-center pt-2 border-t border-neutral-100 dark:border-neutral-800 space-y-1.5">
+          <div className="flex flex-wrap items-center justify-center gap-x-2.5 gap-y-1 text-[10px] text-neutral-500 dark:text-neutral-400">
+            <button
+              type="button"
+              onClick={() => setLegalModalDoc('terms')}
+              className="hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer"
+            >
+              {t('auth.termsOfService')}
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setLegalModalDoc('privacy')}
+              className="hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer"
+            >
+              {t('auth.privacyPolicy')}
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setLegalModalDoc('cookies')}
+              className="hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer"
+            >
+              {t('auth.cookiePolicy')}
+            </button>
+          </div>
           <p className="text-[10px] font-mono text-neutral-400 flex items-center justify-center gap-1">
             <ShieldCheck className="w-3 h-3 text-emerald-500" />
             <span>{t('auth.multiTenantFooter')}</span>
           </p>
         </div>
       </div>
+
+      <LegalModal
+        isOpen={legalModalDoc !== null}
+        initialDoc={legalModalDoc || 'privacy'}
+        onClose={() => setLegalModalDoc(null)}
+      />
     </Modal>
   );
 };

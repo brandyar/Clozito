@@ -14,10 +14,19 @@ import {
   getLastLicenseSyncInfo,
   LicenseSyncResult,
 } from '../utils/licenseSync';
+import {
+  NormalizedPlanTier,
+  isPaidCloudPlan,
+  normalizePlanTier,
+  isModuleIncludedInPlan,
+  isModuleOfflinePurchasable,
+} from '../config/plans';
 
 export interface ModuleAccessContextType {
   hasAccess: (moduleSlug: string) => boolean;
   isPro: boolean;
+  isCloudPlan: boolean;
+  planTier: NormalizedPlanTier;
   activeModules: OrganizationModule[];
   orgModules: OrganizationModule[];
   systemModules: SystemModule[];
@@ -50,9 +59,16 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const systemModulesRef = useRef<SystemModule[]>(systemModules);
   systemModulesRef.current = systemModules;
 
-  const isPro = useMemo(() => {
-    return activeOrganization?.plan === 'pro';
+  const planTier = useMemo<NormalizedPlanTier>(() => {
+    return normalizePlanTier(activeOrganization?.plan);
   }, [activeOrganization?.plan]);
+
+  const isCloudPlan = useMemo(() => {
+    return isPaidCloudPlan(activeOrganization?.plan);
+  }, [activeOrganization?.plan]);
+
+  // Kept as backward-compatible alias for any active Cloud plan (Boutique, Atelier, or legacy Pro)
+  const isPro = isCloudPlan;
 
   // Load modules from local storage / SQLite
   const loadModules = useCallback(async (isInitial = false) => {
@@ -120,7 +136,7 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
       if (!orgId) {
         return {
           success: false,
-          error: 'سازمان فعالی انتخاب نشده است.',
+          error: 'No active organization selected.',
           activeCount: 0,
           revokedCount: 0,
           timestamp: new Date().toISOString(),
@@ -214,20 +230,15 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
     (moduleSlug: string): boolean => {
       if (!activeOrgId) return false;
 
-      const sysMod = systemModules.find((m) => m.slug === moduleSlug);
-      const orgMod = orgModules.find((m) => m.slug === moduleSlug);
-
-      // Read whether the module is included in Pro plan
-      const isIncludedInPro = orgMod?.included_in_pro !== undefined
-        ? Boolean(orgMod.included_in_pro)
-        : Boolean(sysMod?.included_in_pro);
-
-      // 1. If organization is on Pro plan AND the module is marked as included in Pro:
-      if (isPro && isIncludedInPro) {
+      // 1. Evaluate tier-based Cloud Subscription entitlement
+      //    - Boutique Cloud unlocks: barcode, online_catalog, woocommerce
+      //    - Atelier Cloud (and legacy Pro) unlocks: all 5 modules (adds production & accounting)
+      if (isModuleIncludedInPlan(activeOrganization?.plan, moduleSlug)) {
         return true;
       }
 
-      // 2. Check purchased standalone organization module
+      // 2. Check purchased standalone organization module license (offline desktop add-ons or legacy grants)
+      const orgMod = orgModules.find((m) => m.slug === moduleSlug);
       if (!orgMod) return false;
 
       // Module MUST be active
@@ -241,7 +252,7 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       return true;
     },
-    [activeOrgId, isPro, systemModules, orgModules]
+    [activeOrgId, activeOrganization?.plan, orgModules]
   );
 
   /**
@@ -250,36 +261,43 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
   const activateLicense = useCallback(
     async (tokenString: string): Promise<{ success: boolean; message: string; module?: OrganizationModule }> => {
       if (!activeOrgId) {
-        return { success: false, message: 'سازمان فعالی یافت نشد.' };
+        return { success: false, message: 'No active organization found.' };
       }
 
       const trimmed = tokenString.trim();
       if (!trimmed) {
-        return { success: false, message: 'لطفاً کد لایسنس را وارد کنید.' };
+        return { success: false, message: 'Please enter a license key.' };
       }
 
       // Verify token
       const verification = await verifyLicenseTokenString(trimmed, activeOrgId, hardwareId);
       if (!verification.valid || !verification.payload) {
-        let msg = 'کد لایسنس نامعتبر است.';
+        let msg = 'Invalid license key.';
         if (verification.error === 'SIGNATURE_MISMATCH') {
-          msg = 'امضای دیجیتال لایسنس معتبر نیست و تغییر یافته است.';
+          msg = 'License digital signature is invalid or tampered with.';
         } else if (verification.error === 'ORGANIZATION_MISMATCH') {
-          msg = 'این لایسنس برای سازمان دیگری صادر شده است.';
+          msg = 'This license key was issued for another organization.';
         } else if (verification.error === 'HARDWARE_MISMATCH') {
-          msg = 'این لایسنس مختص به سخت‌افزار دیگری است.';
+          msg = 'This license key is bound to a different device.';
         } else if (verification.error === 'LICENSE_EXPIRED') {
-          msg = 'مدت اعتبار زمانی این لایسنس به پایان رسیده است.';
+          msg = 'This license key has expired.';
         }
         return { success: false, message: msg };
       }
 
       const { payload } = verification;
+      if (!isModuleOfflinePurchasable(payload.slug)) {
+        return {
+          success: false,
+          message:
+            'This cloud-hosted module requires an active Boutique or Atelier Cloud subscription instead of an offline license key.',
+        };
+      }
       const matchedSys = systemModules.find((m) => m.slug === payload.slug);
 
       const adapter = storageManager.getAdapter();
       if (!adapter.saveOrganizationModule) {
-        return { success: false, message: 'سیستم ذخیره‌سازی از فعال‌سازی ماژول پشتیبانی نمی‌کند.' };
+        return { success: false, message: 'Storage provider does not support module activation.' };
       }
 
       const saved = await adapter.saveOrganizationModule({
@@ -294,13 +312,13 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
         expires_at: payload.expires_at || null,
       });
 
-      // Background server sync to notify Directus if online
+      // Background server sync to notify cloud if online
       syncWithServer(true).catch(() => {});
 
       await loadModules(false);
       return {
         success: true,
-        message: `ماژول «${matchedSys?.name || payload.slug}» با موفقیت فعال شد.`,
+        message: `Module "${matchedSys?.name || payload.slug}" activated successfully.`,
         module: saved,
       };
     },
@@ -329,6 +347,8 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
     () => ({
       hasAccess,
       isPro,
+      isCloudPlan,
+      planTier,
       activeModules: orgModules,
       orgModules,
       systemModules,
@@ -344,6 +364,8 @@ export const ModuleAccessProvider: React.FC<{ children: React.ReactNode }> = ({ 
     [
       hasAccess,
       isPro,
+      isCloudPlan,
+      planTier,
       orgModules,
       systemModules,
       loading,

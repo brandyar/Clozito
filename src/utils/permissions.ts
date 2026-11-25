@@ -22,10 +22,10 @@ export interface RolePermissions {
 
 export interface RoleDefinition {
   key: UserRole;
-  labelFa: string;
   labelEn: string;
-  descriptionFa: string;
+  labelIt: string;
   descriptionEn: string;
+  descriptionIt: string;
   badgeVariant: 'primary' | 'secondary' | 'info' | 'warning' | 'neutral';
   permissions: RolePermissions;
 }
@@ -33,10 +33,10 @@ export interface RoleDefinition {
 export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   owner: {
     key: 'owner',
-    labelFa: 'مالک سازمان',
     labelEn: 'Organization Owner',
-    descriptionFa: 'دسترسی کامل به تمام امکانات سیستم، مدیریت مالی، اعضا و تنظیمات سازمان',
+    labelIt: 'Proprietario Organizzazione',
     descriptionEn: 'Full access to all system features, financial management, team members, and organization settings.',
+    descriptionIt: 'Accesso completo a tutte le funzionalità, gestione finanziaria, membri del team e impostazioni dell’organizzazione.',
     badgeVariant: 'primary',
     permissions: {
       canManageOrgSettings: true,
@@ -60,10 +60,10 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   },
   manager: {
     key: 'manager',
-    labelFa: 'مدیر فروشگاه',
     labelEn: 'Store Manager',
-    descriptionFa: 'مدیر کل فروشگاه و انبار، ثبت و ویرایش محصولات، سفارشات و خریدها (بدون دسترسی به تنظیمات اصلی سازمان و حذف اعضا)',
+    labelIt: 'Responsabile Negozio',
     descriptionEn: 'Store and warehouse management, products, orders, and purchasing (excluding organization settings and member deletion).',
+    descriptionIt: 'Gestione negozio e magazzino, prodotti, ordini e acquisti (escluse impostazioni organizzazione ed eliminazione membri).',
     badgeVariant: 'info',
     permissions: {
       canManageOrgSettings: false,
@@ -87,10 +87,10 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   },
   warehouse: {
     key: 'warehouse',
-    labelFa: 'انباردار',
     labelEn: 'Warehouse Manager',
-    descriptionFa: 'دسترسی کامل به مدیریت موجودی انبار، انبارها، جایگاه‌ها، انتقال کالا، چاپ بارکد و رسید سفارشات خرید',
+    labelIt: 'Responsabile Magazzino',
     descriptionEn: 'Full inventory control, warehouses, bins/locations, stock transfers, barcode printing, and purchase receipts.',
+    descriptionIt: 'Controllo completo dell’inventario, magazzini, ubicazioni, trasferimenti merce, stampa codici a barre e ricezione acquisti.',
     badgeVariant: 'secondary',
     permissions: {
       canManageOrgSettings: false,
@@ -114,10 +114,10 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   },
   sales: {
     key: 'sales',
-    labelFa: 'فروشنده / صندوق‌دار',
     labelEn: 'Sales Representative',
-    descriptionFa: 'دسترسی به مشاهده محصولات، مشتریان و ثبت سفارشات فروش جدید (بدون دسترسی به تنظیمات انبار و خرید)',
+    labelIt: 'Addetto Vendite / Cassa',
     descriptionEn: 'Access to catalog products, customers, and creating sales orders (without inventory/purchasing administration).',
+    descriptionIt: 'Accesso a catalogo prodotti, clienti e creazione ordini di vendita (senza amministrazione magazzino e acquisti).',
     badgeVariant: 'warning',
     permissions: {
       canManageOrgSettings: false,
@@ -141,10 +141,10 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   },
   viewer: {
     key: 'viewer',
-    labelFa: 'مشاهده‌گر',
     labelEn: 'Viewer',
-    descriptionFa: 'فقط مشاهده کاتالوگ محصولات، موجودی‌ها و راهنمای سایز (بدون قابلیت تغییر داده‌ها)',
+    labelIt: 'Osservatore',
     descriptionEn: 'Read-only access to catalog products, inventory levels, and size guides (no write permissions).',
+    descriptionIt: 'Accesso in sola lettura a catalogo prodotti, livelli di inventario e guide taglie (nessun permesso di modifica).',
     badgeVariant: 'neutral',
     permissions: {
       canManageOrgSettings: false,
@@ -168,14 +168,12 @@ export const ROLE_DEFINITIONS: Record<UserRole, RoleDefinition> = {
   },
 };
 
-
 export function getRolePermissions(role?: string | null): RolePermissions {
   if (!role) return ROLE_DEFINITIONS.owner.permissions;
   const normalizedRole = role.toLowerCase();
   if (ROLE_DEFINITIONS[normalizedRole as UserRole]) {
     return ROLE_DEFINITIONS[normalizedRole as UserRole].permissions;
   }
-  // Admin or Administrator mapping
   if (normalizedRole === 'admin' || normalizedRole === 'administrator') {
     return ROLE_DEFINITIONS.owner.permissions;
   }
@@ -194,12 +192,12 @@ export function getRoleDefinition(role?: string | null): RoleDefinition {
   return ROLE_DEFINITIONS.viewer;
 }
 
-export function getRoleLabel(role?: string | null, isPersian = true): string {
+export function getRoleLabel(role?: string | null, locale: string = 'en'): string {
   const def = getRoleDefinition(role);
-  return isPersian ? def.labelFa : def.labelEn;
+  return locale === 'it' ? def.labelIt : def.labelEn;
 }
 
-export function getRoleDescription(role?: string | null, isPersian = true): string {
+export function getRoleDescription(role?: string | null, locale: string = 'en'): string {
   const def = getRoleDefinition(role);
-  return isPersian ? def.descriptionFa : def.descriptionEn;
+  return locale === 'it' ? def.descriptionIt : def.descriptionEn;
 }

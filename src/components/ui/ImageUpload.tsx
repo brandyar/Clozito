@@ -83,14 +83,14 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
     const hasValidExt = /\.(png|jpe?g|webp|svg|gif)$/i.test(file.name);
 
     if (!file.type.startsWith('image/') && !validMimes.includes(file.type) && !hasValidExt) {
-      setError(t('common.imageFileTypeError', 'لطفاً یک فایل تصویری معتبر (PNG, JPG, WEBP, SVG) انتخاب کنید.'));
+      setError(t('common.imageFileTypeError', 'Please select a valid image file (PNG, JPG, WEBP, SVG).'));
       return;
     }
 
     const maxBytes = effectiveMaxMB * 1024 * 1024;
     if (file.size > maxBytes) {
       const formattedLimit = t('common.imageFileSizeErrorCustom', { size: effectiveMaxMB });
-      setError(formattedLimit || `حجم فایل تصویر نباید بیش از ${effectiveMaxMB} مگابایت باشد.`);
+      setError(formattedLimit || `Image file size must not exceed ${effectiveMaxMB} MB.`);
       return;
     }
 
@@ -161,11 +161,11 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             </div>
             {resolvedDisplayUrl ? (
               <span className="text-[10px] font-medium text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200/60 dark:border-emerald-800/40 px-2 py-0.5 rounded-md shrink-0">
-                {t('common.registered', 'ثبت‌شده')}
+                {t('common.registered', 'Saved')}
               </span>
             ) : (
               <span className="text-[10px] font-medium text-neutral-400 dark:text-neutral-500 bg-neutral-100 dark:bg-neutral-800/60 px-1.5 py-0.5 rounded-md shrink-0">
-                {t('common.empty', 'خالی')}
+                {t('common.empty', 'Empty')}
               </span>
             )}
           </div>
@@ -198,7 +198,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             ) : (
               <div className="flex flex-col items-center justify-center text-neutral-400 dark:text-neutral-500">
                 <ImageIcon className="w-5 h-5 stroke-1.5" />
-                <span className="text-[8.5px] mt-0.5 font-medium">{placeholderText || t('common.image', 'تصویر')}</span>
+                <span className="text-[8.5px] mt-0.5 font-medium">{placeholderText || t('common.image', 'Image')}</span>
               </div>
             )}
 
@@ -227,8 +227,8 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
                 <Upload className="w-3 h-3" />
                 <span>
                   {resolvedDisplayUrl
-                    ? (changeText || t('common.changeImage', 'تغییر'))
-                    : (uploadText || t('common.uploadImage', 'بارگذاری'))}
+                    ? (changeText || t('common.changeImage', 'Change'))
+                    : (uploadText || t('common.uploadImage', 'Upload'))}
                 </span>
               </button>
 
@@ -246,7 +246,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
                   className="inline-flex items-center gap-0.5 px-2 py-1 text-[11px] font-medium text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-lg transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <X className="w-3 h-3" />
-                  <span>{removeText || t('common.delete', 'حذف')}</span>
+                  <span>{removeText || t('common.delete', 'Remove')}</span>
                 </button>
               )}
             </div>
@@ -374,7 +374,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
             <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300">
               {effectiveLabel}
             </label>
-            <span className="text-[10px] text-neutral-400">حداکثر {effectiveMaxMB}MB</span>
+            <span className="text-[10px] text-neutral-400">Max {effectiveMaxMB}MB</span>
           </div>
         )}
         <div className="flex items-center gap-3">
@@ -475,7 +475,7 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({
                 {t('common.clickOrDragImage')}
               </p>
               <p className="text-[11px] text-neutral-400 dark:text-neutral-500">
-                {t('common.autoConvertWebp')} (حداکثر {effectiveMaxMB}MB)
+                {t('common.autoConvertWebp')} (Max {effectiveMaxMB}MB)
               </p>
             </>
           )}

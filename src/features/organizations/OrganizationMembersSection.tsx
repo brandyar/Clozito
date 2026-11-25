@@ -40,7 +40,7 @@ import {
 
 export const OrganizationMembersSection: React.FC = () => {
   const { t, locale } = useTranslation();
-  const isPersian = false;
+  const isIt = locale === 'it';
   const {
     activeOrganization,
     organizationUsers,
@@ -130,17 +130,17 @@ export const OrganizationMembersSection: React.FC = () => {
   const handleSaveMember = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() && !firstName.trim()) {
-      alert(isPersian ? 'لطفاً نام یا ایمیل عضو را وارد کنید.' : 'Please enter name or email.');
+      alert(isIt ? 'Inserisci il nome o l\'email del membro.' : 'Please enter member name or email.');
       return;
     }
 
     if (!editingMember && !password.trim()) {
-      alert(isPersian ? 'لطفاً رمز عبور ورود را تعیین کنید.' : 'Please set a password.');
+      alert(isIt ? 'Imposta una password di accesso.' : 'Please set a login password.');
       return;
     }
 
     if (password.trim() && password.trim().length < 6) {
-      alert(isPersian ? 'رمز عبور باید حداقل ۶ کاراکتر باشد.' : 'Password must be at least 6 characters.');
+      alert(isIt ? 'La password deve contenere almeno 6 caratteri.' : 'Password must be at least 6 characters.');
       return;
     }
 
@@ -161,7 +161,7 @@ export const OrganizationMembersSection: React.FC = () => {
       });
       setIsModalOpen(false);
     } catch (err: any) {
-      alert(isPersian ? `خطا در ذخیره‌سازی: ${err.message}` : `Save error: ${err.message}`);
+      alert(isIt ? `Errore di salvataggio: ${err.message}` : `Save error: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -173,7 +173,7 @@ export const OrganizationMembersSection: React.FC = () => {
       await deleteOrganizationUser(id);
       setDeleteConfirmId(null);
     } catch (err: any) {
-      alert(isPersian ? `خطا در حذف: ${err.message}` : `Delete error: ${err.message}`);
+      alert(isIt ? `Errore di eliminazione: ${err.message}` : `Delete error: ${err.message}`);
     } finally {
       setIsSaving(false);
     }
@@ -204,11 +204,11 @@ export const OrganizationMembersSection: React.FC = () => {
   const getStatusBadge = (s: Status) => {
     switch (s) {
       case 'active':
-        return <Badge variant="success">{isPersian ? 'فعال' : 'Active'}</Badge>;
+        return <Badge variant="success">{isIt ? 'Attivo' : 'Active'}</Badge>;
       case 'invited':
-        return <Badge variant="warning">{isPersian ? 'دعوت‌شده' : 'Invited'}</Badge>;
+        return <Badge variant="warning">{isIt ? 'Invitato' : 'Invited'}</Badge>;
       case 'suspended':
-        return <Badge variant="danger">{isPersian ? 'تعلیق‌شده' : 'Suspended'}</Badge>;
+        return <Badge variant="danger">{isIt ? 'Sospeso' : 'Suspended'}</Badge>;
       default:
         return <Badge variant="neutral">{s}</Badge>;
     }
@@ -218,10 +218,10 @@ export const OrganizationMembersSection: React.FC = () => {
     <div className="space-y-6">
       {/* Header and Add Action */}
       <Card
-        title={isPersian ? 'مدیریت اعضا و دسترسی‌های سازمان' : 'Organization Members & Roles'}
+        title={isIt ? 'Membri e ruoli dell\'organizzazione' : 'Organization Members & Roles'}
         subtitle={
-          isPersian
-            ? `کاربران عضو سازمان «${activeOrganization?.name || ''}» و تعیین سطوح دسترسی کارمندان`
+          isIt
+            ? `Membri di "${activeOrganization?.name || ''}" e assegnazione dei livelli di accesso`
             : `Members of "${activeOrganization?.name || ''}" and employee access level assignments`
         }
         action={
@@ -232,7 +232,7 @@ export const OrganizationMembersSection: React.FC = () => {
               onClick={handleOpenCreateModal}
               icon={<UserPlus className="w-4 h-4" />}
             >
-              {isPersian ? 'افزودن / دعوت عضو جدید' : 'Add / Invite New Member'}
+              {isIt ? 'Aggiungi / Invita membro' : 'Add / Invite New Member'}
             </Button>
           )
         }
@@ -242,8 +242,8 @@ export const OrganizationMembersSection: React.FC = () => {
             <div className="flex items-center gap-2.5 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/60 text-amber-800 dark:text-amber-300 text-xs rounded-xl">
               <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <span>
-                {isPersian
-                  ? 'شما دسترسی کافی جهت افزودن یا تغییر نقش اعضای سازمان را ندارید. ویرایش اعضا نیازمند نقش مالک یا مدیر است.'
+                {isIt
+                  ? 'Non hai i permessi per gestire i membri del team. La modifica richiede il ruolo Proprietario o Manager.'
                   : 'You do not have permissions to manage team members. Editing members requires Owner or Manager role.'}
               </span>
             </div>
@@ -256,7 +256,7 @@ export const OrganizationMembersSection: React.FC = () => {
               type="text"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder={isPersian ? 'جستجو بر اساس نام یا ایمیل عضو...' : 'Search by member name or email...'}
+              placeholder={isIt ? 'Cerca per nome o email del membro...' : 'Search by member name or email...'}
               className="w-full ps-9 pe-4 py-2 text-xs bg-neutral-50 dark:bg-neutral-800/60 border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-[#13151a] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 transition-all"
             />
           </div>
@@ -267,10 +267,10 @@ export const OrganizationMembersSection: React.FC = () => {
               <div className="col-span-full py-10 text-center border border-dashed border-neutral-200 dark:border-neutral-800 rounded-2xl bg-neutral-50/50 dark:bg-neutral-900/30">
                 <Users className="w-10 h-10 text-neutral-300 dark:text-neutral-700 mx-auto mb-2" />
                 <p className="text-xs font-bold text-neutral-700 dark:text-neutral-300">
-                  {isPersian ? 'عضوی با این مشخصات یافت نشد' : 'No members found'}
+                  {isIt ? 'Nessun membro trovato' : 'No members found'}
                 </p>
                 <p className="text-[11px] text-neutral-400 dark:text-neutral-500 mt-1">
-                  {isPersian ? 'با کلیک روی «افزودن عضو جدید» کارمندان خود را اضافه کنید.' : 'Click "Add / Invite New Member" to add team members.'}
+                  {isIt ? 'Clicca su "Aggiungi / Invita membro" per aggiungere collaboratori.' : 'Click "Add / Invite New Member" to add team members.'}
                 </p>
               </div>
             ) : (
@@ -291,13 +291,13 @@ export const OrganizationMembersSection: React.FC = () => {
                             <h4 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
                               {member.first_name || member.last_name
                                 ? `${member.first_name || ''} ${member.last_name || ''}`
-                                : (isPersian ? 'کاربر بدون نام' : 'Unnamed User')}
+                                : (isIt ? 'Utente senza nome' : 'Unnamed User')}
                             </h4>
                             {getStatusBadge(member.status)}
                           </div>
                           <p className="text-[11px] text-neutral-500 dark:text-neutral-400 font-mono mt-0.5 flex items-center gap-1">
                             <Mail className="w-3 h-3 text-neutral-400 dark:text-neutral-500" />
-                            <span>{member.email || (isPersian ? 'بدون ایمیل' : 'No Email')}</span>
+                            <span>{member.email || (isIt ? 'Nessuna email' : 'No Email')}</span>
                           </p>
                         </div>
                       </div>
@@ -308,7 +308,7 @@ export const OrganizationMembersSection: React.FC = () => {
                             type="button"
                             onClick={() => handleOpenEditModal(member)}
                             className="p-1.5 text-neutral-400 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg transition-colors cursor-pointer"
-                            title={isPersian ? 'ویرایش دسترسی' : 'Edit Member'}
+                            title={isIt ? 'Modifica membro' : 'Edit Member'}
                           >
                             <Edit3 className="w-4 h-4" />
                           </button>
@@ -317,7 +317,7 @@ export const OrganizationMembersSection: React.FC = () => {
                               type="button"
                               onClick={() => setDeleteConfirmId(member.id)}
                               className="p-1.5 text-neutral-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors cursor-pointer"
-                              title={isPersian ? 'حذف عضو' : 'Remove Member'}
+                              title={isIt ? 'Rimuovi membro' : 'Remove Member'}
                             >
                               <Trash2 className="w-4 h-4" />
                             </button>
@@ -336,7 +336,7 @@ export const OrganizationMembersSection: React.FC = () => {
                               {(() => {
                                 const rawWhId = typeof member.warehouse_id === 'object' && member.warehouse_id ? (member.warehouse_id as any).id : member.warehouse_id;
                                 const wh = warehouses.find((w) => w.id === Number(rawWhId));
-                                return wh ? wh.name : `${isPersian ? 'انبار #' : 'Warehouse #'}${rawWhId}`;
+                                return wh ? wh.name : `${isIt ? 'Magazzino #' : 'Warehouse #'}${rawWhId}`;
                               })()}
                             </span>
                           </span>
@@ -349,7 +349,7 @@ export const OrganizationMembersSection: React.FC = () => {
                               {(() => {
                                 const rawAccId = typeof member.financial_account_id === 'object' && member.financial_account_id ? (member.financial_account_id as any).id : member.financial_account_id;
                                 const acc = financialAccounts.find((a) => a.id === Number(rawAccId));
-                                return acc ? acc.name : `${isPersian ? 'حساب #' : 'Account #'}${rawAccId}`;
+                                return acc ? acc.name : `${isIt ? 'Conto #' : 'Account #'}${rawAccId}`;
                               })()}
                             </span>
                           </span>
@@ -358,7 +358,7 @@ export const OrganizationMembersSection: React.FC = () => {
                         {member.can_change_warehouse === false && (
                           <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-neutral-100 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400 text-[10px] font-bold">
                             <Lock className="w-3 h-3 text-neutral-400" />
-                            <span>{isPersian ? 'انبار قفل‌شده' : 'Locked Branch'}</span>
+                            <span>{isIt ? 'Sede bloccata' : 'Locked Branch'}</span>
                           </span>
                         )}
                       </div>
@@ -369,11 +369,11 @@ export const OrganizationMembersSection: React.FC = () => {
                       <div className="flex items-center gap-1.5">
                         {getRoleIcon(member.role)}
                         <span className="font-bold text-neutral-800 dark:text-neutral-200">
-                          {isPersian ? roleDef.labelFa : roleDef.labelEn}
+                          {isIt ? roleDef.labelIt : roleDef.labelEn}
                         </span>
                       </div>
                       <span className="text-neutral-400 dark:text-neutral-500 text-[10px] font-mono">
-                        {isPersian ? 'عضویت:' : 'Joined:'} {formatDate(member.date_joined || new Date().toISOString())}
+                        {isIt ? 'Iscritto:' : 'Joined:'} {formatDate(member.date_joined || new Date().toISOString(), false, locale)}
                       </span>
                     </div>
                   </div>
@@ -492,45 +492,55 @@ export const OrganizationMembersSection: React.FC = () => {
       <Modal
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
-        title={editingMember ? (isPersian ? 'ویرایش سطح دسترسی عضو' : 'Edit Member Access') : (isPersian ? 'افزودن یا دعوت عضو جدید به سازمان' : 'Add or Invite New Member')}
+        title={
+          editingMember
+            ? (isIt ? 'Modifica accesso membro' : 'Edit Member Access')
+            : (isIt ? 'Aggiungi o invita nuovo membro' : 'Add or Invite New Member')
+        }
         maxWidth="lg"
       >
         <form onSubmit={handleSaveMember} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label="نام *"
+              label={`${isIt ? 'Nome' : 'First Name'} *`}
               value={firstName}
               onChange={(e) => setFirstName(e.target.value)}
-              placeholder="مثلاً: علی"
+              placeholder={isIt ? 'es. Marco' : 'e.g. Marco'}
               required
             />
             <Input
-              label="نام خانوادگی"
+              label={isIt ? 'Cognome' : 'Last Name'}
               value={lastName}
               onChange={(e) => setLastName(e.target.value)}
-              placeholder="مثلاً: رضایی"
+              placeholder={isIt ? 'es. Rossi' : 'e.g. Rossi'}
             />
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label="آدرس ایمیل *"
+              label={`${isIt ? 'Indirizzo Email' : 'Email Address'} *`}
               type="email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="ali@example.com"
+              placeholder="marco@example.com"
               required
             />
             <div>
               <label className="block text-xs font-semibold text-neutral-800 dark:text-neutral-200 mb-1">
-                {editingMember ? 'رمز عبور جدید (اختیاری)' : 'رمز عبور ورود *'}
+                {editingMember
+                  ? (isIt ? 'Nuova password (opzionale)' : 'New Password (Optional)')
+                  : (isIt ? 'Password di accesso *' : 'Login Password *')}
               </label>
               <div className="relative">
                 <input
                   type={showPassword ? 'text' : 'password'}
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  placeholder={editingMember ? 'جهت تغییر رمز عبور وارد کنید' : 'حداقل ۶ کاراکتر'}
+                  placeholder={
+                    editingMember
+                      ? (isIt ? 'Inserisci per modificare la password' : 'Enter to change password')
+                      : (isIt ? 'Minimo 6 caratteri' : 'At least 6 characters')
+                  }
                   className="w-full ps-3 pe-9 py-2 text-xs bg-neutral-50 dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-[#181a20] text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 dark:placeholder-neutral-500 font-mono tracking-wider transition-all"
                   required={!editingMember}
                   minLength={6}
@@ -539,7 +549,7 @@ export const OrganizationMembersSection: React.FC = () => {
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
                   className="absolute end-2.5 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200 cursor-pointer p-1"
-                  title={showPassword ? 'مخفی‌سازی رمز عبور' : 'نمایش رمز عبور'}
+                  title={showPassword ? (isIt ? 'Nascondi password' : 'Hide password') : (isIt ? 'Mostra password' : 'Show password')}
                 >
                   {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
                 </button>
@@ -549,26 +559,26 @@ export const OrganizationMembersSection: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Select
-              label="نقش و سطح دسترسی *"
+              label={`${isIt ? 'Ruolo e livello di accesso' : 'Role & Access Level'} *`}
               value={role}
               onChange={(e) => setRole(e.target.value as UserRole)}
               options={[
-                { value: 'owner', label: 'مالک سازمان (Owner)' },
-                { value: 'manager', label: 'مدیر فروشگاه (Store Manager)' },
-                { value: 'warehouse', label: 'انباردار (Warehouse)' },
-                { value: 'sales', label: 'فروشنده / صندوق‌دار (Sales)' },
-                { value: 'viewer', label: 'مشاهده‌گر (Viewer)' },
+                { value: 'owner', label: isIt ? 'Proprietario (Owner)' : 'Organization Owner (Owner)' },
+                { value: 'manager', label: isIt ? 'Responsabile negozio (Manager)' : 'Store Manager (Manager)' },
+                { value: 'warehouse', label: isIt ? 'Magazziniere (Warehouse)' : 'Warehouse Staff (Warehouse)' },
+                { value: 'sales', label: isIt ? 'Vendite / Cassa (Sales)' : 'Sales / Cashier (Sales)' },
+                { value: 'viewer', label: isIt ? 'Visualizzatore (Viewer)' : 'Read-Only Viewer (Viewer)' },
               ]}
             />
 
             <Select
-              label="وضعیت حساب عضو"
+              label={isIt ? 'Stato account membro' : 'Member Account Status'}
               value={status}
               onChange={(e) => setStatus(e.target.value as Status)}
               options={[
-                { value: 'active', label: 'فعال (Active)' },
-                { value: 'invited', label: 'دعوت‌نامه ارسال شده (Invited)' },
-                { value: 'suspended', label: 'تعلیق شده (Suspended)' },
+                { value: 'active', label: isIt ? 'Attivo (Active)' : 'Active' },
+                { value: 'invited', label: isIt ? 'Invitato (Invited)' : 'Invited' },
+                { value: 'suspended', label: isIt ? 'Sospeso (Suspended)' : 'Suspended' },
               ]}
             />
           </div>
@@ -578,44 +588,44 @@ export const OrganizationMembersSection: React.FC = () => {
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
                 <Building2 className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-                <span>{isPersian ? 'اختصاص شعبه، انبار و صندوق به کاربر' : 'Branch & POS Assignment'}</span>
+                <span>{isIt ? 'Assegnazione sede, magazzino e cassa POS' : 'Branch & POS Assignment'}</span>
               </span>
               <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                {isPersian ? 'تنظیمات صندوق فروشگاهی' : 'POS Settings'}
+                {isIt ? 'Impostazioni POS' : 'POS Settings'}
               </span>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Select
-                label={isPersian ? 'انبار / شعبه پیش‌فرض کاربر' : 'Default Warehouse / Branch'}
+                label={isIt ? 'Magazzino / Sede predefinita' : 'Default Warehouse / Branch'}
                 value={String(warehouseId)}
                 onChange={(e) => setWarehouseId(Number(e.target.value) || '')}
                 options={[
-                  { value: '', label: isPersian ? 'بدون انبار پیش‌فرض (همه انبارها)' : 'No Default (All Warehouses)' },
+                  { value: '', label: isIt ? 'Nessun predefinito (Tutti i magazzini)' : 'No Default (All Warehouses)' },
                   ...warehouses.map((w) => ({
                     value: String(w.id),
-                    label: `${w.name} ${w.is_default ? (isPersian ? '(اصلی)' : '(Main)') : ''}`,
+                    label: `${w.name} ${w.is_default ? (isIt ? '(Principale)' : '(Main)') : ''}`,
                   })),
                 ]}
               />
 
               {hasAccounting ? (
                 <Select
-                  label={isPersian ? 'صندوق نقدی یا دستگاه پوز پیش‌فرض' : 'Default Cashbox / POS Account'}
+                  label={isIt ? 'Cassa o conto POS predefinito' : 'Default Cashbox / POS Account'}
                   value={String(financialAccountId)}
                   onChange={(e) => setFinancialAccountId(Number(e.target.value) || '')}
                   options={[
-                    { value: '', label: isPersian ? 'بدون صندوق اختصاصی (انتخاب آزاد)' : 'No Dedicated Cashbox' },
+                    { value: '', label: isIt ? 'Nessuna cassa dedicata' : 'No Dedicated Cashbox' },
                     ...financialAccounts.map((a) => ({
                       value: String(a.id),
-                      label: `${a.name} (${a.type === 'cashbox' ? 'صندوق' : a.type === 'pos' ? 'پوز' : 'بانک'})`,
+                      label: `${a.name} (${a.type === 'cashbox' ? (isIt ? 'Cassa' : 'Cashbox') : a.type === 'pos' ? 'POS' : (isIt ? 'Banca' : 'Bank')})`,
                     })),
                   ]}
                 />
               ) : (
                 <div className="p-2.5 rounded-xl bg-neutral-100/70 dark:bg-neutral-800/40 border border-neutral-200 dark:border-neutral-700 text-[11px] text-neutral-500 flex items-center gap-1.5">
                   <Lock className="w-3.5 h-3.5 text-neutral-400 shrink-0" />
-                  <span>{isPersian ? 'اختصاص صندوق با فعال بودن ماژول حسابداری در دسترس است.' : 'Cashbox assignment requires Accounting module.'}</span>
+                  <span>{isIt ? 'L\'assegnazione della cassa richiede il modulo Contabilità.' : 'Cashbox assignment requires Accounting module.'}</span>
                 </div>
               )}
             </div>
@@ -635,11 +645,11 @@ export const OrganizationMembersSection: React.FC = () => {
                   ) : (
                     <Lock className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                   )}
-                  <span>{isPersian ? 'اجازه تغییر انبار در ثبت سفارش / فاکتور فروش' : 'Allow changing warehouse on Order creation'}</span>
+                  <span>{isIt ? 'Consenti cambio magazzino durante la creazione ordini' : 'Allow changing warehouse on Order creation'}</span>
                 </span>
                 <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
-                  {isPersian
-                    ? 'اگر این گزینه غیرفعال باشد، کاربر فقط می‌تواند از انبار اختصاص‌داده‌شده فاکتور صادر کند و امکان انتخاب انبار دیگر را نخواهد داشت.'
+                  {isIt
+                    ? 'Se disabilitato, il cassiere è vincolato al magazzino assegnato durante la creazione degli ordini.'
                     : 'If disabled, cashier is strictly locked to their assigned warehouse during order creation.'}
                 </p>
               </div>
@@ -651,13 +661,13 @@ export const OrganizationMembersSection: React.FC = () => {
             <div className="font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
               <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span>
-                {isPersian
-                  ? `اختیارات نقش انتخاب شده (${ROLE_DEFINITIONS[role]?.labelFa}):`
+                {isIt
+                  ? `Permessi del ruolo selezionato (${ROLE_DEFINITIONS[role]?.labelIt}):`
                   : `Selected Role Permissions (${ROLE_DEFINITIONS[role]?.labelEn}):`}
               </span>
             </div>
             <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">
-              {isPersian ? ROLE_DEFINITIONS[role]?.descriptionFa : ROLE_DEFINITIONS[role]?.descriptionEn}
+              {isIt ? ROLE_DEFINITIONS[role]?.descriptionIt : ROLE_DEFINITIONS[role]?.descriptionEn}
             </p>
           </div>
 
@@ -666,7 +676,7 @@ export const OrganizationMembersSection: React.FC = () => {
               {t('common.cancel')}
             </Button>
             <Button variant="primary" type="submit" isLoading={isSaving}>
-              {isPersian ? 'ذخیره تغییرات عضو' : 'Save Member Changes'}
+              {isIt ? 'Salva modifiche membro' : 'Save Member Changes'}
             </Button>
           </div>
         </form>
@@ -677,13 +687,13 @@ export const OrganizationMembersSection: React.FC = () => {
         <Modal
           isOpen={true}
           onClose={() => setDeleteConfirmId(null)}
-          title={isPersian ? 'تایید حذف عضو از سازمان' : 'Confirm Remove Member'}
+          title={isIt ? 'Conferma rimozione membro' : 'Confirm Remove Member'}
           maxWidth="sm"
         >
           <div className="space-y-4">
             <p className="text-xs text-neutral-700 dark:text-neutral-300">
-              {isPersian
-                ? 'آیا از حذف این کاربر از لیست اعضای سازمان اطمینان دارید؟ این کاربر دیگر به اطلاعات و منوهای این سازمان دسترسی نخواهد داشت.'
+              {isIt
+                ? 'Sei sicuro di voler rimuovere questo membro? Non avrà più accesso a questa organizzazione.'
                 : 'Are you sure you want to remove this member? They will no longer have access to this organization.'}
             </p>
             <div className="flex items-center justify-end gap-2 pt-2">
@@ -696,7 +706,7 @@ export const OrganizationMembersSection: React.FC = () => {
                 onClick={() => handleDeleteMember(deleteConfirmId)}
                 isLoading={isSaving}
               >
-                {isPersian ? 'حذف عضو' : 'Remove Member'}
+                {isIt ? 'Rimuovi membro' : 'Remove Member'}
               </Button>
             </div>
           </div>

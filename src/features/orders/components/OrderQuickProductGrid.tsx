@@ -22,6 +22,7 @@ interface OrderQuickProductGridProps {
   onAddToCart: (variant: ProductVariant) => void;
   isLoading: boolean;
   onOpenWebcamScanner?: () => void;
+  currency?: string;
 }
 
 export const OrderQuickProductGrid: React.FC<OrderQuickProductGridProps> = ({
@@ -40,8 +41,10 @@ export const OrderQuickProductGrid: React.FC<OrderQuickProductGridProps> = ({
   onAddToCart,
   isLoading,
   onOpenWebcamScanner,
+  currency = 'EUR',
 }) => {
   const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const isPersian = false;
 
   // Catalog Pagination
@@ -70,7 +73,7 @@ export const OrderQuickProductGrid: React.FC<OrderQuickProductGridProps> = ({
             type="text"
             value={productSearch}
             onChange={(e) => setProductSearch(e.target.value)}
-            placeholder={t('orders.searchAndScanPlaceholder') || 'جستجوی کالا، اسکن بارکد یا کد SKU...'}
+            placeholder={t('orders.searchAndScanPlaceholder') || (isIt ? 'Cerca prodotto, scansiona codice a barre o SKU...' : 'Search product, scan barcode or SKU...')}
             className="w-full ps-9 pe-32 sm:pe-36 py-2.5 bg-[#fafafa] dark:bg-[#181a20] border border-[#ebebeb] dark:border-neutral-700 focus:border-[#171717] dark:focus:border-neutral-400 focus:bg-white dark:focus:bg-[#13151a] rounded-xl text-xs text-[#171717] dark:text-neutral-100 placeholder:text-[#a1a1a1] dark:placeholder:text-neutral-500 focus:outline-none transition-all shadow-inner"
           />
           <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none text-neutral-400">
@@ -83,7 +86,7 @@ export const OrderQuickProductGrid: React.FC<OrderQuickProductGridProps> = ({
                 type="button"
                 onClick={() => setProductSearch('')}
                 className="p-1 text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
-                title="پاک کردن"
+                title={isIt ? 'Pulisci' : 'Clear'}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -221,7 +224,7 @@ export const OrderQuickProductGrid: React.FC<OrderQuickProductGridProps> = ({
                 <div className="pt-2 border-t border-[#ebebeb] dark:border-neutral-800 flex items-center justify-between">
                   <div>
                     <div className="font-bold text-[#171717] dark:text-neutral-100 text-xs font-mono">
-                      {formatCurrency(v.price, 'TOMAN', isPersian)}
+                      {formatCurrency(v.price, currency, isPersian)}
                     </div>
                     <div className={`text-[10px] font-mono mt-0.5 ${
                       stock > 5
@@ -263,17 +266,13 @@ export const OrderQuickProductGrid: React.FC<OrderQuickProductGridProps> = ({
               disabled={currentPage <= 1}
               onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
               className="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800"
-              title={isPersian ? 'صفحه قبلی' : 'Previous Page'}
+              title={isIt ? 'Pagina precedente' : 'Previous Page'}
             >
-              {isPersian ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+              <ChevronLeft className="w-4 h-4" />
             </button>
 
             <span className="text-neutral-600 dark:text-neutral-400 font-mono text-[11px]">
-              {isPersian ? (
-                <>صفحه {toPersianDigits(currentPage)} از {toPersianDigits(totalPages)}</>
-              ) : (
-                <>Page {currentPage} of {totalPages}</>
-              )}
+              {isIt ? `Pagina ${currentPage} di ${totalPages}` : `Page ${currentPage} of ${totalPages}`}
             </span>
 
             <button
@@ -281,14 +280,14 @@ export const OrderQuickProductGrid: React.FC<OrderQuickProductGridProps> = ({
               disabled={currentPage >= totalPages}
               onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               className="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 text-neutral-700 dark:text-neutral-200 disabled:opacity-30 disabled:cursor-not-allowed hover:bg-neutral-50 dark:hover:bg-neutral-800"
-              title={isPersian ? 'صفحه بعدی' : 'Next Page'}
+              title={isIt ? 'Pagina successiva' : 'Next Page'}
             >
-              {isPersian ? <ChevronLeft className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+              <ChevronRight className="w-4 h-4" />
             </button>
           </div>
 
           <div className="flex items-center gap-1.5 text-[11px] text-neutral-500">
-            <span>{isPersian ? 'تعداد در صفحه:' : 'Per page:'}</span>
+            <span>{isIt ? 'Per pagina:' : 'Per page:'}</span>
             {[12, 24, 48].map((size) => (
               <button
                 key={`ps_${size}`}

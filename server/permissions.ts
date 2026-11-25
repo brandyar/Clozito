@@ -63,13 +63,13 @@ export function checkRolePermission(
   if (role === 'viewer') {
     return {
       allowed: false,
-      message: 'دسترسی فقط مشاهده (Viewer): امکان ثبت، ویرایش یا حذف اطلاعات وجود ندارد.',
+      message: 'Viewer role (read-only): creating, updating, or deleting records is not permitted.',
     };
   }
 
   if (role === 'sales') {
     if (action === 'delete') {
-      return { allowed: false, message: 'نقش فروشنده (Sales) اجازه حذف اطلاعات را ندارد.' };
+      return { allowed: false, message: 'Sales role is not permitted to delete records.' };
     }
     const salesAllowedCollections = [
       'orders',
@@ -87,7 +87,7 @@ export function checkRolePermission(
     if (!salesAllowedCollections.includes(collection)) {
       return {
         allowed: false,
-        message: `نقش فروشنده (Sales) مجاز به انجام عملیات روی «${collection}» نیست.`,
+        message: `Sales role is not permitted to perform operations on "${collection}".`,
       };
     }
     return { allowed: true };
@@ -101,7 +101,7 @@ export function checkRolePermission(
         collection === 'organizations' ||
         collection === 'organization_users')
     ) {
-      return { allowed: false, message: 'نقش انباردار (Warehouse) اجازه حذف این بخش را ندارد.' };
+      return { allowed: false, message: 'Warehouse role is not permitted to delete records in this section.' };
     }
     const warehouseRestrictedCollections = [
       'orders',
@@ -115,7 +115,7 @@ export function checkRolePermission(
     if (warehouseRestrictedCollections.includes(collection)) {
       return {
         allowed: false,
-        message: `نقش انباردار (Warehouse) مجاز به تغییرات روی «${collection}» نیست.`,
+        message: `Warehouse role is not permitted to modify "${collection}".`,
       };
     }
     return { allowed: true };
@@ -195,8 +195,8 @@ export function sanitizePayloadForDirectus(
     }
 
     const noteParts: string[] = [];
-    if (payload.paid_to) noteParts.push(`دریافت‌کننده: ${payload.paid_to}`);
-    if (payload.reference_code) noteParts.push(`کد پیگیری: ${payload.reference_code}`);
+    if (payload.paid_to) noteParts.push(`Paid to: ${payload.paid_to}`);
+    if (payload.reference_code) noteParts.push(`Ref: ${payload.reference_code}`);
     if (payload.description) noteParts.push(payload.description);
     if (payload.notes && payload.notes !== payload.description) noteParts.push(payload.notes);
     if (noteParts.length > 0) {
@@ -229,18 +229,24 @@ export function sanitizePayloadForDirectus(
     delete payload.total_amount;
   }
 
+  const roundMoney = (v: any): number => {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return 0;
+    return Math.round((n + Number.EPSILON) * 100) / 100;
+  };
+
   if (collection === 'financial_accounts') {
     if (payload.initial_balance !== undefined)
-      payload.initial_balance = Number(payload.initial_balance) || 0;
+      payload.initial_balance = roundMoney(payload.initial_balance);
     if (payload.current_balance !== undefined)
-      payload.current_balance = Number(payload.current_balance) || 0;
+      payload.current_balance = roundMoney(payload.current_balance);
     if (payload.is_default !== undefined) payload.is_default = Boolean(payload.is_default);
     delete payload.status;
   }
 
   if (collection === 'treasury_transactions') {
     if (payload.amount !== undefined) {
-      payload.amount = Math.max(0, Math.round(Number(payload.amount) || 0));
+      payload.amount = Math.max(0, roundMoney(payload.amount));
     }
     delete payload.source_account_name;
     delete payload.destination_account_name;
@@ -250,7 +256,7 @@ export function sanitizePayloadForDirectus(
   }
 
   if (collection === 'cheques') {
-    if (payload.amount !== undefined) payload.amount = Number(payload.amount) || 0;
+    if (payload.amount !== undefined) payload.amount = Math.max(0, roundMoney(payload.amount));
     if (payload.alert_days_before !== undefined)
       payload.alert_days_before = Number(payload.alert_days_before) || 3;
     delete payload.notes;
@@ -259,9 +265,9 @@ export function sanitizePayloadForDirectus(
   }
 
   if (collection === 'person_transactions') {
-    if (payload.amount !== undefined) payload.amount = Number(payload.amount) || 0;
+    if (payload.amount !== undefined) payload.amount = roundMoney(payload.amount);
     if (payload.balance_after !== undefined)
-      payload.balance_after = Number(payload.balance_after) || 0;
+      payload.balance_after = roundMoney(payload.balance_after);
     delete payload.debit_amount;
     delete payload.credit_amount;
     delete payload.running_balance;

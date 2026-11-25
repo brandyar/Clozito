@@ -25,7 +25,7 @@ import { Select } from '../../../components/ui/Select';
 import { Badge } from '../../../components/ui/Badge';
 import { SearchableVariantSelect } from '../../../components/ui/SearchableVariantSelect';
 import { ProductImage } from '../../../components/ui/ProductImage';
-import { formatCurrency, toPersianDigits } from '../../../utils/formatters';
+import { formatCurrency, toPersianDigits, roundCurrency, resolveCurrencyCode } from '../../../utils/formatters';
 import {
   calculateEffectiveUnitRefundPrice,
   processOrderReturnOrExchange,
@@ -89,8 +89,10 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
   onSuccess,
 }) => {
   const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const isPersian = false;
   const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(order?.currency || activeOrganization?.currency);
   const { user } = useAuth();
   const { hasAccess } = useModuleAccess();
   const hasAccounting = hasAccess('accounting');
@@ -233,7 +235,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
       } catch (err: any) {
         if (!cancelled) {
           console.error('[OrderReturnExchangeModal] Failed to load data:', err);
-          setErrorMsg(err?.message || 'خطا در بارگذاری اطلاعات سفارش.');
+          setErrorMsg(err?.message || (isIt ? 'Errore durante il caricamento dei dettagli dell\'ordine.' : 'Failed to load order details.'));
         }
       } finally {
         if (!cancelled) setIsLoading(false);
@@ -319,9 +321,11 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
   // Financial calculations
   const returnedTotal = useMemo(
     () =>
-      returnRows.reduce(
-        (sum, r) => sum + Math.round(r.selectedQty * r.effectiveUnitPrice),
-        0
+      roundCurrency(
+        returnRows.reduce(
+          (sum, r) => sum + roundCurrency(r.selectedQty * r.effectiveUnitPrice),
+          0
+        )
       ),
     [returnRows]
   );
@@ -329,15 +333,17 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
   const exchangeTotal = useMemo(
     () =>
       mode === 'exchange'
-        ? exchangeRows.reduce(
-            (sum, r) => sum + Math.round(r.quantity * (Number(r.unitPrice) || 0)),
-            0
+        ? roundCurrency(
+            exchangeRows.reduce(
+              (sum, r) => sum + roundCurrency(r.quantity * (Number(r.unitPrice) || 0)),
+              0
+            )
           )
         : 0,
     [mode, exchangeRows]
   );
 
-  const netAmount = exchangeTotal - returnedTotal;
+  const netAmount = roundCurrency(exchangeTotal - returnedTotal);
 
   // Auto-adjust settlement method when netAmount direction changes
   useEffect(() => {
@@ -437,12 +443,12 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
 
     const selectedReturns = returnRows.filter((r) => r.selectedQty > 0);
     if (selectedReturns.length === 0) {
-      setErrorMsg('لطفاً حداقل یک کالا را برای مرجوعی یا تعویض انتخاب کنید.');
+      setErrorMsg(isIt ? 'Seleziona almeno un articolo da restituire o cambiare.' : 'Please select at least one item to return or exchange.');
       return;
     }
 
     if (mode === 'exchange' && exchangeRows.length === 0) {
-      setErrorMsg('لطفاً حداقل یک کالای جایگزین انتخاب کنید.');
+      setErrorMsg(isIt ? 'Seleziona almeno un articolo sostitutivo.' : 'Please select at least one replacement item.');
       return;
     }
 
@@ -522,7 +528,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
       onSuccess?.(enrichedReturn);
     } catch (err: any) {
       console.error('[OrderReturnExchangeModal] Submit failed:', err);
-      setErrorMsg(err?.message || 'خطا در ثبت سند مرجوعی / تعویض.');
+      setErrorMsg(err?.message || (isIt ? 'Errore nella registrazione del reso / cambio.' : 'Failed to submit return / exchange document.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -599,14 +605,14 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
             <div className="flex justify-between">
               <span className="text-neutral-500">{t('orders.returnedTotalValue')}:</span>
               <span className="font-mono font-bold text-neutral-900 dark:text-white">
-                {formatCurrency(completedResult.orderReturn.returned_total, 'TOMAN', isPersian)}
+                {formatCurrency(completedResult.orderReturn.returned_total, activeCurrency, isPersian)}
               </span>
             </div>
             {completedResult.orderReturn.type === 'exchange' && (
               <div className="flex justify-between">
                 <span className="text-neutral-500">{t('orders.exchangedTotalValue')}:</span>
                 <span className="font-mono font-bold text-neutral-900 dark:text-white">
-                  {formatCurrency(completedResult.orderReturn.exchange_total, 'TOMAN', isPersian)}
+                  {formatCurrency(completedResult.orderReturn.exchange_total, activeCurrency, isPersian)}
                 </span>
               </div>
             )}
@@ -627,7 +633,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
                     : 'text-indigo-600 dark:text-indigo-400'
                 }`}
               >
-                {formatCurrency(Math.abs(completedResult.orderReturn.net_amount), 'TOMAN', isPersian)}
+                {formatCurrency(Math.abs(completedResult.orderReturn.net_amount), activeCurrency, isPersian)}
               </span>
             </div>
           </div>
@@ -805,7 +811,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
                               {row.colorName && <span>• {t('orders.color')}: {row.colorName}</span>}
                               <span className="text-indigo-600 dark:text-indigo-400 font-semibold">
                                 • {t('orders.returnUnitPrice')}:{' '}
-                                {formatCurrency(row.effectiveUnitPrice, 'TOMAN', isPersian)}
+                                {formatCurrency(row.effectiveUnitPrice, activeCurrency, isPersian)}
                               </span>
                             </div>
                             <div className="flex items-center gap-2 mt-1 text-[10px]">
@@ -1012,6 +1018,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
                               <input
                                 type="number"
                                 min={0}
+                                step="0.01"
                                 value={ex.unitPrice}
                                 onChange={(e) => {
                                   const val = Math.max(0, Number(e.target.value) || 0);
@@ -1091,7 +1098,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
                       {t('orders.returnedTotalValue')}
                     </span>
                     <span className="font-mono font-black text-sm text-rose-600 dark:text-rose-400">
-                      {formatCurrency(returnedTotal, 'TOMAN', isPersian)}
+                      {formatCurrency(returnedTotal, activeCurrency, isPersian)}
                     </span>
                   </div>
 
@@ -1101,7 +1108,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
                         {t('orders.exchangedTotalValue')}
                       </span>
                       <span className="font-mono font-black text-sm text-indigo-600 dark:text-indigo-400">
-                        {formatCurrency(exchangeTotal, 'TOMAN', isPersian)}
+                        {formatCurrency(exchangeTotal, activeCurrency, isPersian)}
                       </span>
                     </div>
                   )}
@@ -1133,7 +1140,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
                           : 'text-indigo-700 dark:text-indigo-300'
                       }`}
                     >
-                      {formatCurrency(Math.abs(netAmount), 'TOMAN', isPersian)}
+                      {formatCurrency(Math.abs(netAmount), activeCurrency, isPersian)}
                     </span>
                   </div>
                 </div>
@@ -1175,7 +1182,7 @@ export const OrderReturnExchangeModal: React.FC<OrderReturnExchangeModalProps> =
                           onChange={(e) => setFinancialAccountId(Number(e.target.value))}
                           options={financialAccounts.map((acc) => ({
                             value: acc.id,
-                            label: `${acc.name} (${formatCurrency(acc.current_balance || 0, 'TOMAN', isPersian)})`,
+                            label: `${acc.name} (${formatCurrency(acc.current_balance || 0, activeCurrency, isPersian)})`,
                           }))}
                         />
                       </div>

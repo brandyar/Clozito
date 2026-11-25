@@ -82,8 +82,7 @@ export const ProductGeneralSpecsCard: React.FC<ProductGeneralSpecsCardProps> = (
   mainImage,
   setMainImage,
 }) => {
-  const { t, locale } = useTranslation();
-  const isPersian = false;
+  const { t } = useTranslation();
 
   return (
     <Card title={t('products.productGeneralSpecs')}>
@@ -91,14 +90,14 @@ export const ProductGeneralSpecsCard: React.FC<ProductGeneralSpecsCardProps> = (
         <div className="md:col-span-2 space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label={`${t('products.productTitle', 'عنوان محصول')} *`}
-              placeholder={t('products.productTitlePlaceholder', 'مثال: پیراهن مردانه آستین بلند')}
+              label={`${t('products.productTitle', 'Product Title')} *`}
+              placeholder={t('products.productTitlePlaceholder', 'e.g. Long-Sleeve Cotton Shirt')}
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               required
             />
             <Input
-              label={`${t('products.slugHeader', 'شناسه یکتا (اسلاگ)')} *`}
+              label={`${t('products.slugHeader', 'Unique Identifier (Slug)')} *`}
               placeholder={t('products.slugPlaceholder', 'men-leather-jacket')}
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
@@ -211,7 +210,7 @@ export const ProductGeneralSpecsCard: React.FC<ProductGeneralSpecsCardProps> = (
                 { value: '', label: t('products.noSizeGuide') },
                 ...sizeGuides.map((sg: any) => ({
                   value: sg.id,
-                  label: sg.name || sg.title || sg.template_name || `${isPersian ? 'قالب شماره' : 'Template #'} ${sg.id}`,
+                  label: sg.name || sg.title || sg.template_name || `Template #${sg.id}`,
                 })),
               ]}
             />
@@ -229,14 +228,14 @@ export const ProductGeneralSpecsCard: React.FC<ProductGeneralSpecsCardProps> = (
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label={t('products.tags', 'برچسب‌ها (تگ‌ها)')}
-              placeholder={t('products.tagsPlaceholder', 'مثال: مردانه, چرم, زمستانه, VIP')}
+              label={t('products.tags', 'Tags')}
+              placeholder={t('products.tagsPlaceholder', 'e.g. Men, Leather, Winter, VIP')}
               value={tags}
               onChange={(e) => setTags(e.target.value)}
               icon={<Tag className="w-4 h-4" />}
             />
             <Input
-              label={t('products.sortOrderLabel', 'ترتیب نمایش')}
+              label={t('products.sortOrderLabel', 'Display Order')}
               type="number"
               value={sort}
               onChange={(e) => setSort(e.target.value ? Number(e.target.value) : '')}

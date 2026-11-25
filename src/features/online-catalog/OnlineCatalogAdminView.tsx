@@ -1,29 +1,16 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
-  Store,
-  Sparkles,
-  ExternalLink,
   Copy,
   Check,
-  QrCode,
   Share2,
   Settings,
-  Package,
-  Layers,
-  Phone,
-  MessageCircle,
   Eye,
-  Sliders,
   CheckCircle2,
-  AlertCircle,
   Search,
-  Filter,
   Save,
   Download,
-  Info,
   Ruler,
   RefreshCw,
-  Send,
 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useOrganization } from '../../context/OrganizationContext';
@@ -32,7 +19,6 @@ import { storageManager } from '../../storage';
 import {
   Product,
   ProductVariant,
-  Category,
   SizeGuideTemplate,
   SizeGuideMeasurement,
   SizeGuideValue,
@@ -43,9 +29,10 @@ import { Button } from '../../components/ui/Button';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { ProductImage } from '../../components/ui/ProductImage';
 import { ModuleLockedCard } from '../../components/modules/ModuleLockedCard';
-import { formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency, resolveCurrencyCode } from '../../utils/formatters';
 import { PublicCatalogView } from './public/PublicCatalogView';
 import { recommendSize, FitPreference } from './engine/sizeRecommendationEngine';
+import { BRAND } from '../../config/brand';
 
 interface OnlineCatalogAdminViewProps {
   initialTab?: 'overview' | 'products' | 'size-engine';
@@ -56,11 +43,13 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
   initialTab = 'overview',
   onTabChange,
 }) => {
-  const { t } = useTranslation();
+  const { locale } = useTranslation();
+  const isIt = locale === 'it';
   const { activeOrganization, updateActiveOrganization } = useOrganization();
   const { hasAccess } = useModuleAccess();
 
   const hasCatalogAccess = hasAccess('online_catalog');
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
 
   const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'size-engine'>(initialTab);
 
@@ -78,19 +67,17 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
 
   const [products, setProducts] = useState<Product[]>([]);
   const [variants, setVariants] = useState<ProductVariant[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [templates, setTemplates] = useState<SizeGuideTemplate[]>([]);
   const [measurements, setMeasurements] = useState<SizeGuideMeasurement[]>([]);
   const [guideValues, setGuideValues] = useState<SizeGuideValue[]>([]);
   const [sizes, setSizes] = useState<Size[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
 
   // Settings State
   const orgSettings = (activeOrganization as any)?.settings || {};
   const [bio, setBio] = useState(orgSettings.bio || '');
   const [whatsapp, setWhatsapp] = useState(orgSettings.whatsapp_number || activeOrganization?.phone || '');
   const [instagram, setInstagram] = useState(orgSettings.instagram || '');
-  const [catalogEnabled, setCatalogEnabled] = useState(true);
+  const [catalogEnabled] = useState(true);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
 
@@ -108,21 +95,19 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
 
   const publicUrl = typeof window !== 'undefined'
     ? `${window.location.origin}/c/${activeOrganization?.slug || activeOrganization?.id || 'demo'}`
-    : `https://tankhor.com/c/${activeOrganization?.slug || 'store'}`;
+    : `${BRAND.websiteUrl}/c/${activeOrganization?.slug || 'store'}`;
 
   // Load store data
   useEffect(() => {
     let isMounted = true;
     async function loadData() {
-      setIsLoading(true);
       try {
         const adapter = storageManager.getAdapter();
         const orgId = activeOrganization?.id;
 
-        const [pList, vList, cList, tList, sList] = await Promise.all([
+        const [pList, vList, tList, sList] = await Promise.all([
           adapter.getProducts({ organization_id: orgId }).catch(() => []),
           adapter.getVariants({ organization_id: orgId }).catch(() => []),
-          adapter.getCategories({ organization_id: orgId }).catch(() => []),
           adapter.getSizeGuideTemplates({ organization_id: orgId }).catch(() => []),
           adapter.getSizes({ organization_id: orgId }).catch(() => []),
         ]);
@@ -140,7 +125,6 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
         if (isMounted) {
           setProducts(pList);
           setVariants(vList);
-          setCategories(cList);
           setTemplates(tList);
           setMeasurements(mList);
           setGuideValues(valList);
@@ -151,8 +135,6 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
         }
       } catch (err) {
         console.warn('[OnlineCatalogAdminView] loadData error:', err);
-      } finally {
-        if (isMounted) setIsLoading(false);
       }
     }
 
@@ -260,16 +242,21 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
       activeSimTemplate,
       simTemplateMeasurements,
       guideValues,
-      sizes
+      sizes,
+      locale === 'it' ? 'it' : 'en'
     );
-  }, [activeSimTemplate, simTemplateMeasurements, simMeasValues, simFit, guideValues, sizes]);
+  }, [activeSimTemplate, simTemplateMeasurements, simMeasValues, simFit, guideValues, sizes, locale]);
 
   if (!hasCatalogAccess) {
     return (
       <ModuleLockedCard
         moduleSlug="online_catalog"
-        moduleName="کاتالوگ دیجیتال"
-        description="ویترین اینترنتی و کاتالوگ دیجیتال اختصاصی، موتور هوشمند پیشنهاد سایز مشتری بر اساس ابعاد و استایل، دریافت سفارش و اشتراک‌گذاری سریع با QR کد"
+        moduleName={isIt ? 'Catalogo Digitale' : 'Digital Catalog'}
+        description={
+          isIt
+            ? 'Vetrina online dedicata del tuo brand, motore intelligente di raccomandazione taglia, ricezione ordini diretti e condivisione rapida con codice QR.'
+            : 'Dedicated online storefront for your brand, smart customer size recommendation engine, direct order inquiries, and instant QR code sharing.'
+        }
       />
     );
   }
@@ -278,8 +265,12 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
     <div className="space-y-6">
       {/* Page Header */}
       <PageHeader
-        title="کاتالوگ دیجیتال"
-        subtitle="ویترین اینترنتی اختصاصی برند شما با موتور هوشمند تطبیق سایز و ثبت سفارش مستقیم"
+        title={isIt ? 'Catalogo Digitale' : 'Digital Catalog'}
+        subtitle={
+          isIt
+            ? 'Vetrina online del tuo brand con motore intelligente per le taglie e ordini diretti'
+            : 'Your brand online storefront with smart size matching and direct order inquiries'
+        }
         actions={
           <div className="flex items-center gap-2">
             <Button
@@ -289,7 +280,11 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
               className="flex items-center gap-1.5"
             >
               {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              <span>{copiedLink ? 'لینک کپی شد' : 'کپی لینک ویترین'}</span>
+              <span>
+                {copiedLink
+                  ? isIt ? 'Link copiato' : 'Link Copied'
+                  : isIt ? 'Copia link vetrina' : 'Copy Storefront Link'}
+              </span>
             </Button>
             <Button
               variant="primary"
@@ -298,7 +293,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
               className="flex items-center gap-1.5"
             >
               <Eye className="w-3.5 h-3.5" />
-              <span>مشاهده ویترین آنلاین</span>
+              <span>{isIt ? 'Anteprima vetrina' : 'Preview Storefront'}</span>
             </Button>
           </div>
         }
@@ -315,7 +310,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
               : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
           }`}
         >
-          تنظیمات کاتالوگ
+          {isIt ? 'Impostazioni catalogo' : 'Catalog Settings'}
         </button>
 
         <button
@@ -327,7 +322,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
               : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
           }`}
         >
-          کالاهای ویترین ({products.length})
+          {isIt ? `Prodotti in vetrina (${products.length})` : `Showcase Products (${products.length})`}
         </button>
 
         <button
@@ -339,7 +334,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
               : 'border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200'
           }`}
         >
-          شبیه‌ساز موتور سایز
+          {isIt ? 'Simulatore taglie' : 'Size Finder Simulator'}
         </button>
       </div>
 
@@ -355,9 +350,13 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                    لینک عمومی ویترین
+                    {isIt ? 'Link pubblico vetrina' : 'Public Storefront Link'}
                   </h3>
-                  <p className="text-[11px] text-neutral-500">جهت قرار دادن در بیو اینستاگرام و پیام‌رسان‌ها</p>
+                  <p className="text-[11px] text-neutral-500">
+                    {isIt
+                      ? 'Ideale per la bio di Instagram e i messaggi'
+                      : 'Ideal for Instagram bio and messaging apps'}
+                  </p>
                 </div>
               </div>
 
@@ -387,10 +386,10 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                   />
                 </div>
                 <span className="text-xs font-bold text-neutral-800 dark:text-neutral-200 mt-3">
-                  بارکد QR اختصاصی کاتالوگ
+                  {isIt ? 'Codice QR del catalogo' : 'Catalog QR Code'}
                 </span>
                 <p className="text-[11px] text-neutral-400 mt-0.5">
-                  مناسب چاپ اتیکت و برچسب بسته‌بندی
+                  {isIt ? 'Perfetto per etichette e packaging' : 'Great for hang tags and packaging labels'}
                 </p>
                 <a
                   href={`https://api.qrserver.com/v1/create-qr-code/?size=500x500&data=${encodeURIComponent(
@@ -398,11 +397,11 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                   )}`}
                   target="_blank"
                   rel="noreferrer"
-                  download="tankhor-qr.png"
+                  download={`${BRAND.name.toLowerCase()}-qr.png`}
                   className="mt-3 flex items-center gap-1.5 text-xs text-neutral-900 dark:text-neutral-100 font-semibold hover:underline"
                 >
                   <Download className="w-3.5 h-3.5" />
-                  <span>دانلود فایل جهت چاپ</span>
+                  <span>{isIt ? 'Scarica per la stampa' : 'Download Print File'}</span>
                 </a>
               </div>
             </Card>
@@ -417,29 +416,39 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                 </div>
                 <div>
                   <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                    تنظیمات ویترین اینترنتی
+                    {isIt ? 'Impostazioni vetrina online' : 'Online Storefront Settings'}
                   </h3>
-                  <p className="text-[11px] text-neutral-500">مشخصات تماس و معرفی برند به خریداران</p>
+                  <p className="text-[11px] text-neutral-500">
+                    {isIt
+                      ? 'Informazioni di contatto e presentazione del brand per i clienti'
+                      : 'Contact details and brand introduction shown to shoppers'}
+                  </p>
                 </div>
               </div>
 
               {saveSuccess && (
                 <div className="mb-4 p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800 border border-neutral-300 dark:border-neutral-700 text-neutral-800 dark:text-neutral-200 text-xs flex items-center gap-2">
                   <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                  <span>تنظیمات ویترین با موفقیت ذخیره شد.</span>
+                  <span>
+                    {isIt ? 'Impostazioni vetrina salvate con successo.' : 'Storefront settings saved successfully.'}
+                  </span>
                 </div>
               )}
 
               <form onSubmit={handleSaveSettings} className="space-y-4">
                 <div>
                   <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                    معرفی برند / فروشگاه (بیوگرافی)
+                    {isIt ? 'Descrizione del brand / negozio (Bio)' : 'Brand / Store Introduction (Bio)'}
                   </label>
                   <textarea
                     rows={3}
                     value={bio}
                     onChange={(e) => setBio(e.target.value)}
-                    placeholder="مثال: عرضه جدیدترین کالکشن‌های پوشاک با پارچه‌های باکیفیت و دوخت استاندارد..."
+                    placeholder={
+                      isIt
+                        ? 'es. Le nostre nuove collezioni di abbigliamento con tessuti pregiati e vestibilità sartoriale...'
+                        : 'e.g. Curated seasonal apparel collections crafted with premium fabrics and tailored fit...'
+                    }
                     className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#12141a] text-neutral-900 dark:text-neutral-100"
                   />
                 </div>
@@ -447,30 +456,32 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                      شماره واتس‌اپ جهت دریافت سفارشات
+                      {isIt ? 'Numero WhatsApp per gli ordini' : 'WhatsApp Number for Orders'}
                     </label>
                     <input
                       type="tel"
                       value={whatsapp}
                       onChange={(e) => setWhatsapp(e.target.value)}
-                      placeholder="۰۹۱۲۳۴۵۶۷۸۹"
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#12141a] text-neutral-900 dark:text-neutral-100 font-mono text-end"
+                      placeholder="+39 340 123 4567"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#12141a] text-neutral-900 dark:text-neutral-100 font-mono"
                     />
                     <p className="text-[11px] text-neutral-400 mt-1">
-                      سفارشات مشتریان مستقیماً به این خط هدایت خواهد شد.
+                      {isIt
+                        ? 'Gli ordini dei clienti saranno inviati direttamente a questo numero.'
+                        : 'Customer WhatsApp orders will be routed directly to this number.'}
                     </p>
                   </div>
 
                   <div>
                     <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                      شناسه اینستاگرام
+                      {isIt ? 'Profilo Instagram' : 'Instagram Handle'}
                     </label>
                     <input
                       type="text"
                       value={instagram}
                       onChange={(e) => setInstagram(e.target.value)}
-                      placeholder="mybrand_ir"
-                      className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#12141a] text-neutral-900 dark:text-neutral-100 font-mono text-end"
+                      placeholder="@mybrand"
+                      className="w-full px-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#12141a] text-neutral-900 dark:text-neutral-100 font-mono"
                     />
                   </div>
                 </div>
@@ -484,7 +495,11 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                     className="flex items-center gap-1.5"
                   >
                     {isSavingSettings ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
-                    <span>{isSavingSettings ? 'در حال ذخیره...' : 'ذخیره تنظیمات'}</span>
+                    <span>
+                      {isSavingSettings
+                        ? isIt ? 'Salvataggio...' : 'Saving...'
+                        : isIt ? 'Salva impostazioni' : 'Save Settings'}
+                    </span>
                   </Button>
                 </div>
               </form>
@@ -503,12 +518,14 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                 type="text"
                 value={productSearch}
                 onChange={(e) => setProductSearch(e.target.value)}
-                placeholder="جستجو در بین کالاها..."
+                placeholder={isIt ? 'Cerca tra i prodotti...' : 'Search products...'}
                 className="w-full ps-9 pe-3 py-2 text-xs rounded-xl border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#12141a]"
               />
             </div>
             <span className="text-xs text-neutral-500 font-medium">
-              کالاهای دارای قالب سایز: {products.filter((p) => p.size_guide_template_id).length} از {products.length}
+              {isIt
+                ? `Prodotti con guida taglie: ${products.filter((p) => p.size_guide_template_id).length} di ${products.length}`
+                : `Products with size guide: ${products.filter((p) => p.size_guide_template_id).length} of ${products.length}`}
             </span>
           </div>
 
@@ -516,11 +533,11 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
             <table className="w-full text-xs text-start">
               <thead>
                 <tr className="border-b border-neutral-200 dark:border-neutral-800 text-neutral-500 font-semibold">
-                  <th className="py-2.5 px-3">تصویر و نام کالا</th>
-                  <th className="py-2.5 px-3">کد کالا</th>
-                  <th className="py-2.5 px-3">قیمت</th>
-                  <th className="py-2.5 px-3">قالب راهنمای سایز</th>
-                  <th className="py-2.5 px-3 text-center">وضعیت ویترین</th>
+                  <th className="py-2.5 px-3">{isIt ? 'Prodotto' : 'Product'}</th>
+                  <th className="py-2.5 px-3">SKU</th>
+                  <th className="py-2.5 px-3">{isIt ? 'Prezzo' : 'Price'}</th>
+                  <th className="py-2.5 px-3">{isIt ? 'Modello guida taglie' : 'Size Guide Template'}</th>
+                  <th className="py-2.5 px-3 text-center">{isIt ? 'Stato vetrina' : 'Storefront Status'}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800">
@@ -545,7 +562,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                         </td>
                         <td className="py-2.5 px-3 font-mono text-neutral-500">{prodVariant?.sku || '-'}</td>
                         <td className="py-2.5 px-3 font-mono font-bold text-neutral-800 dark:text-neutral-200">
-                          {prodVariant?.price ? formatCurrency(prodVariant.price) : '-'}
+                          {prodVariant?.price ? formatCurrency(prodVariant.price, activeCurrency) : '-'}
                         </td>
                         <td className="py-2.5 px-3">
                           {tpl ? (
@@ -554,12 +571,14 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                               {tpl.name}
                             </span>
                           ) : (
-                            <span className="text-neutral-400 text-[11px]">بدون قالب سایز</span>
+                            <span className="text-neutral-400 text-[11px]">
+                              {isIt ? 'Nessuna guida' : 'No size guide'}
+                            </span>
                           )}
                         </td>
                         <td className="py-2.5 px-3 text-center">
                           <span className="inline-block px-2 py-0.5 rounded-md bg-neutral-100 dark:bg-neutral-800 text-neutral-700 dark:text-neutral-300 font-semibold text-[10px]">
-                            فعال در ویترین
+                            {isIt ? 'Attivo in vetrina' : 'Live in Catalog'}
                           </span>
                         </td>
                       </tr>
@@ -580,14 +599,14 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
               <div className="flex items-center gap-2 mb-4 pb-2 border-b border-neutral-100 dark:border-neutral-800">
                 <Ruler className="w-4 h-4 text-neutral-700 dark:text-neutral-300" />
                 <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100">
-                  تنظیمات شبیه‌ساز راهنمای سایز
+                  {isIt ? 'Impostazioni simulatore taglie' : 'Size Finder Simulator Settings'}
                 </h3>
               </div>
 
               <div className="space-y-4 text-xs">
                 <div>
                   <label className="block font-semibold mb-1 text-neutral-700 dark:text-neutral-300">
-                    انتخاب قالب راهنمای سایز:
+                    {isIt ? 'Seleziona modello guida taglie:' : 'Select Size Guide Template:'}
                   </label>
                   <select
                     value={simTemplateId}
@@ -605,12 +624,14 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                 {/* Dynamic Inputs according to the selected template's actual measurements */}
                 <div className="space-y-3 pt-2 border-t border-neutral-100 dark:border-neutral-800">
                   <span className="block font-semibold text-neutral-700 dark:text-neutral-300">
-                    اندازه‌های فرضی بدن (بر اساس ابعاد این قالب):
+                    {isIt ? 'Misure corporee simulate:' : 'Simulated Body Measurements:'}
                   </span>
 
                   {simTemplateMeasurements.length === 0 ? (
                     <p className="text-[11px] text-neutral-400">
-                      برای این قالب هیچ اندازه تخصصی تعریف نشده است.
+                      {isIt
+                        ? 'Nessuna misura definita per questo modello.'
+                        : 'No measurements defined for this template.'}
                     </p>
                   ) : (
                     simTemplateMeasurements.map((m) => {
@@ -622,7 +643,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                               {m.name}:
                             </span>
                             <span className="font-mono font-bold text-neutral-900 dark:text-white">
-                              {toPersianDigits(cur)} {m.unit || 'cm'}
+                              {cur} {m.unit || 'cm'}
                             </span>
                           </div>
                           <input
@@ -647,7 +668,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                 {/* Fit Preference */}
                 <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800">
                   <label className="block font-semibold mb-1.5 text-neutral-700 dark:text-neutral-300">
-                    استایل تن‌خور:
+                    {isIt ? 'Vestibilità:' : 'Fit Style:'}
                   </label>
                   <div className="grid grid-cols-3 gap-1.5">
                     {(['snug', 'regular', 'relaxed'] as const).map((mode) => (
@@ -661,7 +682,11 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                             : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400'
                         }`}
                       >
-                        {mode === 'snug' ? 'جذب' : mode === 'relaxed' ? 'آزاد' : 'معمولی'}
+                        {mode === 'snug'
+                          ? isIt ? 'Slim' : 'Slim'
+                          : mode === 'relaxed'
+                          ? isIt ? 'Ampia' : 'Relaxed'
+                          : isIt ? 'Regolare' : 'Regular'}
                       </button>
                     ))}
                   </div>
@@ -675,24 +700,26 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
             <Card>
               <h3 className="text-xs font-bold text-neutral-900 dark:text-neutral-100 mb-4 pb-2 border-b border-neutral-100 dark:border-neutral-800 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                <span>نتیجه محاسبات موتور سایز</span>
+                <span>{isIt ? 'Risultato motore taglie' : 'Size Engine Output'}</span>
               </h3>
 
               {simResult && simResult.recommendedSize ? (
                 <div className="space-y-4 text-xs">
                   <div className="p-4 rounded-xl bg-neutral-50 dark:bg-neutral-800 border border-neutral-200/80 dark:border-neutral-700 flex items-center justify-between">
                     <div>
-                      <span className="text-[11px] text-neutral-500 font-medium">سایز پیشنهادی نهایی:</span>
+                      <span className="text-[11px] text-neutral-500 font-medium">
+                        {isIt ? 'Taglia consigliata:' : 'Recommended Size:'}
+                      </span>
                       <h4 className="text-lg font-bold text-neutral-900 dark:text-white mt-0.5">
-                        سایز {simResult.recommendedSize.name}
+                        {isIt ? 'Taglia' : 'Size'} {simResult.recommendedSize.name}
                       </h4>
                       <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-1">
-                        {simResult.fitDescriptionFa}
+                        {simResult.fitDescription}
                       </p>
                     </div>
                     <div className="text-end">
                       <span className="px-3 py-1 rounded-md bg-neutral-900 text-white dark:bg-white dark:text-neutral-900 font-mono font-bold text-xs">
-                        {toPersianDigits(simResult.matchScore)}٪ تطابق
+                        {simResult.matchScore}% {isIt ? 'compatibilità' : 'Match'}
                       </span>
                     </div>
                   </div>
@@ -701,7 +728,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                   {simResult.comparisons.length > 0 && (
                     <div>
                       <h5 className="text-xs font-bold mb-2 text-neutral-800 dark:text-neutral-200">
-                        تحلیل جزئیات آزادی و تن‌خور اندازه‌ها:
+                        {isIt ? 'Analisi dettagliata agio e vestibilità:' : 'Detailed Ease & Fit Breakdown:'}
                       </h5>
                       <div className="space-y-2">
                         {simResult.comparisons.map((c) => (
@@ -713,8 +740,8 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                               {c.measurementName}
                             </span>
                             <div className="flex items-center gap-3 font-mono text-[11px]">
-                              <span>بدن: {toPersianDigits(c.userBodyValue)}</span>
-                              <span>لباس: {toPersianDigits(c.garmentValue)}</span>
+                              <span>{isIt ? 'Corpo:' : 'Body:'} {c.userBodyValue}</span>
+                              <span>{isIt ? 'Capo:' : 'Garment:'} {c.garmentValue}</span>
                               <span
                                 className={`px-2 py-0.5 rounded text-[10px] font-semibold ${
                                   c.status === 'ideal'
@@ -724,7 +751,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                                     : 'bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400'
                                 }`}
                               >
-                                {c.noteFa}
+                                {c.note}
                               </span>
                             </div>
                           </div>
@@ -735,7 +762,9 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
                 </div>
               ) : (
                 <div className="p-8 text-center text-xs text-neutral-400">
-                  برای این قالب جدول اندازه تعریف نشده است.
+                  {isIt
+                    ? 'Nessuna tabella taglie definita per questo modello.'
+                    : 'No size chart values have been defined for this template.'}
                 </div>
               )}
             </Card>

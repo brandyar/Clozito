@@ -16,7 +16,7 @@ import { confirmAction } from '../../utils/confirm';
 
 export const ColorsView: React.FC = () => {
   const { t, locale } = useTranslation();
-  const isPersian = false;
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
 
   const [colors, setColors] = useState<Color[]>([]);
@@ -283,8 +283,8 @@ export const ColorsView: React.FC = () => {
       >
         <form id="color-form" onSubmit={handleSave} className="space-y-4">
           <Input
-            label={`${t('products.colorName', 'نام رنگ')} *`}
-            placeholder={isPersian ? "مثال: مشکی ذغالی، سرمه‌ای یا سفید" : "Black, Navy, White..."}
+            label={`${t('products.colorName', 'Color Name')} *`}
+            placeholder={isIt ? 'Nero, Blu Navy, Bianco...' : 'Black, Navy, White...'}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required

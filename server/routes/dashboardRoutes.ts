@@ -30,7 +30,7 @@ dashboardRouter.get(
     const targetOrgId = Number(req.query.organization_id || organizationId);
 
     if (!targetOrgId || isNaN(targetOrgId) || targetOrgId <= 0) {
-      return res.status(400).json({ error: 'سازمان فعال مشخص نشده است.' });
+      return res.status(400).json({ error: 'Active organization is not specified.' });
     }
 
     // Check fast memory cache
@@ -151,8 +151,9 @@ dashboardRouter.get(
 
       const ordRow = ordersAgg?.[0] || {};
       const totalOrdersCount = Number(ordRow.count) || 0;
-      const totalSalesRevenue = Number(ordRow.sum?.total) || 0;
-      const averageOrderValue = totalOrdersCount > 0 ? Math.round(totalSalesRevenue / totalOrdersCount) : 0;
+      const totalSalesRevenue = Math.round(((Number(ordRow.sum?.total) || 0) + Number.EPSILON) * 100) / 100;
+      const averageOrderValue =
+        totalOrdersCount > 0 ? Math.round(((totalSalesRevenue / totalOrdersCount) + Number.EPSILON) * 100) / 100 : 0;
 
       // Map recent orders customer names
       const mappedOrders = (recentOrders || []).map((o: any) => ({
@@ -187,7 +188,7 @@ dashboardRouter.get(
       return res.json({ data: summaryData });
     } catch (err: any) {
       console.error('[Dashboard Summary Route Error]:', err);
-      return res.status(500).json({ error: err.message || 'خطا در واکشی خلاصه داشبورد' });
+      return res.status(500).json({ error: err.message || 'Failed to fetch dashboard summary.' });
     }
   }
 );
@@ -205,7 +206,7 @@ dashboardRouter.get(
     const warehouseId = req.query.warehouse_id ? Number(req.query.warehouse_id) : undefined;
 
     if (!targetOrgId || isNaN(targetOrgId) || targetOrgId <= 0) {
-      return res.status(400).json({ error: 'سازمان فعال مشخص نشده است.' });
+      return res.status(400).json({ error: 'Active organization is not specified.' });
     }
 
     const cacheKey = `${targetOrgId}_${warehouseId || 'all'}`;
@@ -255,7 +256,7 @@ dashboardRouter.get(
       return res.json({ data: summary });
     } catch (err: any) {
       console.error('[Inventory Summary Route Error]:', err);
-      return res.status(500).json({ error: err.message || 'خطا در واکشی خلاصه انبار' });
+      return res.status(500).json({ error: err.message || 'Failed to fetch inventory summary.' });
     }
   }
 );

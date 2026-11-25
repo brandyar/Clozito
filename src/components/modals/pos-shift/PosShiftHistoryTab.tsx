@@ -4,7 +4,7 @@ import { PosShift, Warehouse, Organization, OrganizationUser } from '../../../ty
 import { Select } from '../../ui/Select';
 import { Badge } from '../../ui/Badge';
 import { Button } from '../../ui/Button';
-import { formatCurrency, formatDate } from '../../../utils/formatters';
+import { formatCurrency, formatDate, resolveCurrencyCode } from '../../../utils/formatters';
 import {
   User,
   Building2,
@@ -35,7 +35,8 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
   onPrintZReport,
 }) => {
   const { locale } = useTranslation();
-  const isPersian = false;
+  const isIt = locale === 'it';
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
 
   const [historyFilterCashier, setHistoryFilterCashier] = useState<string>('all');
   const [historyFilterWarehouse, setHistoryFilterWarehouse] = useState<string>('all');
@@ -53,8 +54,8 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
     if (user?.id) {
       list.push({
         id: user.id,
-        name: isPersian
-          ? `شیفت‌های من (${user.first_name || user.email})`
+        name: isIt
+          ? `I miei turni (${user.first_name || user.email})`
           : `My Shifts (${user.first_name || user.email})`,
       });
       seen.add(user.id);
@@ -80,13 +81,13 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
         seen.add(uid);
         list.push({
           id: uid,
-          name: sh.user_name || sh.user_email || `کاربر #${uid}`,
+          name: sh.user_name || sh.user_email || `${isIt ? 'Utente' : 'User'} #${uid}`,
         });
       }
     }
 
     return list;
-  }, [user, organizationUsers, shiftHistory, isPersian]);
+  }, [user, organizationUsers, shiftHistory, isIt]);
 
   // Filtered Shifts
   const filteredHistoryShifts = useMemo(() => {
@@ -164,13 +165,13 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
           {/* Cashier Filter */}
           <div>
             <label className="block text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-1">
-              {isPersian ? 'فیلتر صندوق‌دار / کاربر:' : 'Filter Cashier:'}
+              {isIt ? 'Filtra cassiere:' : 'Filter Cashier:'}
             </label>
             <Select
               value={historyFilterCashier}
               onChange={(e) => setHistoryFilterCashier(e.target.value)}
               options={[
-                { value: 'all', label: isPersian ? 'همه صندوق‌داران' : 'All Cashiers' },
+                { value: 'all', label: isIt ? 'Tutti i cassieri' : 'All Cashiers' },
                 ...cashierFilterOptions.map((c) => ({
                   value: c.id,
                   label: c.name,
@@ -182,13 +183,13 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
           {/* Warehouse Filter */}
           <div>
             <label className="block text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-1">
-              {isPersian ? 'شعبه / انبار:' : 'Warehouse:'}
+              {isIt ? 'Magazzino / Negozio:' : 'Warehouse:'}
             </label>
             <Select
               value={historyFilterWarehouse}
               onChange={(e) => setHistoryFilterWarehouse(e.target.value)}
               options={[
-                { value: 'all', label: isPersian ? 'همه انبارها' : 'All Warehouses' },
+                { value: 'all', label: isIt ? 'Tutti i magazzini' : 'All Warehouses' },
                 ...warehouses.map((w) => ({
                   value: String(w.id),
                   label: w.name,
@@ -200,15 +201,15 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
           {/* Status Filter */}
           <div>
             <label className="block text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-1">
-              {isPersian ? 'وضعیت شیفت:' : 'Status:'}
+              {isIt ? 'Stato turno:' : 'Status:'}
             </label>
             <Select
               value={historyFilterStatus}
               onChange={(e) => setHistoryFilterStatus(e.target.value)}
               options={[
-                { value: 'all', label: isPersian ? 'همه وضعیت‌ها' : 'All Statuses' },
-                { value: 'open', label: isPersian ? 'درحال اجرا (باز)' : 'Active (Open)' },
-                { value: 'closed', label: isPersian ? 'بسته شده' : 'Closed' },
+                { value: 'all', label: isIt ? 'Tutti gli stati' : 'All Statuses' },
+                { value: 'open', label: isIt ? 'Attivo (Aperto)' : 'Active (Open)' },
+                { value: 'closed', label: isIt ? 'Chiuso' : 'Closed' },
               ]}
             />
           </div>
@@ -216,14 +217,14 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
           {/* Search query */}
           <div>
             <label className="block text-[10px] font-bold text-neutral-500 dark:text-neutral-400 mb-1">
-              {isPersian ? 'جستجو در شیفت‌ها:' : 'Search:'}
+              {isIt ? 'Cerca nei turni:' : 'Search:'}
             </label>
             <div className="relative">
               <input
                 type="text"
                 value={historySearchQuery}
                 onChange={(e) => setHistorySearchQuery(e.target.value)}
-                placeholder={isPersian ? 'شناسه شیفت، نام...' : 'Shift ID, name...'}
+                placeholder={isIt ? 'ID turno, nome...' : 'Shift ID, name...'}
                 className="w-full ps-8 pe-2 py-2 text-xs bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl focus:outline-none focus:ring-2 focus:ring-indigo-500 text-neutral-900 dark:text-neutral-100 transition-all"
               />
               <Search className="w-3.5 h-3.5 text-neutral-400 absolute start-2.5 top-1/2 -translate-y-1/2" />
@@ -235,37 +236,37 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-neutral-200/60 dark:border-neutral-800 text-xs">
           <div className="p-2 rounded-xl bg-white dark:bg-[#181a20] border border-neutral-200/60 dark:border-neutral-800">
             <span className="text-[10px] text-neutral-500 dark:text-neutral-400 block mb-0.5">
-              {isPersian ? 'تعداد شیفت‌ها' : 'Shifts Count'}
+              {isIt ? 'Numero turni' : 'Shifts Count'}
             </span>
             <span className="font-bold text-neutral-900 dark:text-neutral-100 font-mono">
-              {historyStats.count} {isPersian ? 'شیفت' : ''}
+              {historyStats.count}
             </span>
           </div>
 
           <div className="p-2 rounded-xl bg-white dark:bg-[#181a20] border border-neutral-200/60 dark:border-neutral-800">
             <span className="text-[10px] text-emerald-600 dark:text-emerald-400 block mb-0.5">
-              {isPersian ? 'کل فروش نقدی' : 'Total Cash Sales'}
+              {isIt ? 'Totale vendite contanti' : 'Total Cash Sales'}
             </span>
             <span className="font-bold text-emerald-600 dark:text-emerald-400 font-mono">
-              {formatCurrency(historyStats.totalCash, activeOrganization?.currency || 'TOMAN')}
+              {formatCurrency(historyStats.totalCash, activeCurrency)}
             </span>
           </div>
 
           <div className="p-2 rounded-xl bg-white dark:bg-[#181a20] border border-neutral-200/60 dark:border-neutral-800">
             <span className="text-[10px] text-blue-600 dark:text-blue-400 block mb-0.5">
-              {isPersian ? 'کل فروش پوز (POS)' : 'Total POS Sales'}
+              {isIt ? 'Totale vendite POS' : 'Total POS Sales'}
             </span>
             <span className="font-bold text-blue-600 dark:text-blue-400 font-mono">
-              {formatCurrency(historyStats.totalPos, activeOrganization?.currency || 'TOMAN')}
+              {formatCurrency(historyStats.totalPos, activeCurrency)}
             </span>
           </div>
 
           <div className="p-2 rounded-xl bg-white dark:bg-[#181a20] border border-neutral-200/60 dark:border-neutral-800">
             <span className="text-[10px] text-purple-600 dark:text-purple-400 block mb-0.5">
-              {isPersian ? 'مجموع کل فروش' : 'Total Revenue'}
+              {isIt ? 'Ricavi totali' : 'Total Revenue'}
             </span>
             <span className="font-bold text-purple-600 dark:text-purple-400 font-mono">
-              {formatCurrency(historyStats.totalSales, activeOrganization?.currency || 'TOMAN')}
+              {formatCurrency(historyStats.totalSales, activeCurrency)}
             </span>
           </div>
         </div>
@@ -274,8 +275,8 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
       {/* Filtered Shifts List */}
       {filteredHistoryShifts.length === 0 ? (
         <div className="py-12 text-center text-xs text-neutral-400">
-          {isPersian
-            ? 'هیچ شیفتی مطابق فیلترهای انتخابی یافت نشد.'
+          {isIt
+            ? 'Nessun turno corrisponde ai filtri selezionati.'
             : 'No shifts match the filters.'}
         </div>
       ) : (
@@ -303,21 +304,21 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
                     </span>
                     <Badge variant={shift.status === 'open' ? 'success' : 'neutral'}>
                       {shift.status === 'open'
-                        ? isPersian
-                          ? 'درحال اجرا'
+                        ? isIt
+                          ? 'Aperto'
                           : 'Open'
-                        : isPersian
-                        ? 'بسته شده'
+                        : isIt
+                        ? 'Chiuso'
                         : 'Closed'}
                     </Badge>
                     {isMyShift && (
                       <Badge variant="primary">
-                        {isPersian ? 'شیفت من' : 'My Shift'}
+                        {isIt ? 'Mio turno' : 'My Shift'}
                       </Badge>
                     )}
                     <span className="text-[11px] text-neutral-600 dark:text-neutral-300 font-medium flex items-center gap-1">
                       <User className="w-3 h-3 text-neutral-400" />
-                      {shift.user_name || shift.user_email || 'کاربر'}
+                      {shift.user_name || shift.user_email || (isIt ? 'Utente' : 'User')}
                     </span>
                   </div>
 
@@ -344,12 +345,12 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
                 <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end">
                   <div className="text-start sm:text-end">
                     <div className="text-[10px] text-neutral-400">
-                      {isPersian ? 'مجموع فروش:' : 'Total Sales:'}
+                      {isIt ? 'Vendite totali:' : 'Total Sales:'}
                     </div>
                     <div className="text-xs font-black text-neutral-900 dark:text-neutral-100 font-mono">
                       {formatCurrency(
                         Number(shift.total_sales_amount) || 0,
-                        activeOrganization?.currency || 'TOMAN'
+                        activeCurrency
                       )}
                     </div>
                     {shift.status === 'closed' && (
@@ -363,17 +364,17 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
                         }`}
                       >
                         {diff === 0
-                          ? isPersian
-                            ? 'تراز'
+                          ? isIt
+                            ? 'In pareggio'
                             : 'Balanced'
                           : diff < 0
-                          ? `${isPersian ? 'کسری:' : 'Short:'} ${formatCurrency(
+                          ? `${isIt ? 'Ammanco:' : 'Short:'} ${formatCurrency(
                               Math.abs(diff),
-                              activeOrganization?.currency || 'TOMAN'
+                              activeCurrency
                             )}`
-                          : `${isPersian ? 'مازاد:' : 'Surplus:'} ${formatCurrency(
+                          : `${isIt ? 'Eccedenza:' : 'Surplus:'} ${formatCurrency(
                               diff,
-                              activeOrganization?.currency || 'TOMAN'
+                              activeCurrency
                             )}`}
                       </div>
                     )}
@@ -387,7 +388,7 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
                         onClick={() => onInspectShift(shift.id)}
                         icon={<Eye className="w-3.5 h-3.5 text-indigo-500" />}
                       >
-                        {isPersian ? 'مشاهده زنده' : 'Inspect'}
+                        {isIt ? 'Ispeziona' : 'Inspect'}
                       </Button>
                     )}
                     <Button
@@ -396,7 +397,7 @@ export const PosShiftHistoryTab: React.FC<PosShiftHistoryTabProps> = ({
                       onClick={() => onPrintZReport(shift)}
                       icon={<Printer className="w-3.5 h-3.5" />}
                     >
-                      {isPersian ? 'چاپ ژورنال' : 'Print'}
+                      {isIt ? 'Stampa' : 'Print'}
                     </Button>
                   </div>
                 </div>

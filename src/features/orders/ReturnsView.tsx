@@ -22,7 +22,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { DataTable } from '../../components/ui/DataTable';
 import { Pagination } from '../../components/ui/Pagination';
-import { formatCurrency, formatDate, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency, formatDate, toPersianDigits, resolveCurrencyCode } from '../../utils/formatters';
 import { printReturnReceipt } from '../../utils/returnReceiptPrint';
 import { OrderReturnExchangeModal } from './components/OrderReturnExchangeModal';
 import { useSwrRefresh } from '../../hooks/useSwrRefresh';
@@ -47,6 +47,7 @@ export const ReturnsView: React.FC = () => {
   const { t, locale } = useTranslation();
   const isPersian = false;
   const { activeOrganization, permissions } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
 
   const [returns, setReturns] = useState<OrderReturn[]>([]);
   const [allReturnItems, setAllReturnItems] = useState<OrderReturnItem[]>([]);
@@ -351,20 +352,20 @@ export const ReturnsView: React.FC = () => {
     if (net < 0) {
       return (
         <span className="font-mono font-bold text-rose-600 dark:text-rose-400">
-          - {formatCurrency(Math.abs(net), 'TOMAN', isPersian)}
+          - {formatCurrency(Math.abs(net), activeCurrency, isPersian)}
         </span>
       );
     }
     if (net > 0) {
       return (
         <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-          + {formatCurrency(net, 'TOMAN', isPersian)}
+          + {formatCurrency(net, activeCurrency, isPersian)}
         </span>
       );
     }
     return (
       <span className="font-mono font-bold text-indigo-600 dark:text-indigo-400">
-        {isPersian ? '۰ (سر‌به‌سر)' : '0 (Even)'}
+        {locale === 'it' ? '0 (Pari)' : '0 (Even)'}
       </span>
     );
   };
@@ -412,7 +413,7 @@ export const ReturnsView: React.FC = () => {
             <TrendingDown className="w-4 h-4 text-rose-500" />
           </div>
           <div className="text-lg font-black font-mono text-rose-600 dark:text-rose-400">
-            {formatCurrency(kpis.totalReturnedValue, 'TOMAN', isPersian)}
+            {formatCurrency(kpis.totalReturnedValue, activeCurrency, isPersian)}
           </div>
         </Card>
 
@@ -424,7 +425,7 @@ export const ReturnsView: React.FC = () => {
             <ArrowLeftRight className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="text-lg font-black font-mono text-emerald-600 dark:text-emerald-400">
-            {formatCurrency(kpis.totalExchangedValue, 'TOMAN', isPersian)}
+            {formatCurrency(kpis.totalExchangedValue, activeCurrency, isPersian)}
           </div>
         </Card>
 
@@ -449,7 +450,7 @@ export const ReturnsView: React.FC = () => {
             {t('orders.topReasonInsight')}{' '}
             <strong>{getReasonLabel(kpis.topReason)}</strong>{' '}
             <span className="font-mono opacity-80">
-              ({isPersian ? toPersianDigits(kpis.topPct) : kpis.topPct}٪)
+              ({kpis.topPct}%)
             </span>
           </span>
         </div>
@@ -561,7 +562,7 @@ export const ReturnsView: React.FC = () => {
               },
               {
                 key: 'net_amount',
-                header: t('orders.settlementSummary').replace(/^۳\.\s*/, ''),
+                header: t('orders.settlementSummary').replace(/^\d+\.\s*/, ''),
                 render: (r) => (
                   <div className="text-xs">
                     {renderNetBadge(Number(r.net_amount) || 0)}
@@ -716,7 +717,7 @@ export const ReturnsView: React.FC = () => {
                     </div>
                   </div>
                   <div className="font-mono font-bold text-neutral-900 dark:text-white shrink-0">
-                    {formatCurrency(ord.total, 'TOMAN', isPersian)}
+                    {formatCurrency(ord.total, resolveCurrencyCode(ord.currency || activeOrganization?.currency), isPersian)}
                   </div>
                 </button>
               ))
@@ -823,7 +824,7 @@ export const ReturnsView: React.FC = () => {
                             {isPersian ? toPersianDigits(it.quantity) : it.quantity}
                           </td>
                           <td className="p-2 text-end font-mono font-bold">
-                            {formatCurrency(it.total, 'TOMAN', isPersian)}
+                            {formatCurrency(it.total, activeCurrency, isPersian)}
                           </td>
                         </tr>
                       ))}
@@ -868,10 +869,10 @@ export const ReturnsView: React.FC = () => {
                               {isPersian ? toPersianDigits(it.quantity) : it.quantity}
                             </td>
                             <td className="p-2 text-end font-mono">
-                              {formatCurrency(it.unit_price, 'TOMAN', isPersian)}
+                              {formatCurrency(it.unit_price, activeCurrency, isPersian)}
                             </td>
                             <td className="p-2 text-end font-mono font-bold">
-                              {formatCurrency(it.total, 'TOMAN', isPersian)}
+                              {formatCurrency(it.total, activeCurrency, isPersian)}
                             </td>
                           </tr>
                         ))}
@@ -885,12 +886,12 @@ export const ReturnsView: React.FC = () => {
             <div className="p-3.5 rounded-xl bg-neutral-900 text-white space-y-1.5 font-mono text-xs">
               <div className="flex justify-between text-neutral-400">
                 <span>{t('orders.returnedTotalValue')}:</span>
-                <span>{formatCurrency(selectedReturn.returned_total, 'TOMAN', isPersian)}</span>
+                <span>{formatCurrency(selectedReturn.returned_total, activeCurrency, isPersian)}</span>
               </div>
               {selectedReturn.type === 'exchange' && (
                 <div className="flex justify-between text-neutral-400">
                   <span>{t('orders.exchangedTotalValue')}:</span>
-                  <span>{formatCurrency(selectedReturn.exchange_total, 'TOMAN', isPersian)}</span>
+                  <span>{formatCurrency(selectedReturn.exchange_total, activeCurrency, isPersian)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-sm pt-2 border-t border-neutral-800">
@@ -904,7 +905,7 @@ export const ReturnsView: React.FC = () => {
                       : 'text-indigo-400'
                   }
                 >
-                  {formatCurrency(Math.abs(selectedReturn.net_amount), 'TOMAN', isPersian)}
+                  {formatCurrency(Math.abs(selectedReturn.net_amount), activeCurrency, isPersian)}
                 </span>
               </div>
             </div>

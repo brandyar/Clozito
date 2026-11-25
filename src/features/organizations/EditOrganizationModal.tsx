@@ -6,7 +6,14 @@ import { Modal } from '../../components/ui/Modal';
 import { Button } from '../../components/ui/Button';
 import { ImageUpload } from '../../components/ui/ImageUpload';
 import { BRAND, SUPPORTED_CURRENCIES, SUPPORTED_TIMEZONES } from '../../config/brand';
-import { resolveCurrencyCode } from '../../utils/formatters';
+import {
+  resolveCurrencyCode,
+  getOrganizationTaxRate,
+  saveOrganizationTaxRateCache,
+  getFiscalMetadataCache,
+  saveFiscalMetadataCache,
+  roundCurrency,
+} from '../../utils/formatters';
 import { Save, AlertCircle, CheckCircle2, ShieldAlert } from 'lucide-react';
 
 interface EditOrganizationModalProps {
@@ -29,27 +36,34 @@ export const EditOrganizationModal: React.FC<EditOrganizationModalProps> = ({
   const [slug, setSlug] = useState('');
   const [currency, setCurrency] = useState<string>(BRAND.defaultCurrency);
   const [timezone, setTimezone] = useState<string>(BRAND.defaultTimezone);
+  const [defaultTaxRate, setDefaultTaxRate] = useState<string>(String(BRAND.defaultVatRate));
   const [logo, setLogo] = useState('');
   const [signature, setSignature] = useState('');
   const [phone, setPhone] = useState('');
   const [mobile, setMobile] = useState('');
   const [address, setAddress] = useState('');
+  const [vatNumber, setVatNumber] = useState('');
+  const [taxCode, setTaxCode] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
 
   useEffect(() => {
     if (organization) {
+      const cachedFiscal = getFiscalMetadataCache('org', organization.id);
       setName(organization.name || '');
       setSlug(organization.slug || '');
       setCurrency(resolveCurrencyCode(organization.currency));
       const existingTz = organization.timezone || BRAND.defaultTimezone;
       setTimezone(existingTz === 'Asia/Tehran' ? BRAND.defaultTimezone : existingTz);
+      setDefaultTaxRate(String(getOrganizationTaxRate(organization)));
       setLogo(organization.logo || '');
       setSignature(organization.signature || '');
       setPhone(organization.phone || '');
       setMobile(organization.mobile || '');
       setAddress(organization.address || '');
+      setVatNumber(organization.vat_number || cachedFiscal.vat_number || '');
+      setTaxCode(organization.tax_code || cachedFiscal.tax_code || '');
       setError(null);
       setSuccessMsg(null);
     }
@@ -75,11 +89,24 @@ export const EditOrganizationModal: React.FC<EditOrganizationModalProps> = ({
     setSuccessMsg(null);
 
     try {
+      const parsedTaxRate = Math.min(100, Math.max(0, roundCurrency(defaultTaxRate)));
+      const cleanVat = vatNumber.trim().toUpperCase() || null;
+      const cleanTaxCode = taxCode.trim().toUpperCase() || null;
+
+      saveOrganizationTaxRateCache(organization.id, parsedTaxRate);
+      saveFiscalMetadataCache('org', organization.id, {
+        vat_number: cleanVat,
+        tax_code: cleanTaxCode,
+      });
+
       await updateActiveOrganization({
         name: cleanName,
         slug: slug.trim() || organization.slug,
         currency,
         timezone,
+        default_tax_rate: parsedTaxRate,
+        vat_number: cleanVat,
+        tax_code: cleanTaxCode,
         status: organization.status,
         plan: organization.plan,
         logo: logo ? logo.trim() : null,
@@ -163,8 +190,8 @@ export const EditOrganizationModal: React.FC<EditOrganizationModalProps> = ({
           </div>
         </div>
 
-        {/* Currency & Timezone Grid */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {/* Currency, Timezone & Default VAT Grid */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">{t('settings.orgCurrency')}</label>
             <select
@@ -195,6 +222,23 @@ export const EditOrganizationModal: React.FC<EditOrganizationModalProps> = ({
                 </option>
               ))}
             </select>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
+              {t('settings.defaultVatRate', 'Default VAT (%)')}
+            </label>
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="0.01"
+              disabled={!isOwner || isSubmitting}
+              value={defaultTaxRate}
+              onChange={(e) => setDefaultTaxRate(e.target.value)}
+              placeholder="22"
+              className="w-full px-3 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-400 focus:border-transparent disabled:bg-neutral-100 dark:disabled:bg-neutral-900/60 disabled:text-neutral-400 dark:disabled:text-neutral-600 disabled:cursor-not-allowed"
+            />
           </div>
         </div>
 
@@ -269,10 +313,48 @@ export const EditOrganizationModal: React.FC<EditOrganizationModalProps> = ({
           </div>
         </div>
 
-        {/* Address */}
+        {/* European B2B Fiscal Identifiers (VAT / Partita IVA & Tax Code / Codice Fiscale) */}
+        <div className="p-3.5 rounded-xl bg-neutral-50/80 dark:bg-neutral-900/50 border border-neutral-200/80 dark:border-neutral-800 space-y-3">
+          <div className="text-[11px] font-bold text-neutral-700 dark:text-neutral-300 uppercase tracking-wide">
+            {t('settings.orgFiscalSectionTitle', 'Fiscal & B2B Invoicing Identifiers (EU)')}
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                {t('settings.orgVatNumber', 'VAT Number / Partita IVA')}
+              </label>
+              <input
+                type="text"
+                disabled={!isOwner || isSubmitting}
+                value={vatNumber}
+                onChange={(e) => setVatNumber(e.target.value)}
+                placeholder={t('settings.orgVatNumberPlaceholder', 'e.g. IT01234567890')}
+                dir="ltr"
+                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono uppercase text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-400 focus:border-transparent disabled:bg-neutral-100 dark:disabled:bg-neutral-900/60 disabled:text-neutral-400 dark:disabled:text-neutral-600 disabled:cursor-not-allowed transition-all text-start"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
+                {t('settings.orgTaxCode', 'Tax Code / Codice Fiscale')}
+              </label>
+              <input
+                type="text"
+                disabled={!isOwner || isSubmitting}
+                value={taxCode}
+                onChange={(e) => setTaxCode(e.target.value)}
+                placeholder={t('settings.orgTaxCodePlaceholder', 'e.g. RSSMRA85M01H501Z')}
+                dir="ltr"
+                className="w-full px-3.5 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-xl text-xs font-mono uppercase text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 dark:placeholder:text-neutral-500 placeholder:normal-case focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-400 focus:border-transparent disabled:bg-neutral-100 dark:disabled:bg-neutral-900/60 disabled:text-neutral-400 dark:disabled:text-neutral-600 disabled:cursor-not-allowed transition-all text-start"
+              />
+            </div>
+          </div>
+        </div>
+
+        {/* Legal / Business Address */}
         <div>
           <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1.5">
-            {t('settings.orgAddress', 'Business Address')}
+            {t('settings.orgLegalAddress', 'Legal / Registered Address')}
           </label>
           <textarea
             rows={2}

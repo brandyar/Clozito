@@ -1,4 +1,5 @@
 import { storageManager } from '../../../storage';
+import { roundCurrency } from '../../../utils/formatters';
 import {
   Order,
   OrderItem,
@@ -79,10 +80,10 @@ export function calculateEffectiveUnitRefundPrice(order: Order, item: OrderItem)
 
   if (subtotal > 0 && orderTotal >= 0 && Math.abs(orderTotal - subtotal) > 0.01) {
     const ratio = orderTotal / subtotal;
-    return Math.max(0, Math.round(lineUnitNet * ratio));
+    return Math.max(0, roundCurrency(lineUnitNet * ratio));
   }
 
-  return Math.max(0, Math.round(lineUnitNet));
+  return Math.max(0, roundCurrency(lineUnitNet));
 }
 
 export function generateReturnNumber(type: OrderReturnType): string {
@@ -126,12 +127,12 @@ export async function processOrderReturnOrExchange(
 
   const adapter = storageManager.getAdapter();
   if (!adapter.saveOrderReturn) {
-    throw new Error('سرویس ثبت مرجوعی در آداپتور ذخیره‌سازی فعلی در دسترس نیست.');
+    throw new Error('Order return service is not available in the current storage adapter.');
   }
 
   const validReturned = returnedLines.filter((l) => Number(l.quantity) > 0);
   if (validReturned.length === 0) {
-    throw new Error('لطفاً حداقل یک کالا برای مرجوع یا تعویض انتخاب کنید.');
+    throw new Error('Please select at least one item to return or exchange.');
   }
 
   const validExchanged = type === 'exchange'
@@ -139,34 +140,38 @@ export async function processOrderReturnOrExchange(
     : [];
 
   if (type === 'exchange' && validExchanged.length === 0) {
-    throw new Error('در حالت تعویض، انتخاب حداقل یک کالای جایگزین الزامی است.');
+    throw new Error('For an exchange, you must select at least one replacement item.');
   }
 
   // 1. Validate returnable quantities against original order items
   for (const line of validReturned) {
     const orig = allOrderItems.find((oi) => Number(oi.id) === Number(line.orderItem.id));
     if (!orig) {
-      throw new Error('ردیف کالای انتخاب‌شده در سفارش اصلی یافت نشد.');
+      throw new Error('Selected item line was not found in the original order.');
     }
     const alreadyReturned = Number(orig.returned_quantity) || 0;
     const remaining = Math.max(0, (Number(orig.quantity) || 0) - alreadyReturned);
     if (line.quantity > remaining) {
       throw new Error(
-        `تعداد مرجوعی برای کالای «${line.productTitle || line.sku || orig.id}» از تعداد قابل مرجوع (${remaining}) بیشتر است.`
+        `Return quantity for "${line.productTitle || line.sku || orig.id}" exceeds the remaining returnable quantity (${remaining}).`
       );
     }
   }
 
-  // Compute totals
-  const returnedTotal = validReturned.reduce(
-    (sum, l) => sum + Math.round(Number(l.quantity) * Math.max(0, Number(l.unitPrice) || 0)),
-    0
+  // Compute totals (2-decimal precision)
+  const returnedTotal = roundCurrency(
+    validReturned.reduce(
+      (sum, l) => sum + roundCurrency(Number(l.quantity) * Math.max(0, Number(l.unitPrice) || 0)),
+      0
+    )
   );
-  const exchangeTotal = validExchanged.reduce(
-    (sum, l) => sum + Math.round(Number(l.quantity) * Math.max(0, Number(l.unitPrice) || 0)),
-    0
+  const exchangeTotal = roundCurrency(
+    validExchanged.reduce(
+      (sum, l) => sum + roundCurrency(Number(l.quantity) * Math.max(0, Number(l.unitPrice) || 0)),
+      0
+    )
   );
-  const netAmount = exchangeTotal - returnedTotal;
+  const netAmount = roundCurrency(exchangeTotal - returnedTotal);
 
   const customerId =
     typeof order.customer_id === 'object'
@@ -178,10 +183,10 @@ export async function processOrderReturnOrExchange(
     netAmount === 0 ? 'none' : input.settlementMethod;
 
   if (netAmount < 0 && settlementMethod === 'store_credit' && !numericCustomerId) {
-    throw new Error('برای ثبت بستانکاری (اعتبار خرید بعدی)، سفارش باید دارای مشتری مشخص باشد.');
+    throw new Error('To issue store credit, the order must be linked to a specific customer.');
   }
   if (netAmount > 0 && settlementMethod === 'credit' && !numericCustomerId) {
-    throw new Error('برای ثبت مابه‌التفاوت به‌صورت نسیه، سفارش باید دارای مشتری مشخص باشد.');
+    throw new Error('To record the balance on credit, the order must be linked to a specific customer.');
   }
 
   const isLiquidSettlement =
@@ -214,14 +219,14 @@ export async function processOrderReturnOrExchange(
       original_order_item_id: Number(l.orderItem.id),
       variant_id: Number(l.variantId),
       quantity: Number(l.quantity),
-      unit_price: Math.max(0, Number(l.unitPrice) || 0),
-      unit_cost: Math.max(0, Number(l.unitCost) || 0),
-      total: Math.round(Number(l.quantity) * Math.max(0, Number(l.unitPrice) || 0)),
+      unit_price: roundCurrency(Math.max(0, Number(l.unitPrice) || 0)),
+      unit_cost: roundCurrency(Math.max(0, Number(l.unitCost) || 0)),
+      total: roundCurrency(Number(l.quantity) * Math.max(0, Number(l.unitPrice) || 0)),
       condition: l.condition,
     })),
     ...validExchanged.map((l) => {
-      const cost = Number(l.variant.cost ?? l.variant.buy_price ?? 0) || 0;
-      const unitPrice = Math.max(0, Number(l.unitPrice) || 0);
+      const cost = roundCurrency(Number(l.variant.cost ?? l.variant.buy_price ?? 0) || 0);
+      const unitPrice = roundCurrency(Math.max(0, Number(l.unitPrice) || 0));
       return {
         organization_id: organizationId,
         item_type: 'exchanged' as const,
@@ -230,7 +235,7 @@ export async function processOrderReturnOrExchange(
         quantity: Number(l.quantity),
         unit_price: unitPrice,
         unit_cost: cost,
-        total: Math.round(Number(l.quantity) * unitPrice),
+        total: roundCurrency(Number(l.quantity) * unitPrice),
         condition: 'restockable' as const,
       };
     }),
@@ -310,8 +315,8 @@ export async function processOrderReturnOrExchange(
     const moveType = line.condition === 'damaged' ? 'damage' : 'return';
     const conditionNote =
       line.condition === 'damaged'
-        ? `مرجوعی معیوب/ضایعاتی سند #${savedReturn.return_number} (فاکتور #${order.order_number})`
-        : `مرجوعی سالم به انبار سند #${savedReturn.return_number} (فاکتور #${order.order_number})`;
+        ? `Damaged/defective return #${savedReturn.return_number} (Order #${order.order_number})`
+        : `Restockable return #${savedReturn.return_number} (Order #${order.order_number})`;
 
     await adapter.recordMovement({
       organization_id: organizationId,
@@ -334,7 +339,7 @@ export async function processOrderReturnOrExchange(
       quantity: Number(line.quantity),
       reference_type: 'return',
       reference_id: String(savedReturn.id),
-      note: `تحویل کالای جایگزین سند تعویض #${savedReturn.return_number} (فاکتور #${order.order_number})`,
+      note: `Exchange replacement item #${savedReturn.return_number} (Order #${order.order_number})`,
     });
   }
 
@@ -355,7 +360,7 @@ export async function processOrderReturnOrExchange(
           amount: Math.abs(netAmount),
           tracking_code: savedReturn.return_number,
           transaction_date: returnDateIso,
-          description: `استرداد وجه بابت سند ${type === 'exchange' ? 'تعویض' : 'مرجوعی'} #${savedReturn.return_number} (فاکتور #${order.order_number})`,
+          description: `Refund payout for ${type === 'exchange' ? 'exchange' : 'return'} #${savedReturn.return_number} (Order #${order.order_number})`,
         });
       } else if (netAmount > 0) {
         await adapter.saveTreasuryTransaction({
@@ -365,7 +370,7 @@ export async function processOrderReturnOrExchange(
           amount: netAmount,
           tracking_code: savedReturn.return_number,
           transaction_date: returnDateIso,
-          description: `دریافت مابه‌التفاوت بابت سند تعویض #${savedReturn.return_number} (فاکتور #${order.order_number})`,
+          description: `Exchange balance received for #${savedReturn.return_number} (Order #${order.order_number})`,
         });
       }
     } catch (trErr) {
@@ -395,7 +400,7 @@ export async function processOrderReturnOrExchange(
           reference_code: savedReturn.return_number,
           reference_number: savedReturn.return_number,
           transaction_date: returnDateIso,
-          description: `برگشت از فروش بابت سند #${savedReturn.return_number} (فاکتور #${order.order_number})`,
+          description: `Sales return #${savedReturn.return_number} (Order #${order.order_number})`,
         });
       } catch (ptErr) {
         console.warn('[returnProcessor] Failed to log sale_return ledger entry:', ptErr);
@@ -420,7 +425,7 @@ export async function processOrderReturnOrExchange(
           reference_code: savedReturn.return_number,
           reference_number: savedReturn.return_number,
           transaction_date: returnDateIso,
-          description: `کالای جایگزین در سند تعویض #${savedReturn.return_number} (فاکتور #${order.order_number})`,
+          description: `Exchange replacement invoice #${savedReturn.return_number} (Order #${order.order_number})`,
         });
       } catch (ptErr) {
         console.warn('[returnProcessor] Failed to log exchange sale_invoice entry:', ptErr);
@@ -449,7 +454,7 @@ export async function processOrderReturnOrExchange(
           reference_code: savedReturn.return_number,
           reference_number: savedReturn.return_number,
           transaction_date: returnDateIso,
-          description: `استرداد وجه مرجوعی سند #${savedReturn.return_number} (فاکتور #${order.order_number})`,
+          description: `Cash refund for return #${savedReturn.return_number} (Order #${order.order_number})`,
         });
       } catch (ptErr) {
         console.warn('[returnProcessor] Failed to log cash_refund ledger entry:', ptErr);
@@ -477,7 +482,7 @@ export async function processOrderReturnOrExchange(
           reference_code: savedReturn.return_number,
           reference_number: savedReturn.return_number,
           transaction_date: returnDateIso,
-          description: `دریافت مابه‌التفاوت تعویض سند #${savedReturn.return_number} (فاکتور #${order.order_number})`,
+          description: `Exchange difference payment for #${savedReturn.return_number} (Order #${order.order_number})`,
         });
       } catch (ptErr) {
         console.warn('[returnProcessor] Failed to log cash_receipt ledger entry:', ptErr);

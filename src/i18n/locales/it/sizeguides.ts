@@ -94,4 +94,12 @@ export const sizeguidesIt = {
   searchSizesPlaceholder: 'Cerca taglie...',
   applySelectedSizes: 'Applica alla Matrice',
   removeSizeFromTemplate: 'Rimuovi taglia dal modello',
+  euPresetsBtn: 'Modelli Standard IT / UE',
+  euPresetsModalTitle: 'Modelli Predefiniti Taglie Italia & Europa',
+  euPresetsModalSubtitle: 'Installa con un clic tabelle taglie pronte all\'uso per abbigliamento e calzature italiane ed europee con misure in cm.',
+  installPresetBtn: 'Installa Modello',
+  installingPreset: 'Installazione...',
+  presetInstalledSuccess: 'Modello guida taglie "{name}" installato con successo.',
+  presetSizesCount: '{count} taglie',
+  presetDimensionsCount: '{count} misure',
 };

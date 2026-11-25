@@ -3,6 +3,7 @@ import multer from 'multer';
 import { DirectusAdminClient } from '../directusAdmin';
 import { requireAuth, AuthenticatedRequest, verifyToken } from '../auth';
 import { DEFAULT_SYSTEM_MODULES } from '../../src/utils/license';
+import { isPaidCloudPlan, normalizePlanTier } from '../../src/config/plans';
 
 const upload = multer({ limits: { fileSize: 15 * 1024 * 1024 } }); // 15MB
 
@@ -166,7 +167,7 @@ publicRouter.all('/modules/sync-licenses', async (req: any, res: Response) => {
     }
 
     if (!targetOrgId || isNaN(targetOrgId) || targetOrgId <= 0) {
-      return res.status(400).json({ error: 'شناسه سازمان مشخص نیست.' });
+      return res.status(400).json({ error: 'Organization ID is missing or invalid.' });
     }
 
     // 1. Fetch organization to verify existence and Pro status
@@ -174,10 +175,11 @@ publicRouter.all('/modules/sync-licenses', async (req: any, res: Response) => {
       () => null
     );
     if (!org) {
-      return res.status(404).json({ error: 'سازمان مورد نظر در سرور یافت نشد.' });
+      return res.status(404).json({ error: 'Organization not found.' });
     }
 
-    const isPro = org.plan === 'pro';
+    const isPro = isPaidCloudPlan(org.plan);
+    const planTier = normalizePlanTier(org.plan);
 
     // 2. Fetch all system modules from Directus
     const systemModules = await DirectusAdminClient.getItems('system_modules', {
@@ -229,6 +231,7 @@ publicRouter.all('/modules/sync-licenses', async (req: any, res: Response) => {
       organizationId: targetOrgId,
       isPro,
       plan: org.plan || 'free',
+      planTier,
       systemModules,
       modules: evaluatedModules,
       timestamp: new Date().toISOString(),
@@ -237,7 +240,7 @@ publicRouter.all('/modules/sync-licenses', async (req: any, res: Response) => {
     console.error('[proxy] /modules/sync-licenses Error:', error);
     return res
       .status(500)
-      .json({ error: error.message || 'خطا در استعلام وضعیت لایسنس‌ها از سرور' });
+      .json({ error: error.message || 'Failed to fetch license status from server.' });
   }
 });
 
@@ -315,12 +318,12 @@ publicRouter.get('/assets/:id', async (req, res) => {
   }
 });
 
-// Feedback Submission Endpoint (ثبت و ارسال بازخورد کاربران)
+// Feedback Submission Endpoint
 publicRouter.post('/feedback', async (req, res) => {
   try {
     const { subject, message, user_id } = req.body;
     if (!subject || !message) {
-      return res.status(400).json({ error: 'موضوع و متن پیام بازخورد الزامی است.' });
+      return res.status(400).json({ error: 'Subject and message are required.' });
     }
 
     let resolvedUserId: string | null = user_id || null;
@@ -347,16 +350,16 @@ publicRouter.post('/feedback', async (req, res) => {
     return res.status(201).json({ success: true, data: created });
   } catch (error: any) {
     console.error('[proxy] /feedback error:', error?.message);
-    return res.status(500).json({ error: error?.message || 'خطا در ثبت بازخورد' });
+    return res.status(500).json({ error: error?.message || 'Failed to submit feedback.' });
   }
 });
 
-// Public Online Catalog Endpoint (دریافت داده‌های ویترین و محصولات عمومی برند)
+// Public Online Catalog Endpoint
 publicRouter.get('/public-catalog/:slug', async (req, res) => {
   try {
     const { slug } = req.params;
     if (!slug) {
-      return res.status(400).json({ error: 'شناسه برند یا نام فروشگاه الزامی است.' });
+      return res.status(400).json({ error: 'Brand slug or store identifier is required.' });
     }
 
     // 1. Fetch organization
@@ -373,7 +376,7 @@ publicRouter.get('/public-catalog/:slug', async (req, res) => {
     }
 
     if (!orgs || orgs.length === 0) {
-      return res.status(404).json({ error: 'فروشگاه یا برند مورد نظر یافت نشد.' });
+      return res.status(404).json({ error: 'Store or brand not found.' });
     }
 
     const org = orgs[0];
@@ -430,7 +433,7 @@ publicRouter.get('/public-catalog/:slug', async (req, res) => {
     });
   } catch (error: any) {
     console.error('[proxy] /public-catalog error:', error?.message);
-    return res.status(500).json({ error: error?.message || 'خطا در بارگذاری کاتالوگ' });
+    return res.status(500).json({ error: error?.message || 'Failed to load catalog.' });
   }
 });
 
@@ -439,23 +442,23 @@ publicRouter.post('/public-catalog/inquiry', async (req, res) => {
   try {
     const { organization_id, product_id, product_title, size_name, customer_name, customer_phone, note } = req.body;
     if (!customer_phone) {
-      return res.status(400).json({ error: 'شماره تماس مشتری الزامی است.' });
+      return res.status(400).json({ error: 'Customer phone number is required.' });
     }
 
     // Try creating a feedback or direct customer inquiry entry
     try {
       await DirectusAdminClient.createItem('feedbacks', {
-        subject: `استعلام خرید کاتالوگ: ${product_title || 'کالا'} (${size_name || 'سایز نامشخص'})`,
-        message: `مشتری: ${customer_name || 'نامشخص'}\nتلفن: ${customer_phone}\nتوضیحات: ${note || '-'}\nکد کالا: ${product_id || '-'}`,
+        subject: `Catalog Inquiry: ${product_title || 'Product'} (${size_name || 'Unspecified size'})`,
+        message: `Customer: ${customer_name || 'Unknown'}\nPhone: ${customer_phone}\nNote: ${note || '-'}\nProduct ID: ${product_id || '-'}`,
         status: 'unread',
       });
     } catch {
       // non-blocking
     }
 
-    return res.status(201).json({ success: true, message: 'درخواست خرید با موفقیت ثبت شد.' });
+    return res.status(201).json({ success: true, message: 'Inquiry submitted successfully.' });
   } catch (error: any) {
     console.error('[proxy] /public-catalog/inquiry error:', error?.message);
-    return res.status(500).json({ error: error?.message || 'خطا در ثبت درخواست' });
+    return res.status(500).json({ error: error?.message || 'Failed to submit inquiry.' });
   }
 });

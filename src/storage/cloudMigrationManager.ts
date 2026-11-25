@@ -17,40 +17,43 @@ export interface CloudMigrationResult {
   errors: string[];
 }
 
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const UUID_FIELDS = new Set(['user_id', 'main_image', 'image', 'receipt_attachment', 'image_front', 'image_back']);
+
 const DIRECTUS_ALLOWED_FIELDS: Record<string, Set<string>> = {
-  categories: new Set(['organization_id', 'name', 'slug', 'parent_id']),
-  brands: new Set(['organization_id', 'name', 'slug', 'logo_url', 'description']),
-  seasons: new Set(['organization_id', 'name', 'code', 'start_date', 'end_date', 'is_active']),
-  collections: new Set(['organization_id', 'name', 'slug', 'season_id', 'description']),
-  colors: new Set(['organization_id', 'name', 'hex_code', 'code']),
-  size_groups: new Set(['organization_id', 'name', 'code', 'description']),
-  sizes: new Set(['organization_id', 'size_group_id', 'name', 'code', 'sort_order']),
+  categories: new Set(['organization_id', 'name', 'slug', 'parent_id', 'status']),
+  brands: new Set(['organization_id', 'name', 'slug']),
+  seasons: new Set(['organization_id', 'name', 'code', 'start_date', 'end_date', 'status']),
+  collections: new Set(['organization_id', 'name', 'slug', 'description', 'status']),
+  colors: new Set(['organization_id', 'name', 'code', 'hex', 'status']),
+  size_groups: new Set(['organization_id', 'name', 'category', 'status']),
+  sizes: new Set(['organization_id', 'size_group_id', 'name', 'code', 'sort', 'status']),
   warehouses: new Set(['organization_id', 'name', 'code', 'type', 'address', 'phone', 'status']),
-  warehouse_locations: new Set(['warehouse_id', 'name', 'code', 'description']),
-  size_guide_templates: new Set(['organization_id', 'name', 'category_type', 'description']),
-  size_guide_measurements: new Set(['template_id', 'name', 'code', 'unit', 'sort_order']),
-  size_guide_values: new Set(['template_id', 'measurement_id', 'size_id', 'value']),
-  products: new Set(['organization_id', 'title', 'code', 'category_id', 'brand_id', 'collection_id', 'season_id', 'gender', 'material', 'care_instructions', 'size_guide_template_id', 'description', 'image_url', 'status']),
-  product_variants: new Set(['organization_id', 'product_id', 'color_id', 'size_id', 'sku', 'barcode', 'price', 'cost_price', 'wholesale_price', 'weight_grams', 'status']),
-  inventory_items: new Set(['organization_id', 'variant_id', 'warehouse_id', 'location_id', 'quantity', 'reserved_quantity', 'reorder_point', 'last_counted_at']),
+  warehouse_locations: new Set(['warehouse_id', 'parent_id', 'name', 'code', 'type', 'barcode', 'status']),
+  size_guide_templates: new Set(['organization_id', 'name', 'type', 'unit', 'description', 'status']),
+  size_guide_measurements: new Set(['template_id', 'name', 'code', 'unit', 'type', 'sort', 'status']),
+  size_guide_values: new Set(['template_id', 'measurement_id', 'size_id', 'value', 'min_value', 'max_value', 'sort', 'status']),
+  products: new Set(['organization_id', 'status', 'title', 'slug', 'description', 'category_id', 'collection_id', 'season_id', 'size_guide_template_id', 'main_image', 'tags', 'sort', 'brand_id']),
+  product_variants: new Set(['organization_id', 'product_id', 'color_id', 'size_id', 'sku', 'barcode', 'price', 'cost', 'image', 'status', 'sort']),
+  inventory_items: new Set(['organization_id', 'variant_id', 'warehouse_id', 'location_id', 'quantity', 'reserved_quantity', 'available_quantity', 'damaged_quantity', 'reorder_point', 'safety_stock']),
   inventory_movements: new Set(['organization_id', 'variant_id', 'warehouse_id', 'location_id', 'type', 'quantity', 'reference_type', 'reference_id', 'note', 'user_id', 'created_at']),
-  suppliers: new Set(['organization_id', 'company_name', 'contact_name', 'phone', 'email', 'address', 'city', 'province', 'notes', 'status']),
+  suppliers: new Set(['organization_id', 'name', 'contact_name', 'phone', 'email', 'address', 'notes', 'status', 'balance']),
   customers: new Set(['organization_id', 'name', 'phone', 'email', 'address', 'notes', 'status', 'balance', 'credit_limit']),
-  orders: new Set(['organization_id', 'order_number', 'customer_id', 'warehouse_id', 'status', 'payment_status', 'fulfillment_status', 'subtotal', 'discount', 'tax', 'total', 'paid_amount', 'notes']),
+  orders: new Set(['organization_id', 'customer_id', 'warehouse_id', 'order_number', 'status', 'payment_status', 'currency', 'subtotal', 'discount', 'tax', 'total', 'notes']),
   order_items: new Set(['organization_id', 'order_id', 'variant_id', 'quantity', 'unit_price', 'discount', 'total', 'returned_quantity']),
   order_returns: new Set(['organization_id', 'return_number', 'original_order_id', 'customer_id', 'warehouse_id', 'pos_shift_id', 'type', 'status', 'reason', 'returned_total', 'exchange_total', 'net_amount', 'settlement_method', 'financial_account_id', 'return_date', 'notes']),
   order_return_items: new Set(['organization_id', 'return_id', 'item_type', 'original_order_item_id', 'variant_id', 'quantity', 'unit_price', 'unit_cost', 'total', 'condition']),
-  purchase_orders: new Set(['organization_id', 'po_number', 'supplier_id', 'warehouse_id', 'status', 'total_amount', 'paid_amount', 'notes', 'expected_date']),
-  purchase_order_items: new Set(['organization_id', 'purchase_order_id', 'variant_id', 'quantity', 'unit_cost', 'total_cost']),
-  stock_transfers: new Set(['organization_id', 'transfer_number', 'source_warehouse_id', 'destination_warehouse_id', 'status', 'notes']),
-  stock_transfer_items: new Set(['organization_id', 'transfer_id', 'variant_id', 'quantity']),
+  purchase_orders: new Set(['organization_id', 'purchase_number', 'supplier_id', 'warehouse_id', 'status', 'total_amount', 'paid_amount', 'notes', 'expected_date']),
+  purchase_order_items: new Set(['organization_id', 'purchase_order_id', 'variant_id', 'raw_material_id', 'quantity', 'quantity_received', 'unit_cost', 'total_cost']),
+  stock_transfers: new Set(['organization_id', 'transfer_number', 'from_warehouse_id', 'to_warehouse_id', 'status', 'notes']),
+  stock_transfer_items: new Set(['organization_id', 'transfer_id', 'variant_id', 'from_location_id', 'to_location_id', 'quantity']),
   expense_categories: new Set(['organization_id', 'title', 'code', 'icon', 'status']),
-  expenses: new Set(['organization_id', 'category_id', 'title', 'amount', 'expense_date', 'payment_method', 'account_id', 'receipt_attachment', 'paid_to', 'description', 'reference_code', 'notes', 'created_by']),
-  person_transactions: new Set(['organization_id', 'party_type', 'customer_id', 'supplier_id', 'type', 'transaction_type', 'amount', 'debit_amount', 'credit_amount', 'running_balance', 'balance_after', 'order_id', 'purchase_order_id', 'reference_code', 'reference_number', 'payment_method', 'transaction_date', 'description', 'status']),
+  expenses: new Set(['organization_id', 'category_id', 'title', 'amount', 'expense_date', 'payment_method', 'account_id', 'receipt_attachment', 'notes']),
+  person_transactions: new Set(['organization_id', 'party_type', 'customer_id', 'supplier_id', 'type', 'transaction_type', 'amount', 'balance_after', 'order_id', 'purchase_order_id', 'reference_number', 'transaction_date', 'description']),
   financial_accounts: new Set(['organization_id', 'name', 'type', 'bank_name', 'account_number', 'card_number', 'shaba_number', 'pos_terminal_id', 'initial_balance', 'current_balance', 'is_default', 'warehouse_id']),
-  treasury_transactions: new Set(['organization_id', 'source_account_id', 'destination_account_id', 'type', 'amount', 'tracking_code', 'transaction_date', 'person_transaction_id', 'expense_id', 'description', 'receipt_attachment']),
-  cheques: new Set(['organization_id', 'type', 'sayad_id', 'cheque_number', 'bank_name', 'branch_name', 'account_number', 'drawer_name', 'customer_id', 'supplier_id', 'amount', 'issue_date', 'due_date', 'status', 'target_account_id', 'alert_days_before', 'image_front', 'image_back', 'notes']),
-  landed_costs: new Set(['organization_id', 'purchase_order_id', 'cost_type', 'title', 'amount', 'allocation_method', 'expense_id', 'date_applied', 'notes']),
+  treasury_transactions: new Set(['organization_id', 'source_account_id', 'destination_account_id', 'type', 'amount', 'tracking_code', 'transaction_date', 'receipt_attachment']),
+  cheques: new Set(['organization_id', 'type', 'sayad_id', 'cheque_number', 'bank_name', 'branch_name', 'account_number', 'drawer_name', 'customer_id', 'supplier_id', 'amount', 'issue_date', 'due_date', 'status', 'target_account_id', 'alert_days_before', 'image_front', 'image_back']),
+  landed_costs: new Set(['organization_id', 'purchase_order_id', 'cost_type', 'amount', 'allocation_method']),
   landed_cost_allocations: new Set(['landed_cost_id', 'purchase_order_item_id', 'allocated_amount', 'allocated_cost', 'effective_unit_cost']),
   raw_materials: new Set(['organization_id', 'name', 'code', 'unit', 'category', 'warehouse_id', 'current_stock', 'min_stock', 'unit_cost', 'color_hex', 'description', 'status']),
   bill_of_materials: new Set(['organization_id', 'product_id', 'variant_id', 'name', 'version', 'waste_percentage', 'notes', 'status']),
@@ -66,11 +69,53 @@ export function sanitizeForDirectus(collection: string, rawItem: Record<string, 
   const allowed = DIRECTUS_ALLOWED_FIELDS[collection];
   if (!allowed) return { ...rawItem };
 
-  const sanitized: Record<string, any> = {};
-  for (const [key, value] of Object.entries(rawItem)) {
-    if (allowed.has(key) && value !== undefined && value !== null) {
-      sanitized[key] = value;
+  const normalizedItem: Record<string, any> = { ...rawItem };
+
+  if (collection === 'colors' && !normalizedItem.hex && normalizedItem.hex_code) {
+    normalizedItem.hex = normalizedItem.hex_code;
+  } else if (collection === 'size_groups' && !normalizedItem.category && normalizedItem.type) {
+    normalizedItem.category = normalizedItem.type;
+  } else if (collection === 'sizes' && normalizedItem.sort === undefined && normalizedItem.sort_order !== undefined) {
+    normalizedItem.sort = normalizedItem.sort_order;
+  } else if (collection === 'size_guide_templates' && !normalizedItem.type) {
+    normalizedItem.type = normalizedItem.category_type || normalizedItem.template_type || 'custom';
+  } else if (collection === 'size_guide_measurements' && normalizedItem.sort === undefined && normalizedItem.sort_order !== undefined) {
+    normalizedItem.sort = normalizedItem.sort_order;
+  } else if (collection === 'product_variants' && normalizedItem.cost === undefined && normalizedItem.cost_price !== undefined) {
+    normalizedItem.cost = normalizedItem.cost_price;
+  } else if (collection === 'suppliers' && !normalizedItem.name && normalizedItem.company_name) {
+    normalizedItem.name = normalizedItem.company_name;
+  } else if (collection === 'purchase_orders' && !normalizedItem.purchase_number && normalizedItem.po_number) {
+    normalizedItem.purchase_number = normalizedItem.po_number;
+  } else if (collection === 'stock_transfers') {
+    if (normalizedItem.from_warehouse_id === undefined && normalizedItem.source_warehouse_id !== undefined) {
+      normalizedItem.from_warehouse_id = normalizedItem.source_warehouse_id;
     }
+    if (normalizedItem.to_warehouse_id === undefined && normalizedItem.destination_warehouse_id !== undefined) {
+      normalizedItem.to_warehouse_id = normalizedItem.destination_warehouse_id;
+    }
+  } else if (collection === 'inventory_items') {
+    const qty = Math.max(0, Number(normalizedItem.quantity) || 0);
+    const reserved = Math.max(0, Number(normalizedItem.reserved_quantity) || 0);
+    normalizedItem.quantity = qty;
+    normalizedItem.reserved_quantity = reserved;
+    if (normalizedItem.available_quantity === undefined || normalizedItem.available_quantity === null) {
+      normalizedItem.available_quantity = Math.max(0, qty - reserved);
+    }
+    if (normalizedItem.damaged_quantity === undefined || normalizedItem.damaged_quantity === null) {
+      normalizedItem.damaged_quantity = 0;
+    }
+  } else if (collection === 'person_transactions' && !normalizedItem.reference_number && normalizedItem.reference_code) {
+    normalizedItem.reference_number = normalizedItem.reference_code;
+  }
+
+  const sanitized: Record<string, any> = {};
+  for (const [key, value] of Object.entries(normalizedItem)) {
+    if (!allowed.has(key) || value === undefined || value === null) continue;
+    if (UUID_FIELDS.has(key) && (typeof value !== 'string' || !UUID_REGEX.test(value))) {
+      continue;
+    }
+    sanitized[key] = value;
   }
   return sanitized;
 }
@@ -120,6 +165,60 @@ export class CloudMigrationManager {
       landed_costs: new Map(),
     };
 
+    const extractLocalId = (rawRef: any): number | null => {
+      if (rawRef === undefined || rawRef === null || rawRef === '') return null;
+      const candidate = typeof rawRef === 'object' ? rawRef.id : rawRef;
+      const numeric = Number(candidate);
+      return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+    };
+
+    /**
+     * Resolves an optional foreign key from local ID -> cloud ID.
+     * NEVER leaks an unmapped raw local ID back to Directus (returns null instead).
+     */
+    const remapOptionalFk = (targetCollection: string, rawRef: any): number | null => {
+      const localId = extractLocalId(rawRef);
+      if (localId === null) return null;
+      return idMap[targetCollection]?.get(localId) ?? null;
+    };
+
+    /**
+     * Resolves a required foreign key from local ID -> cloud ID.
+     * Returns null when parent failed or does not exist so caller can safely skip.
+     */
+    const remapRequiredFk = (targetCollection: string, rawRef: any): number | null => {
+      const localId = extractLocalId(rawRef);
+      if (localId === null) return null;
+      return idMap[targetCollection]?.get(localId) ?? null;
+    };
+
+    /**
+     * Orders self-referential tree entities (e.g. categories, warehouse_locations)
+     * so parents are migrated before children.
+     */
+    const orderParentsFirst = (items: any[]): any[] => {
+      const remaining = [...items];
+      const ordered: any[] = [];
+      const placedIds = new Set<number>();
+      let progress = true;
+
+      while (remaining.length > 0 && progress) {
+        progress = false;
+        for (let i = remaining.length - 1; i >= 0; i--) {
+          const parentId = extractLocalId(remaining[i]?.parent_id);
+          if (parentId === null || placedIds.has(parentId)) {
+            const [item] = remaining.splice(i, 1);
+            ordered.push(item);
+            const id = extractLocalId(item?.id);
+            if (id !== null) placedIds.add(id);
+            progress = true;
+          }
+        }
+      }
+      // Append any remaining items (e.g., broken/cyclic parent_id; parent_id will remap to null safely)
+      return [...ordered, ...remaining];
+    };
+
     const emitProgress = (
       step: string,
       current: number,
@@ -139,18 +238,19 @@ export class CloudMigrationManager {
 
       // Phase 1: Base Entities (Categories, Brands, Seasons, Colors, Size Groups, Warehouses, Suppliers, Customers)
       const baseCollections: Array<{ key: string; label: string }> = [
-        { key: 'categories', label: 'دسته‌بندی‌ها' },
-        { key: 'brands', label: 'برندها' },
-        { key: 'seasons', label: 'فصل‌ها' },
-        { key: 'colors', label: 'رنگ‌ها' },
-        { key: 'size_groups', label: 'گروه‌های سایز' },
-        { key: 'warehouses', label: 'انبارها و فروشگاه‌ها' },
-        { key: 'suppliers', label: 'تامین‌کنندگان' },
-        { key: 'customers', label: 'مشتریان' },
+        { key: 'categories', label: 'Categories' },
+        { key: 'brands', label: 'Brands' },
+        { key: 'seasons', label: 'Seasons' },
+        { key: 'colors', label: 'Colors' },
+        { key: 'size_groups', label: 'Size Groups' },
+        { key: 'warehouses', label: 'Warehouses & Stores' },
+        { key: 'suppliers', label: 'Suppliers' },
+        { key: 'customers', label: 'Customers' },
       ];
 
       for (const col of baseCollections) {
-        const items = collections[col.key] || [];
+        const rawItems = collections[col.key] || [];
+        const items = col.key === 'categories' ? orderParentsFirst(rawItems) : rawItems;
         emitProgress(col.label, 0, items.length, 'in_progress');
 
         for (let i = 0; i < items.length; i++) {
@@ -159,35 +259,47 @@ export class CloudMigrationManager {
           delete item.id;
           item.organization_id = orgId;
 
+          if (col.key === 'categories') {
+            item.parent_id = remapOptionalFk('categories', item.parent_id);
+          }
+
           try {
             const payload = sanitizeForDirectus(col.key, item);
-            const created = await directusClient.createItem<any>(col.key, payload);
+            let created: any;
+            try {
+              created = await directusClient.createItem<any>(col.key, payload);
+            } catch (firstErr: any) {
+              // Defensive fallback if an environment still enforces a unique slug on brands
+              const msg = String(firstErr?.message || '');
+              if (col.key === 'brands' && payload.slug && msg.toLowerCase().includes('unique')) {
+                const uniquePayload = { ...payload, slug: `${payload.slug}-${orgId}` };
+                created = await directusClient.createItem<any>(col.key, uniquePayload);
+              } else {
+                throw firstErr;
+              }
+            }
             if (created && created.id) {
               idMap[col.key]?.set(localId, Number(created.id));
               totalMigrated++;
             }
           } catch (err: any) {
             console.warn(`[CloudMigration] Error migrating ${col.key} item ${localId}:`, err?.message || err);
-            errors.push(`خطا در ارسال ${col.label} (${item.name || localId}): ${err?.message || err}`);
+            errors.push(`Error uploading ${col.label} (${item.name || localId}): ${err?.message || err}`);
           }
           emitProgress(col.label, i + 1, items.length, 'in_progress');
         }
         emitProgress(col.label, items.length, items.length, 'completed');
       }
 
-      // Phase 2: First-level Dependent Base Entities (Collections -> Seasons, Warehouse Locations -> Warehouses, Sizes -> Size Groups)
-      // 2.1 Collections (links to seasons)
+      // Phase 2: First-level Dependent Base Entities (Collections, Warehouse Locations -> Warehouses, Sizes -> Size Groups)
+      // 2.1 Collections
       const colItems = collections['collections'] || [];
-      emitProgress('مجموعه‌ها (Collections)', 0, colItems.length, 'in_progress');
+      emitProgress('Collections', 0, colItems.length, 'in_progress');
       for (let i = 0; i < colItems.length; i++) {
         const item = { ...colItems[i] };
         const localId = Number(item.id);
         delete item.id;
         item.organization_id = orgId;
-        if (item.season_id) {
-          const localSeasonId = Number(item.season_id?.id || item.season_id);
-          item.season_id = idMap['seasons']?.get(localSeasonId) || item.season_id;
-        }
 
         try {
           const payload = sanitizeForDirectus('collections', item);
@@ -197,24 +309,29 @@ export class CloudMigrationManager {
             totalMigrated++;
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال مجموعه (${item.name || localId}): ${err?.message || err}`);
+          errors.push(`Error uploading collection (${item.name || localId}): ${err?.message || err}`);
         }
-        emitProgress('مجموعه‌ها (Collections)', i + 1, colItems.length, 'in_progress');
+        emitProgress('Collections', i + 1, colItems.length, 'in_progress');
       }
-      emitProgress('مجموعه‌ها (Collections)', colItems.length, colItems.length, 'completed');
+      emitProgress('Collections', colItems.length, colItems.length, 'completed');
 
-      // 2.2 Warehouse Locations (links to warehouses)
-      const locItems = collections['warehouse_locations'] || [];
-      emitProgress('قفسه‌بندی و جایگاه‌ها', 0, locItems.length, 'in_progress');
+      // 2.2 Warehouse Locations (links to warehouses & optional parent location)
+      const locItems = orderParentsFirst(collections['warehouse_locations'] || []);
+      emitProgress('Warehouse Locations', 0, locItems.length, 'in_progress');
       for (let i = 0; i < locItems.length; i++) {
         const item = { ...locItems[i] };
         const localId = Number(item.id);
         delete item.id;
         item.organization_id = orgId;
-        if (item.warehouse_id) {
-          const localWhId = Number(item.warehouse_id?.id || item.warehouse_id);
-          item.warehouse_id = idMap['warehouses']?.get(localWhId) || item.warehouse_id;
+
+        const mappedWarehouseId = remapRequiredFk('warehouses', item.warehouse_id);
+        if (mappedWarehouseId === null) {
+          errors.push(`Skipped warehouse location (${item.name || localId}): parent warehouse was not migrated`);
+          emitProgress('Warehouse Locations', i + 1, locItems.length, 'in_progress');
+          continue;
         }
+        item.warehouse_id = mappedWarehouseId;
+        item.parent_id = remapOptionalFk('warehouse_locations', item.parent_id);
 
         try {
           const payload = sanitizeForDirectus('warehouse_locations', item);
@@ -224,24 +341,21 @@ export class CloudMigrationManager {
             totalMigrated++;
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال جایگاه انبار (${item.name || localId}): ${err?.message || err}`);
+          errors.push(`Error uploading warehouse location (${item.name || localId}): ${err?.message || err}`);
         }
-        emitProgress('قفسه‌بندی و جایگاه‌ها', i + 1, locItems.length, 'in_progress');
+        emitProgress('Warehouse Locations', i + 1, locItems.length, 'in_progress');
       }
-      emitProgress('قفسه‌بندی و جایگاه‌ها', locItems.length, locItems.length, 'completed');
+      emitProgress('Warehouse Locations', locItems.length, locItems.length, 'completed');
 
       // 2.3 Sizes (links to size_groups)
       const sizeItems = collections['sizes'] || [];
-      emitProgress('سایزها', 0, sizeItems.length, 'in_progress');
+      emitProgress('Sizes', 0, sizeItems.length, 'in_progress');
       for (let i = 0; i < sizeItems.length; i++) {
         const item = { ...sizeItems[i] };
         const localId = Number(item.id);
         delete item.id;
         item.organization_id = orgId;
-        if (item.size_group_id) {
-          const localSgId = Number(item.size_group_id?.id || item.size_group_id);
-          item.size_group_id = idMap['size_groups']?.get(localSgId) || null;
-        }
+        item.size_group_id = remapOptionalFk('size_groups', item.size_group_id);
 
         try {
           const payload = sanitizeForDirectus('sizes', item);
@@ -251,15 +365,15 @@ export class CloudMigrationManager {
             totalMigrated++;
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال سایز (${item.name || localId}): ${err?.message || err}`);
+          errors.push(`Error uploading size (${item.name || localId}): ${err?.message || err}`);
         }
-        emitProgress('سایزها', i + 1, sizeItems.length, 'in_progress');
+        emitProgress('Sizes', i + 1, sizeItems.length, 'in_progress');
       }
-      emitProgress('سایزها', sizeItems.length, sizeItems.length, 'completed');
+      emitProgress('Sizes', sizeItems.length, sizeItems.length, 'completed');
 
       // Phase 3: Size Guides (Templates -> Measurements -> Values)
       const tplItems = collections['size_guide_templates'] || [];
-      emitProgress('قالب‌های راهنمای سایز', 0, tplItems.length, 'in_progress');
+      emitProgress('Size Guide Templates', 0, tplItems.length, 'in_progress');
       for (let i = 0; i < tplItems.length; i++) {
         const item = { ...tplItems[i] };
         const localId = Number(item.id);
@@ -274,24 +388,27 @@ export class CloudMigrationManager {
             totalMigrated++;
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال قالب راهنمای سایز: ${err?.message || err}`);
+          errors.push(`Error uploading size guide template: ${err?.message || err}`);
         }
-        emitProgress('قالب‌های راهنمای سایز', i + 1, tplItems.length, 'in_progress');
+        emitProgress('Size Guide Templates', i + 1, tplItems.length, 'in_progress');
       }
-      emitProgress('قالب‌های راهنمای سایز', tplItems.length, tplItems.length, 'completed');
+      emitProgress('Size Guide Templates', tplItems.length, tplItems.length, 'completed');
 
       // Size Guide Measurements
       const sgMeasItems = collections['size_guide_measurements'] || [];
-      emitProgress('پارامترهای اندازه راهنما', 0, sgMeasItems.length, 'in_progress');
+      emitProgress('Size Guide Measurements', 0, sgMeasItems.length, 'in_progress');
       for (let i = 0; i < sgMeasItems.length; i++) {
         const item = { ...sgMeasItems[i] };
         const localId = Number(item.id);
         delete item.id;
         item.organization_id = orgId;
-        if (item.template_id) {
-          const localTplId = Number(item.template_id?.id || item.template_id);
-          item.template_id = idMap['size_guide_templates']?.get(localTplId) || item.template_id;
+
+        const mappedTemplateId = remapRequiredFk('size_guide_templates', item.template_id);
+        if (mappedTemplateId === null) {
+          emitProgress('Size Guide Measurements', i + 1, sgMeasItems.length, 'in_progress');
+          continue;
         }
+        item.template_id = mappedTemplateId;
 
         try {
           const payload = sanitizeForDirectus('size_guide_measurements', item);
@@ -301,31 +418,30 @@ export class CloudMigrationManager {
             totalMigrated++;
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال پارامتر اندازه: ${err?.message || err}`);
+          errors.push(`Error uploading size guide measurement: ${err?.message || err}`);
         }
-        emitProgress('پارامترهای اندازه راهنما', i + 1, sgMeasItems.length, 'in_progress');
+        emitProgress('Size Guide Measurements', i + 1, sgMeasItems.length, 'in_progress');
       }
-      emitProgress('پارامترهای اندازه راهنما', sgMeasItems.length, sgMeasItems.length, 'completed');
+      emitProgress('Size Guide Measurements', sgMeasItems.length, sgMeasItems.length, 'completed');
 
       // Size Guide Values
       const sgValItems = collections['size_guide_values'] || [];
-      emitProgress('مقادیر ماتریس راهنمای سایز', 0, sgValItems.length, 'in_progress');
+      emitProgress('Size Guide Matrix Values', 0, sgValItems.length, 'in_progress');
       for (let i = 0; i < sgValItems.length; i++) {
         const item = { ...sgValItems[i] };
         delete item.id;
         item.organization_id = orgId;
-        if (item.template_id) {
-          const localTplId = Number(item.template_id?.id || item.template_id);
-          item.template_id = idMap['size_guide_templates']?.get(localTplId) || item.template_id;
+
+        const mappedTemplateId = remapRequiredFk('size_guide_templates', item.template_id);
+        const mappedMeasId = remapRequiredFk('size_guide_measurements', item.measurement_id);
+        const mappedSizeId = remapRequiredFk('sizes', item.size_id);
+        if (mappedTemplateId === null || mappedMeasId === null || mappedSizeId === null) {
+          emitProgress('Size Guide Matrix Values', i + 1, sgValItems.length, 'in_progress');
+          continue;
         }
-        if (item.measurement_id) {
-          const localMeasId = Number(item.measurement_id?.id || item.measurement_id);
-          item.measurement_id = idMap['size_guide_measurements']?.get(localMeasId) || item.measurement_id;
-        }
-        if (item.size_id) {
-          const localSzId = Number(item.size_id?.id || item.size_id);
-          item.size_id = idMap['sizes']?.get(localSzId) || item.size_id;
-        }
+        item.template_id = mappedTemplateId;
+        item.measurement_id = mappedMeasId;
+        item.size_id = mappedSizeId;
 
         try {
           const payload = sanitizeForDirectus('size_guide_values', item);
@@ -334,13 +450,13 @@ export class CloudMigrationManager {
         } catch (err: any) {
           // ignore or log non-critical matrix cell errors
         }
-        emitProgress('مقادیر ماتریس راهنمای سایز', i + 1, sgValItems.length, 'in_progress');
+        emitProgress('Size Guide Matrix Values', i + 1, sgValItems.length, 'in_progress');
       }
-      emitProgress('مقادیر ماتریس راهنمای سایز', sgValItems.length, sgValItems.length, 'completed');
+      emitProgress('Size Guide Matrix Values', sgValItems.length, sgValItems.length, 'completed');
 
       // Phase 4: Products
       const productItems = collections['products'] || [];
-      emitProgress('محصولات و کالاها', 0, productItems.length, 'in_progress');
+      emitProgress('Products', 0, productItems.length, 'in_progress');
       for (let i = 0; i < productItems.length; i++) {
         const item = { ...productItems[i] };
         const localId = Number(item.id);
@@ -349,26 +465,11 @@ export class CloudMigrationManager {
         delete item.total_stock;
         item.organization_id = orgId;
 
-        if (item.category_id) {
-          const localCatId = Number(item.category_id?.id || item.category_id);
-          item.category_id = idMap['categories']?.get(localCatId) || item.category_id;
-        }
-        if (item.brand_id) {
-          const localBrandId = Number(item.brand_id?.id || item.brand_id);
-          item.brand_id = idMap['brands']?.get(localBrandId) || item.brand_id;
-        }
-        if (item.season_id) {
-          const localSeasonId = Number(item.season_id?.id || item.season_id);
-          item.season_id = idMap['seasons']?.get(localSeasonId) || item.season_id;
-        }
-        if (item.collection_id) {
-          const localColId = Number(item.collection_id?.id || item.collection_id);
-          item.collection_id = idMap['collections']?.get(localColId) || item.collection_id;
-        }
-        if (item.size_guide_template_id) {
-          const localTplId = Number(item.size_guide_template_id?.id || item.size_guide_template_id);
-          item.size_guide_template_id = idMap['size_guide_templates']?.get(localTplId) || item.size_guide_template_id;
-        }
+        item.category_id = remapOptionalFk('categories', item.category_id);
+        item.brand_id = remapOptionalFk('brands', item.brand_id);
+        item.season_id = remapOptionalFk('seasons', item.season_id);
+        item.collection_id = remapOptionalFk('collections', item.collection_id);
+        item.size_guide_template_id = remapOptionalFk('size_guide_templates', item.size_guide_template_id);
 
         try {
           const payload = sanitizeForDirectus('products', item);
@@ -378,33 +479,30 @@ export class CloudMigrationManager {
             totalMigrated++;
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال محصول (${item.title || localId}): ${err?.message || err}`);
+          errors.push(`Error uploading product (${item.title || localId}): ${err?.message || err}`);
         }
-        emitProgress('محصولات و کالاها', i + 1, productItems.length, 'in_progress');
+        emitProgress('Products', i + 1, productItems.length, 'in_progress');
       }
-      emitProgress('محصولات و کالاها', productItems.length, productItems.length, 'completed');
+      emitProgress('Products', productItems.length, productItems.length, 'completed');
 
       // Phase 5: Product Variants
       const variantItems = collections['product_variants'] || [];
-      emitProgress('تنوع‌ها و تنخور کالا (Variants)', 0, variantItems.length, 'in_progress');
+      emitProgress('Product Variants', 0, variantItems.length, 'in_progress');
       for (let i = 0; i < variantItems.length; i++) {
         const item = { ...variantItems[i] };
         const localId = Number(item.id);
         delete item.id;
         item.organization_id = orgId;
 
-        if (item.product_id) {
-          const localPId = Number(item.product_id?.id || item.product_id);
-          item.product_id = idMap['products']?.get(localPId) || item.product_id;
+        const mappedProductId = remapRequiredFk('products', item.product_id);
+        if (mappedProductId === null) {
+          errors.push(`Skipped product variant (${item.sku || localId}): parent product was not migrated`);
+          emitProgress('Product Variants', i + 1, variantItems.length, 'in_progress');
+          continue;
         }
-        if (item.color_id) {
-          const localCId = Number(item.color_id?.id || item.color_id);
-          item.color_id = idMap['colors']?.get(localCId) || item.color_id;
-        }
-        if (item.size_id) {
-          const localSId = Number(item.size_id?.id || item.size_id);
-          item.size_id = idMap['sizes']?.get(localSId) || item.size_id;
-        }
+        item.product_id = mappedProductId;
+        item.color_id = remapOptionalFk('colors', item.color_id);
+        item.size_id = remapOptionalFk('sizes', item.size_id);
 
         try {
           const payload = sanitizeForDirectus('product_variants', item);
@@ -414,61 +512,60 @@ export class CloudMigrationManager {
             totalMigrated++;
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال تنوع کالا (${item.sku || localId}): ${err?.message || err}`);
+          errors.push(`Error uploading product variant (${item.sku || localId}): ${err?.message || err}`);
         }
-        emitProgress('تنوع‌ها و تنخور کالا (Variants)', i + 1, variantItems.length, 'in_progress');
+        emitProgress('Product Variants', i + 1, variantItems.length, 'in_progress');
       }
-      emitProgress('تنوع‌ها و تنخور کالا (Variants)', variantItems.length, variantItems.length, 'completed');
+      emitProgress('Product Variants', variantItems.length, variantItems.length, 'completed');
 
       // Phase 6: Inventory Items & Stock
       const invItems = collections['inventory_items'] || [];
-      emitProgress('موجودی انبارها', 0, invItems.length, 'in_progress');
+      emitProgress('Warehouse Inventory', 0, invItems.length, 'in_progress');
       for (let i = 0; i < invItems.length; i++) {
         const item = { ...invItems[i] };
         delete item.id;
         item.organization_id = orgId;
 
-        if (item.variant_id) {
-          const localVId = Number(item.variant_id?.id || item.variant_id);
-          item.variant_id = idMap['product_variants']?.get(localVId) || item.variant_id;
+        const mappedVariantId = remapRequiredFk('product_variants', item.variant_id);
+        const mappedWarehouseId = remapRequiredFk('warehouses', item.warehouse_id);
+        if (mappedVariantId === null || mappedWarehouseId === null) {
+          errors.push(`Skipped inventory item: parent variant or warehouse was not migrated`);
+          emitProgress('Warehouse Inventory', i + 1, invItems.length, 'in_progress');
+          continue;
         }
-        if (item.warehouse_id) {
-          const localWId = Number(item.warehouse_id?.id || item.warehouse_id);
-          item.warehouse_id = idMap['warehouses']?.get(localWId) || item.warehouse_id;
-        }
-        if (item.location_id) {
-          const localLId = Number(item.location_id?.id || item.location_id);
-          item.location_id = idMap['warehouse_locations']?.get(localLId) || null;
-        }
+        item.variant_id = mappedVariantId;
+        item.warehouse_id = mappedWarehouseId;
+        item.location_id = remapOptionalFk('warehouse_locations', item.location_id);
 
         try {
           const payload = sanitizeForDirectus('inventory_items', item);
           await directusClient.createItem<any>('inventory_items', payload);
           totalMigrated++;
         } catch (err: any) {
-          errors.push(`خطا در ثبت موجودی انبار: ${err?.message || err}`);
+          errors.push(`Error uploading inventory item: ${err?.message || err}`);
         }
-        emitProgress('موجودی انبارها', i + 1, invItems.length, 'in_progress');
+        emitProgress('Warehouse Inventory', i + 1, invItems.length, 'in_progress');
       }
-      emitProgress('موجودی انبارها', invItems.length, invItems.length, 'completed');
+      emitProgress('Warehouse Inventory', invItems.length, invItems.length, 'completed');
 
       // Phase 6.1: Inventory Movements
       const movItems = collections['inventory_movements'] || [];
       if (movItems.length > 0) {
-        emitProgress('گردش کالا و اسناد انبار', 0, movItems.length, 'in_progress');
+        emitProgress('Stock Movements', 0, movItems.length, 'in_progress');
         for (let i = 0; i < movItems.length; i++) {
           const item = { ...movItems[i] };
           delete item.id;
           item.organization_id = orgId;
 
-          if (item.variant_id) {
-            const localVId = Number(item.variant_id?.id || item.variant_id);
-            item.variant_id = idMap['product_variants']?.get(localVId) || item.variant_id;
+          const mappedVariantId = remapRequiredFk('product_variants', item.variant_id);
+          const mappedWarehouseId = remapRequiredFk('warehouses', item.warehouse_id);
+          if (mappedVariantId === null || mappedWarehouseId === null) {
+            emitProgress('Stock Movements', i + 1, movItems.length, 'in_progress');
+            continue;
           }
-          if (item.warehouse_id) {
-            const localWId = Number(item.warehouse_id?.id || item.warehouse_id);
-            item.warehouse_id = idMap['warehouses']?.get(localWId) || item.warehouse_id;
-          }
+          item.variant_id = mappedVariantId;
+          item.warehouse_id = mappedWarehouseId;
+          item.location_id = remapOptionalFk('warehouse_locations', item.location_id);
 
           try {
             const payload = sanitizeForDirectus('inventory_movements', item);
@@ -477,15 +574,15 @@ export class CloudMigrationManager {
           } catch (err: any) {
             // non-critical movement log
           }
-          emitProgress('گردش کالا و اسناد انبار', i + 1, movItems.length, 'in_progress');
+          emitProgress('Stock Movements', i + 1, movItems.length, 'in_progress');
         }
-        emitProgress('گردش کالا و اسناد انبار', movItems.length, movItems.length, 'completed');
+        emitProgress('Stock Movements', movItems.length, movItems.length, 'completed');
       }
 
       // Phase 7: Orders and Order Items
       const orderItemsList = collections['order_items'] || [];
       const orderList = collections['orders'] || [];
-      emitProgress('سفارشات و فاکتورها', 0, orderList.length, 'in_progress');
+      emitProgress('Orders & Invoices', 0, orderList.length, 'in_progress');
 
       for (let i = 0; i < orderList.length; i++) {
         const item = { ...orderList[i] };
@@ -493,10 +590,8 @@ export class CloudMigrationManager {
         delete item.id;
         item.organization_id = orgId;
 
-        if (item.customer_id) {
-          const localCustId = Number(item.customer_id?.id || item.customer_id);
-          item.customer_id = idMap['customers']?.get(localCustId) || item.customer_id;
-        }
+        item.customer_id = remapOptionalFk('customers', item.customer_id);
+        item.warehouse_id = remapOptionalFk('warehouses', item.warehouse_id);
 
         try {
           const payload = sanitizeForDirectus('orders', item);
@@ -507,7 +602,7 @@ export class CloudMigrationManager {
 
             // Migrate order line items for this specific order
             const relatedLines = orderItemsList.filter((oi: any) => {
-              const oId = Number(oi.order_id?.id || oi.order_id);
+              const oId = extractLocalId(oi.order_id);
               return oId === localId;
             });
 
@@ -516,27 +611,26 @@ export class CloudMigrationManager {
               delete lineItem.id;
               lineItem.organization_id = orgId;
               lineItem.order_id = Number(created.id);
-              if (lineItem.variant_id) {
-                const localVId = Number(lineItem.variant_id?.id || lineItem.variant_id);
-                lineItem.variant_id = idMap['product_variants']?.get(localVId) || lineItem.variant_id;
-              }
+              const mappedVariantId = remapRequiredFk('product_variants', lineItem.variant_id);
+              if (mappedVariantId === null) continue;
+              lineItem.variant_id = mappedVariantId;
               const linePayload = sanitizeForDirectus('order_items', lineItem);
               await directusClient.createItem<any>('order_items', linePayload).catch(() => {});
               totalMigrated++;
             }
           }
         } catch (err: any) {
-          errors.push(`خطا در ارسال سفارش (#${item.order_number || localId}): ${err?.message || err}`);
+          errors.push(`Error uploading order (#${item.order_number || localId}): ${err?.message || err}`);
         }
-        emitProgress('سفارشات و فاکتورها', i + 1, orderList.length, 'in_progress');
+        emitProgress('Orders & Invoices', i + 1, orderList.length, 'in_progress');
       }
-      emitProgress('سفارشات و فاکتورها', orderList.length, orderList.length, 'completed');
+      emitProgress('Orders & Invoices', orderList.length, orderList.length, 'completed');
 
       // Phase 8: Financial & Accounting Module
       // 8.1 Expense Categories
       const expCategories = collections['expense_categories'] || [];
       if (expCategories.length > 0) {
-        emitProgress('سرفصل‌های هزینه حسابداری', 0, expCategories.length, 'in_progress');
+        emitProgress('Expense Categories', 0, expCategories.length, 'in_progress');
         for (let i = 0; i < expCategories.length; i++) {
           const item = { ...expCategories[i] };
           const localId = Number(item.id);
@@ -550,22 +644,23 @@ export class CloudMigrationManager {
               totalMigrated++;
             }
           } catch (err: any) {
-            errors.push(`خطا در ثبت سرفصل هزینه (${item.title || localId}): ${err?.message || err}`);
+            errors.push(`Error uploading expense category (${item.title || localId}): ${err?.message || err}`);
           }
-          emitProgress('سرفصل‌های هزینه حسابداری', i + 1, expCategories.length, 'in_progress');
+          emitProgress('Expense Categories', i + 1, expCategories.length, 'in_progress');
         }
-        emitProgress('سرفصل‌های هزینه حسابداری', expCategories.length, expCategories.length, 'completed');
+        emitProgress('Expense Categories', expCategories.length, expCategories.length, 'completed');
       }
 
       // 8.2 Financial Accounts (Bank & Cashbox)
       const finAccounts = collections['financial_accounts'] || [];
       if (finAccounts.length > 0) {
-        emitProgress('حساب‌های مالی و صندوق‌ها', 0, finAccounts.length, 'in_progress');
+        emitProgress('Financial Accounts & Cashboxes', 0, finAccounts.length, 'in_progress');
         for (let i = 0; i < finAccounts.length; i++) {
           const item = { ...finAccounts[i] };
           const localId = Number(item.id);
           delete item.id;
           item.organization_id = orgId;
+          item.warehouse_id = remapOptionalFk('warehouses', item.warehouse_id);
           try {
             const payload = sanitizeForDirectus('financial_accounts', item);
             const created = await directusClient.createItem<any>('financial_accounts', payload);
@@ -574,31 +669,25 @@ export class CloudMigrationManager {
               totalMigrated++;
             }
           } catch (err: any) {
-            errors.push(`خطا در ثبت حساب مالی (${item.name || localId}): ${err?.message || err}`);
+            errors.push(`Error uploading financial account (${item.name || localId}): ${err?.message || err}`);
           }
-          emitProgress('حساب‌های مالی و صندوق‌ها', i + 1, finAccounts.length, 'in_progress');
+          emitProgress('Financial Accounts & Cashboxes', i + 1, finAccounts.length, 'in_progress');
         }
-        emitProgress('حساب‌های مالی و صندوق‌ها', finAccounts.length, finAccounts.length, 'completed');
+        emitProgress('Financial Accounts & Cashboxes', finAccounts.length, finAccounts.length, 'completed');
       }
 
       // 8.3 Expenses
       const expList = collections['expenses'] || [];
       if (expList.length > 0) {
-        emitProgress('هزینه‌های جاری', 0, expList.length, 'in_progress');
+        emitProgress('Operating Expenses', 0, expList.length, 'in_progress');
         for (let i = 0; i < expList.length; i++) {
           const item = { ...expList[i] };
           const localId = Number(item.id);
           delete item.id;
           item.organization_id = orgId;
 
-          if (item.category_id) {
-            const localCatId = Number(item.category_id?.id || item.category_id);
-            item.category_id = idMap['expense_categories']?.get(localCatId) || item.category_id;
-          }
-          if (item.account_id) {
-            const localAccId = Number(item.account_id?.id || item.account_id);
-            item.account_id = idMap['financial_accounts']?.get(localAccId) || item.account_id;
-          }
+          item.category_id = remapOptionalFk('expense_categories', item.category_id);
+          item.account_id = remapOptionalFk('financial_accounts', item.account_id);
 
           try {
             const payload = sanitizeForDirectus('expenses', item);
@@ -608,39 +697,27 @@ export class CloudMigrationManager {
               totalMigrated++;
             }
           } catch (err: any) {
-            errors.push(`خطا در ثبت هزینه (${item.title || localId}): ${err?.message || err}`);
+            errors.push(`Error uploading expense (${item.title || localId}): ${err?.message || err}`);
           }
-          emitProgress('هزینه‌های جاری', i + 1, expList.length, 'in_progress');
+          emitProgress('Operating Expenses', i + 1, expList.length, 'in_progress');
         }
-        emitProgress('هزینه‌های جاری', expList.length, expList.length, 'completed');
+        emitProgress('Operating Expenses', expList.length, expList.length, 'completed');
       }
 
       // 8.4 Person Transactions (Customer/Supplier Ledgers)
       const personTransList = collections['person_transactions'] || [];
       if (personTransList.length > 0) {
-        emitProgress('اسناد و حساب اشخاص (مشتریان و تامین‌کنندگان)', 0, personTransList.length, 'in_progress');
+        emitProgress('Party Ledgers (Customers & Suppliers)', 0, personTransList.length, 'in_progress');
         for (let i = 0; i < personTransList.length; i++) {
           const item = { ...personTransList[i] };
           const localId = Number(item.id);
           delete item.id;
           item.organization_id = orgId;
 
-          if (item.customer_id) {
-            const localCustId = Number(item.customer_id?.id || item.customer_id);
-            item.customer_id = idMap['customers']?.get(localCustId) || item.customer_id;
-          }
-          if (item.supplier_id) {
-            const localSuppId = Number(item.supplier_id?.id || item.supplier_id);
-            item.supplier_id = idMap['suppliers']?.get(localSuppId) || item.supplier_id;
-          }
-          if (item.order_id) {
-            const localOrdId = Number(item.order_id?.id || item.order_id);
-            item.order_id = idMap['orders']?.get(localOrdId) || null;
-          }
-          if (item.purchase_order_id) {
-            const localPOId = Number(item.purchase_order_id?.id || item.purchase_order_id);
-            item.purchase_order_id = idMap['purchase_orders']?.get(localPOId) || null;
-          }
+          item.customer_id = remapOptionalFk('customers', item.customer_id);
+          item.supplier_id = remapOptionalFk('suppliers', item.supplier_id);
+          item.order_id = remapOptionalFk('orders', item.order_id);
+          item.purchase_order_id = remapOptionalFk('purchase_orders', item.purchase_order_id);
 
           try {
             const payload = sanitizeForDirectus('person_transactions', item);
@@ -650,38 +727,26 @@ export class CloudMigrationManager {
               totalMigrated++;
             }
           } catch (err: any) {
-            errors.push(`خطا در ثبت سند شخص: ${err?.message || err}`);
+            errors.push(`Error uploading party ledger transaction: ${err?.message || err}`);
           }
-          emitProgress('اسناد و حساب اشخاص (مشتریان و تامین‌کنندگان)', i + 1, personTransList.length, 'in_progress');
+          emitProgress('Party Ledgers (Customers & Suppliers)', i + 1, personTransList.length, 'in_progress');
         }
-        emitProgress('اسناد و حساب اشخاص (مشتریان و تامین‌کنندگان)', personTransList.length, personTransList.length, 'completed');
+        emitProgress('Party Ledgers (Customers & Suppliers)', personTransList.length, personTransList.length, 'completed');
       }
 
       // 8.5 Treasury Transactions (Transfers)
       const treasuryTransList = collections['treasury_transactions'] || [];
       if (treasuryTransList.length > 0) {
-        emitProgress('گردش خزانه و انتقالات حساب', 0, treasuryTransList.length, 'in_progress');
+        emitProgress('Treasury Transactions & Transfers', 0, treasuryTransList.length, 'in_progress');
         for (let i = 0; i < treasuryTransList.length; i++) {
           const item = { ...treasuryTransList[i] };
           delete item.id;
           item.organization_id = orgId;
 
-          if (item.source_account_id) {
-            const localSId = Number(item.source_account_id?.id || item.source_account_id);
-            item.source_account_id = idMap['financial_accounts']?.get(localSId) || null;
-          }
-          if (item.destination_account_id) {
-            const localDId = Number(item.destination_account_id?.id || item.destination_account_id);
-            item.destination_account_id = idMap['financial_accounts']?.get(localDId) || null;
-          }
-          if (item.expense_id) {
-            const localEId = Number(item.expense_id?.id || item.expense_id);
-            item.expense_id = idMap['expenses']?.get(localEId) || null;
-          }
-          if (item.person_transaction_id) {
-            const localPTId = Number(item.person_transaction_id?.id || item.person_transaction_id);
-            item.person_transaction_id = idMap['person_transactions']?.get(localPTId) || null;
-          }
+          item.source_account_id = remapOptionalFk('financial_accounts', item.source_account_id);
+          item.destination_account_id = remapOptionalFk('financial_accounts', item.destination_account_id);
+          item.expense_id = remapOptionalFk('expenses', item.expense_id);
+          item.person_transaction_id = remapOptionalFk('person_transactions', item.person_transaction_id);
 
           try {
             const payload = sanitizeForDirectus('treasury_transactions', item);
@@ -690,33 +755,24 @@ export class CloudMigrationManager {
           } catch (err: any) {
             // non-critical
           }
-          emitProgress('گردش خزانه و انتقالات حساب', i + 1, treasuryTransList.length, 'in_progress');
+          emitProgress('Treasury Transactions & Transfers', i + 1, treasuryTransList.length, 'in_progress');
         }
-        emitProgress('گردش خزانه و انتقالات حساب', treasuryTransList.length, treasuryTransList.length, 'completed');
+        emitProgress('Treasury Transactions & Transfers', treasuryTransList.length, treasuryTransList.length, 'completed');
       }
 
-      // 8.6 Cheques (Sayad)
+      // 8.6 Cheques & Promissory Notes
       const chequesList = collections['cheques'] || [];
       if (chequesList.length > 0) {
-        emitProgress('مدیریت چک‌های صیادی', 0, chequesList.length, 'in_progress');
+        emitProgress('Cheques & Promissory Notes', 0, chequesList.length, 'in_progress');
         for (let i = 0; i < chequesList.length; i++) {
           const item = { ...chequesList[i] };
           const localId = Number(item.id);
           delete item.id;
           item.organization_id = orgId;
 
-          if (item.customer_id) {
-            const localCId = Number(item.customer_id?.id || item.customer_id);
-            item.customer_id = idMap['customers']?.get(localCId) || null;
-          }
-          if (item.supplier_id) {
-            const localSId = Number(item.supplier_id?.id || item.supplier_id);
-            item.supplier_id = idMap['suppliers']?.get(localSId) || null;
-          }
-          if (item.target_account_id) {
-            const localAId = Number(item.target_account_id?.id || item.target_account_id);
-            item.target_account_id = idMap['financial_accounts']?.get(localAId) || null;
-          }
+          item.customer_id = remapOptionalFk('customers', item.customer_id);
+          item.supplier_id = remapOptionalFk('suppliers', item.supplier_id);
+          item.target_account_id = remapOptionalFk('financial_accounts', item.target_account_id);
 
           try {
             const payload = sanitizeForDirectus('cheques', item);
@@ -726,31 +782,25 @@ export class CloudMigrationManager {
               totalMigrated++;
             }
           } catch (err: any) {
-            errors.push(`خطا در ثبت چک (#${item.sayad_id || localId}): ${err?.message || err}`);
+            errors.push(`Error uploading cheque (#${item.sayad_id || localId}): ${err?.message || err}`);
           }
-          emitProgress('مدیریت چک‌های صیادی', i + 1, chequesList.length, 'in_progress');
+          emitProgress('Cheques & Promissory Notes', i + 1, chequesList.length, 'in_progress');
         }
-        emitProgress('مدیریت چک‌های صیادی', chequesList.length, chequesList.length, 'completed');
+        emitProgress('Cheques & Promissory Notes', chequesList.length, chequesList.length, 'completed');
       }
 
       // 8.7 Landed Costs
       const landedCostsList = collections['landed_costs'] || [];
       if (landedCostsList.length > 0) {
-        emitProgress('بهای تمام‌شده و هزینه‌های جانبی خرید', 0, landedCostsList.length, 'in_progress');
+        emitProgress('Landed Costs & Freight Allocation', 0, landedCostsList.length, 'in_progress');
         for (let i = 0; i < landedCostsList.length; i++) {
           const item = { ...landedCostsList[i] };
           const localId = Number(item.id);
           delete item.id;
           item.organization_id = orgId;
 
-          if (item.purchase_order_id) {
-            const localPOId = Number(item.purchase_order_id?.id || item.purchase_order_id);
-            item.purchase_order_id = idMap['purchase_orders']?.get(localPOId) || item.purchase_order_id;
-          }
-          if (item.expense_id) {
-            const localEId = Number(item.expense_id?.id || item.expense_id);
-            item.expense_id = idMap['expenses']?.get(localEId) || null;
-          }
+          item.purchase_order_id = remapOptionalFk('purchase_orders', item.purchase_order_id);
+          item.expense_id = remapOptionalFk('expenses', item.expense_id);
 
           try {
             const payload = sanitizeForDirectus('landed_costs', item);
@@ -762,9 +812,9 @@ export class CloudMigrationManager {
           } catch (err: any) {
             // non-critical
           }
-          emitProgress('بهای تمام‌شده و هزینه‌های جانبی خرید', i + 1, landedCostsList.length, 'in_progress');
+          emitProgress('Landed Costs & Freight Allocation', i + 1, landedCostsList.length, 'in_progress');
         }
-        emitProgress('بهای تمام‌شده و هزینه‌های جانبی خرید', landedCostsList.length, landedCostsList.length, 'completed');
+        emitProgress('Landed Costs & Freight Allocation', landedCostsList.length, landedCostsList.length, 'completed');
       }
 
       return {
@@ -776,7 +826,7 @@ export class CloudMigrationManager {
       return {
         success: false,
         totalMigrated,
-        errors: [...errors, e?.message || 'خطای غیرمنتظره در مهاجرت اطلاعات'],
+        errors: [...errors, e?.message || 'Unexpected error during data migration'],
       };
     }
   }
@@ -808,48 +858,48 @@ export class CloudMigrationManager {
     };
 
     try {
-      emitProgress('اتصال به سرور ابری و دریافت فهرست اطلاعات', 0, 1, 'in_progress');
+      emitProgress('Connecting to Cloud and fetching records', 0, 1, 'in_progress');
 
       // Collections to fetch from Cloud Directus
       const cloudCollectionsToFetch: Array<{ key: string; label: string; isOrgCollection?: boolean }> = [
-        { key: 'organizations', label: 'اطلاعات سازمان', isOrgCollection: true },
-        { key: 'categories', label: 'دسته‌بندی‌ها' },
-        { key: 'brands', label: 'برندها' },
-        { key: 'seasons', label: 'فصل‌ها' },
-        { key: 'collections', label: 'کالکشن‌ها' },
-        { key: 'colors', label: 'رنگ‌ها' },
-        { key: 'size_groups', label: 'گروه‌های سایز' },
-        { key: 'sizes', label: 'سایزها' },
-        { key: 'size_guide_templates', label: 'الگوهای راهنمای سایز' },
-        { key: 'size_guide_measurements', label: 'مشخصات اندازه‌گیری' },
-        { key: 'size_guide_values', label: 'مقادیر راهنمای سایز' },
-        { key: 'products', label: 'محصولات' },
-        { key: 'product_variants', label: 'تنوع‌های کالا' },
-        { key: 'warehouses', label: 'انبارها و فروشگاه‌ها' },
-        { key: 'warehouse_locations', label: 'موقعیت‌های انبار' },
-        { key: 'inventory_items', label: 'موجودی انبارها' },
-        { key: 'inventory_movements', label: 'گردش انبار' },
-        { key: 'stock_transfers', label: 'انتقال بین انبارها' },
-        { key: 'stock_transfer_items', label: 'اقلام انتقال انبار' },
-        { key: 'customers', label: 'مشتریان' },
-        { key: 'orders', label: 'فاکتورها و سفارشات' },
-        { key: 'order_items', label: 'اقلام سفارشات' },
-        { key: 'suppliers', label: 'تامین‌کنندگان' },
-        { key: 'purchase_orders', label: 'سفارشات خرید' },
-        { key: 'purchase_order_items', label: 'اقلام خرید' },
-        { key: 'expense_categories', label: 'دسته‌بندی هزینه‌ها' },
-        { key: 'expenses', label: 'هزینه‌ها' },
-        { key: 'financial_accounts', label: 'حساب‌های مالی و صندوق‌ها' },
-        { key: 'treasury_transactions', label: 'تراکنش‌های خزانه' },
-        { key: 'person_transactions', label: 'معین اشخاص و حساب‌ها' },
-        { key: 'cheques', label: 'چک‌های صیادی' },
-        { key: 'landed_costs', label: 'بهای تمام‌شده خرید' },
-        { key: 'landed_cost_allocations', label: 'تسهیم هزینه‌های خرید' },
-        { key: 'organization_modules', label: 'ماژول‌های خریداری‌شده' },
-        { key: 'pos_shifts', label: 'شیفت‌های صندوق' },
-        { key: 'woocommerce_settings', label: 'تنظیمات اتصال ووکامرس' },
-        { key: 'woocommerce_mappings', label: 'تطبیق محصولات ووکامرس' },
-        { key: 'woocommerce_logs', label: 'لاگ‌های ووکامرس' },
+        { key: 'organizations', label: 'Organization Details', isOrgCollection: true },
+        { key: 'categories', label: 'Categories' },
+        { key: 'brands', label: 'Brands' },
+        { key: 'seasons', label: 'Seasons' },
+        { key: 'collections', label: 'Collections' },
+        { key: 'colors', label: 'Colors' },
+        { key: 'size_groups', label: 'Size Groups' },
+        { key: 'sizes', label: 'Sizes' },
+        { key: 'size_guide_templates', label: 'Size Guide Templates' },
+        { key: 'size_guide_measurements', label: 'Size Guide Measurements' },
+        { key: 'size_guide_values', label: 'Size Guide Values' },
+        { key: 'products', label: 'Products' },
+        { key: 'product_variants', label: 'Product Variants' },
+        { key: 'warehouses', label: 'Warehouses & Stores' },
+        { key: 'warehouse_locations', label: 'Warehouse Locations' },
+        { key: 'inventory_items', label: 'Inventory Stock' },
+        { key: 'inventory_movements', label: 'Stock Movements' },
+        { key: 'stock_transfers', label: 'Stock Transfers' },
+        { key: 'stock_transfer_items', label: 'Stock Transfer Items' },
+        { key: 'customers', label: 'Customers' },
+        { key: 'orders', label: 'Orders & Invoices' },
+        { key: 'order_items', label: 'Order Items' },
+        { key: 'suppliers', label: 'Suppliers' },
+        { key: 'purchase_orders', label: 'Purchase Orders' },
+        { key: 'purchase_order_items', label: 'Purchase Order Items' },
+        { key: 'expense_categories', label: 'Expense Categories' },
+        { key: 'expenses', label: 'Expenses' },
+        { key: 'financial_accounts', label: 'Financial Accounts & Cashboxes' },
+        { key: 'treasury_transactions', label: 'Treasury Transactions' },
+        { key: 'person_transactions', label: 'Party Ledgers' },
+        { key: 'cheques', label: 'Cheques & Promissory Notes' },
+        { key: 'landed_costs', label: 'Landed Costs' },
+        { key: 'landed_cost_allocations', label: 'Landed Cost Allocations' },
+        { key: 'organization_modules', label: 'Active Modules' },
+        { key: 'pos_shifts', label: 'POS Shifts' },
+        { key: 'woocommerce_settings', label: 'WooCommerce Settings' },
+        { key: 'woocommerce_mappings', label: 'WooCommerce Mappings' },
+        { key: 'woocommerce_logs', label: 'WooCommerce Logs' },
       ];
 
       const backupData: Record<string, any[]> = {};
@@ -857,7 +907,7 @@ export class CloudMigrationManager {
 
       for (let s = 0; s < totalSteps; s++) {
         const itemConfig = cloudCollectionsToFetch[s];
-        emitProgress(`دریافت ${itemConfig.label}`, s + 1, totalSteps, 'in_progress');
+        emitProgress(`Fetching ${itemConfig.label}`, s + 1, totalSteps, 'in_progress');
 
         try {
           let items: any[] = [];
@@ -898,12 +948,12 @@ export class CloudMigrationManager {
         }
       }
 
-      emitProgress('ذخیره‌سازی اطلاعات در پایگاه‌داده محلی سیستم', totalSteps, totalSteps, 'in_progress');
+      emitProgress('Saving data to local database', totalSteps, totalSteps, 'in_progress');
 
       // Call BackupManager.restoreBackup with skipCloudSync = true to prevent re-upload
       const restoreRes = await BackupManager.restoreBackup(backupData, 'replace', orgId, true);
       if (!restoreRes.success) {
-        errors.push(restoreRes.error || 'خطا در بازیابی اطلاعات در پایگاه‌داده محلی');
+        errors.push(restoreRes.error || 'Failed to restore records to local database');
       }
 
       // Enforce local offline storage mode & update local cache
@@ -936,7 +986,7 @@ export class CloudMigrationManager {
         console.warn('[CloudMigrationManager] Mode switch warning:', err);
       }
 
-      emitProgress('انتقال اطلاعات به پایگاه‌داده محلی با موفقیت پایان یافت', totalSteps, totalSteps, 'completed');
+      emitProgress('Migration to local database completed successfully', totalSteps, totalSteps, 'completed');
 
       return {
         success: errors.length === 0,
@@ -947,7 +997,7 @@ export class CloudMigrationManager {
       return {
         success: false,
         totalMigrated,
-        errors: [...errors, e?.message || 'خطا در فرآیند انتقال ابری به محلی'],
+        errors: [...errors, e?.message || 'Error migrating data from Cloud to local storage'],
       };
     }
   }

@@ -466,7 +466,7 @@ export class CloudDirectusAdapter implements IStorageProvider {
   }
 
   // ==========================================
-  // POS Shifts (شیفت‌های صندوق)
+  // POS Shifts
   // ==========================================
   async getPosShifts(params?: QueryParams & { user_id?: string; status?: PosShiftStatus; warehouse_id?: number }): Promise<PosShift[]> {
     return this.sales.getPosShifts(params);

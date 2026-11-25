@@ -1,15 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
   X,
-  Sparkles,
-  Check,
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
   Ruler,
-  User,
-  Sliders,
-  RotateCcw,
 } from 'lucide-react';
 import {
   Size,
@@ -23,7 +15,7 @@ import {
   normalizeMeasurementCode,
   estimateBodyFromHeightWeight,
 } from '../engine/sizeRecommendationEngine';
-import { toPersianDigits } from '../../../utils/formatters';
+import { useTranslation } from '../../../i18n';
 
 interface SmartSizeFinderModalProps {
   isOpen: boolean;
@@ -46,6 +38,9 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
   availableSizes,
   onSelectSize,
 }) => {
+  const { locale } = useTranslation();
+  const isIt = locale === 'it';
+
   // Input mode: direct specific measurements vs height & weight estimation
   const [inputMode, setInputMode] = useState<'direct' | 'estimate'>('direct');
 
@@ -118,9 +113,10 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
       template,
       templateMeasurements,
       values,
-      availableSizes
+      availableSizes,
+      locale === 'it' ? 'it' : 'en'
     );
-  }, [measValues, heightCm, weightKg, gender, fitPreference, template, templateMeasurements, values, availableSizes, inputMode]);
+  }, [measValues, heightCm, weightKg, gender, fitPreference, template, templateMeasurements, values, availableSizes, inputMode, locale]);
 
   if (!isOpen) return null;
 
@@ -134,7 +130,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
       <div
         className="w-full max-w-xl rounded-2xl bg-white dark:bg-[#12141a] overflow-hidden shadow-xl border border-neutral-200/80 dark:border-neutral-800 animate-in zoom-in-95 my-auto"
         onClick={(e) => e.stopPropagation()}
-        dir="rtl"
+        dir="ltr"
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-neutral-200/80 dark:border-neutral-800 flex items-center justify-between">
@@ -144,10 +140,10 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-neutral-900 dark:text-neutral-100">
-                راهنمای هوشمند سایز کالا
+                {isIt ? 'Guida intelligente alle taglie' : 'Smart Size Finder'}
               </h3>
               <p className="text-[11px] text-neutral-500 truncate max-w-xs sm:max-w-md">
-                محصول: {productTitle}
+                {isIt ? 'Prodotto:' : 'Product:'} {productTitle}
               </p>
             </div>
           </div>
@@ -171,7 +167,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                   : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900'
               }`}
             >
-              اندازه‌های دقیق لباس
+              {isIt ? 'Misure esatte' : 'Exact Measurements'}
             </button>
             <button
               type="button"
@@ -182,7 +178,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                   : 'text-neutral-600 dark:text-neutral-400 hover:text-neutral-900'
               }`}
             >
-              تخمین با قد و وزن
+              {isIt ? 'Stima altezza e peso' : 'Height & Weight'}
             </button>
           </div>
         </div>
@@ -193,13 +189,19 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
           {inputMode === 'direct' ? (
             <div className="space-y-3">
               <div className="flex items-center justify-between text-neutral-500 pb-1">
-                <span>ابعاد بدن خود را بر اساس متر خیاطی مشخص کنید:</span>
-                <span className="text-[11px] font-mono">واحد: سانتی‌متر</span>
+                <span>
+                  {isIt
+                    ? 'Inserisci le tue misure corporee con metro da sarto:'
+                    : 'Enter your body measurements using a measuring tape:'}
+                </span>
+                <span className="text-[11px] font-mono">{isIt ? 'Unità: cm' : 'Unit: cm'}</span>
               </div>
 
               {templateMeasurements.length === 0 ? (
                 <div className="p-4 rounded-xl bg-neutral-100 dark:bg-neutral-800 text-center text-neutral-500">
-                  برای این کالا پارامترهای اندازه تعریف نشده است.
+                  {isIt
+                    ? 'Nessun parametro di misura definito per questo prodotto.'
+                    : 'No measurement parameters have been defined for this product.'}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -215,7 +217,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                             {meas.name}
                           </label>
                           <span className="font-mono font-bold text-neutral-900 dark:text-neutral-100">
-                            {toPersianDigits(currentVal)} {meas.unit || 'cm'}
+                            {currentVal} {meas.unit || 'cm'}
                           </span>
                         </div>
                         <input
@@ -243,8 +245,8 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="p-3 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-800">
                   <div className="flex justify-between mb-1.5">
-                    <label className="font-semibold">قد شما:</label>
-                    <span className="font-mono font-bold">{toPersianDigits(heightCm)} سانتی‌متر</span>
+                    <label className="font-semibold">{isIt ? 'Altezza:' : 'Height:'}</label>
+                    <span className="font-mono font-bold">{heightCm} cm</span>
                   </div>
                   <input
                     type="range"
@@ -258,8 +260,8 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
 
                 <div className="p-3 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-800">
                   <div className="flex justify-between mb-1.5">
-                    <label className="font-semibold">وزن شما:</label>
-                    <span className="font-mono font-bold">{toPersianDigits(weightKg)} کیلوگرم</span>
+                    <label className="font-semibold">{isIt ? 'Peso:' : 'Weight:'}</label>
+                    <span className="font-mono font-bold">{weightKg} kg</span>
                   </div>
                   <input
                     type="range"
@@ -274,7 +276,9 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
 
               {/* Gender selector */}
               <div className="flex items-center gap-3">
-                <span className="text-neutral-500 font-semibold">استخوان‌بندی:</span>
+                <span className="text-neutral-500 font-semibold">
+                  {isIt ? 'Corporatura:' : 'Body Profile:'}
+                </span>
                 <div className="flex gap-2">
                   {(['unisex', 'male', 'female'] as const).map((g) => (
                     <button
@@ -287,7 +291,11 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                           : 'border-neutral-200 dark:border-neutral-700 text-neutral-600 dark:text-neutral-400'
                       }`}
                     >
-                      {g === 'male' ? 'آقایان' : g === 'female' ? 'بانوان' : 'استاندارد'}
+                      {g === 'male'
+                        ? isIt ? 'Uomo' : 'Men'
+                        : g === 'female'
+                        ? isIt ? 'Donna' : 'Women'
+                        : isIt ? 'Standard' : 'Standard'}
                     </button>
                   ))}
                 </div>
@@ -298,7 +306,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
           {/* Fit Style Selection */}
           <div className="pt-2 border-t border-neutral-200/80 dark:border-neutral-800">
             <label className="block font-semibold text-neutral-800 dark:text-neutral-200 mb-2">
-              استایل و راحتی تن‌خور مورد نظر:
+              {isIt ? 'Vestibilità preferita:' : 'Preferred Fit Style:'}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(['snug', 'regular', 'relaxed'] as const).map((mode) => (
@@ -313,7 +321,11 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                   }`}
                 >
                   <span className="block text-xs">
-                    {mode === 'snug' ? 'جذب (Slim)' : mode === 'relaxed' ? 'آزاد (Loose)' : 'معمولی (Regular)'}
+                    {mode === 'snug'
+                      ? isIt ? 'Aderente (Slim)' : 'Slim Fit'
+                      : mode === 'relaxed'
+                      ? isIt ? 'Ampia (Loose)' : 'Relaxed Fit'
+                      : isIt ? 'Regolare (Regular)' : 'Regular Fit'}
                   </span>
                 </button>
               ))}
@@ -325,13 +337,15 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
             <div className="p-4 rounded-xl border border-neutral-200/80 dark:border-neutral-800 bg-neutral-100 dark:bg-neutral-800">
               <div className="flex items-center justify-between">
                 <div>
-                  <span className="text-[11px] text-neutral-500 block">سایز پیشنهادی موتور تن‌خور:</span>
+                  <span className="text-[11px] text-neutral-500 block">
+                    {isIt ? 'Taglia consigliata:' : 'Recommended Size:'}
+                  </span>
                   <div className="flex items-baseline gap-2 mt-0.5">
                     <span className="text-xl font-extrabold text-neutral-900 dark:text-neutral-100">
-                      سایز {result.recommendedSize.name}
+                      {isIt ? 'Taglia' : 'Size'} {result.recommendedSize.name}
                     </span>
                     <span className="text-xs font-mono text-neutral-500">
-                      ({toPersianDigits(result.matchScore)}٪ تطابق)
+                      ({result.matchScore}% {isIt ? 'compatibilità' : 'match'})
                     </span>
                   </div>
                 </div>
@@ -346,12 +360,12 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                   }}
                   className="px-4 py-2 rounded-xl bg-neutral-900 hover:bg-black dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 font-bold text-xs transition-colors cursor-pointer shadow-xs"
                 >
-                  انتخاب این سایز
+                  {isIt ? 'Seleziona taglia' : 'Select This Size'}
                 </button>
               </div>
 
               <p className="text-[11px] text-neutral-600 dark:text-neutral-400 mt-2 leading-relaxed">
-                {result.fitDescriptionFa}
+                {result.fitDescription}
               </p>
 
               {/* Breakdown of measurement comparisons */}
@@ -367,7 +381,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                       </span>
                       <div className="flex items-center gap-2 font-mono">
                         <span className="text-neutral-400">
-                          لباس: {toPersianDigits(c.garmentValue)}
+                          {isIt ? 'Capo:' : 'Garment:'} {c.garmentValue}
                         </span>
                         <span
                           className={`px-1.5 py-0.5 rounded text-[10px] font-semibold ${
@@ -378,7 +392,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
                               : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
                           }`}
                         >
-                          {c.noteFa}
+                          {c.note}
                         </span>
                       </div>
                     </div>
@@ -396,7 +410,7 @@ export const SmartSizeFinderModal: React.FC<SmartSizeFinderModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 rounded-xl border border-neutral-200 dark:border-neutral-700 text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
           >
-            بستن
+            {isIt ? 'Chiudi' : 'Close'}
           </button>
         </div>
       </div>

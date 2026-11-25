@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from '../../../i18n';
+import { useOrganization } from '../../../context/OrganizationContext';
+import { resolveCurrencyCode } from '../../../utils/formatters';
 import { FinancialAccount, FinancialAccountType } from '../../../types/accounting';
 import { Warehouse } from '../../../types';
 import { X } from 'lucide-react';
@@ -23,7 +25,10 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
   isFirstAccount = false,
   onSave,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
+  const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const [form, setForm] = useState<{
@@ -149,7 +154,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               <input
                 type="text"
                 required
-                placeholder="مثلاً صندوق فروشگاه، جاری ملت، پوز سامان..."
+                placeholder={isIt ? 'es. Cassa Negozio, Intesa Sanpaolo, POS SumUp...' : 'e.g. Store Register, UniCredit Business, SumUp POS...'}
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
                 className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-neutral-900 dark:focus:ring-white"
@@ -175,11 +180,12 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
               <div>
                 <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                  {t('accounting.initialBalance')} ({t('accounting.toman')})
+                  {t('accounting.initialBalance')} ({activeCurrency})
                 </label>
                 <input
                   type="number"
-                  placeholder="0"
+                  step="0.01"
+                  placeholder="0.00"
                   value={form.initial_balance}
                   onChange={(e) =>
                     setForm({
@@ -196,7 +202,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
             {/* Linked Warehouse Selection */}
             <div>
               <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                انبار پیش‌فرض / متصل به این صندوق
+                {isIt ? 'Magazzino / Negozio collegato' : 'Linked Warehouse / Branch'}
               </label>
               <select
                 value={form.warehouse_id}
@@ -208,7 +214,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 }
                 className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden focus:ring-1 focus:ring-neutral-900 dark:focus:ring-white"
               >
-                <option value="">{t('common.all') || 'همه انبارها / بدون انبار خاص'}</option>
+                <option value="">{isIt ? 'Tutti i magazzini / Nessun collegamento specifico' : 'All Warehouses / Unassigned'}</option>
                 {warehouses.map((wh) => (
                   <option key={wh.id} value={wh.id}>
                     {wh.name}
@@ -216,7 +222,9 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                 ))}
               </select>
               <p className="text-[10.5px] text-neutral-500 dark:text-neutral-400 mt-1">
-                در صفحه ثبت سفارش، با انتخاب این انبار، این صندوق یا حساب به عنوان صندوق پیش‌فرض تسویه فعال می‌شود.
+                {isIt
+                  ? 'Nella creazione ordini, selezionando questo magazzino, questo conto verrà scelto automaticamente per il pagamento.'
+                  : 'When creating an order for this warehouse, this account will be automatically selected as the default settlement account.'}
               </p>
             </div>
 
@@ -229,7 +237,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </label>
                     <input
                       type="text"
-                      placeholder="مثلاً ملت، سامان، ملی..."
+                      placeholder={isIt ? 'es. Intesa Sanpaolo, UniCredit, Revolut...' : 'e.g. UniCredit, Deutsche Bank, Revolut...'}
                       value={form.bank_name}
                       onChange={(e) => setForm({ ...form, bank_name: e.target.value })}
                       className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden"
@@ -242,7 +250,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </label>
                     <input
                       type="text"
-                      placeholder="شماره حساب..."
+                      placeholder={isIt ? 'Numero conto...' : 'Account number...'}
                       value={form.account_number}
                       onChange={(e) => setForm({ ...form, account_number: e.target.value })}
                       className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden font-mono"
@@ -257,7 +265,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                   <input
                     type="text"
                     maxLength={19}
-                    placeholder="۶۱۰۴-۳۳۷۸-۹۰۱۲-۳۴۵۶"
+                    placeholder="4532-XXXX-XXXX-1234"
                     value={form.card_number}
                     onChange={(e) => setForm({ ...form, card_number: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden font-mono text-center"
@@ -266,12 +274,12 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
 
                 <div>
                   <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-                    {t('accounting.shabaNumber')}
+                    {t('accounting.shabaNumber', 'IBAN')}
                   </label>
                   <input
                     type="text"
-                    maxLength={30}
-                    placeholder="IR120120000000012345678901"
+                    maxLength={34}
+                    placeholder="IT60 X054 2811 1010 0000 0123 456"
                     value={form.shaba_number}
                     onChange={(e) => setForm({ ...form, shaba_number: e.target.value })}
                     className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden font-mono text-center"
@@ -285,7 +293,7 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
                     </label>
                     <input
                       type="text"
-                      placeholder="شماره پایانه کارتخوان..."
+                      placeholder={isIt ? 'ID terminale POS...' : 'POS terminal ID...'}
                       value={form.pos_terminal_id}
                       onChange={(e) => setForm({ ...form, pos_terminal_id: e.target.value })}
                       className="w-full px-3 py-2 text-xs bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded-lg focus:outline-hidden font-mono"
@@ -314,14 +322,14 @@ export const AccountFormModal: React.FC<AccountFormModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 text-xs font-medium rounded-lg text-neutral-700 dark:text-neutral-300 hover:bg-neutral-200 dark:hover:bg-neutral-700 transition-colors cursor-pointer"
             >
-              انصراف
+              {t('common.cancel', isIt ? 'Annulla' : 'Cancel')}
             </button>
             <button
               type="submit"
               disabled={isSubmitting}
               className="px-5 py-2 text-xs font-semibold rounded-lg bg-neutral-900 hover:bg-neutral-800 dark:bg-white dark:hover:bg-neutral-100 text-white dark:text-neutral-900 transition-colors cursor-pointer disabled:opacity-50"
             >
-              {editingAccount ? 'بروزرسانی حساب' : 'ذخیره حساب'}
+              {editingAccount ? (isIt ? 'Aggiorna conto' : 'Update Account') : (isIt ? 'Salva conto' : 'Save Account')}
             </button>
           </div>
         </form>

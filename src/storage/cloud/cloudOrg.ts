@@ -1,6 +1,7 @@
 import { CloudStorageBase } from './cloudBase';
 import { QueryParams } from '../types';
 import { DEFAULT_SYSTEM_MODULES } from '../../utils/license';
+import { getFiscalMetadataCache, saveFiscalMetadataCache } from '../../utils/formatters';
 import {
   Organization,
   OrganizationUser,
@@ -10,6 +11,27 @@ import {
   Feedback,
 } from '../../types';
 
+function mergeOrgFiscal(org: Organization): Organization {
+  if (!org?.id) return org;
+  const cached = getFiscalMetadataCache('org', org.id);
+  const merged: Organization = {
+    ...org,
+    vat_number: org.vat_number !== undefined && org.vat_number !== null && org.vat_number !== ''
+      ? org.vat_number
+      : (cached.vat_number ?? org.vat_number ?? null),
+    tax_code: org.tax_code !== undefined && org.tax_code !== null && org.tax_code !== ''
+      ? org.tax_code
+      : (cached.tax_code ?? org.tax_code ?? null),
+  };
+  if (org.vat_number || org.tax_code) {
+    saveFiscalMetadataCache('org', org.id, {
+      vat_number: merged.vat_number,
+      tax_code: merged.tax_code,
+    });
+  }
+  return merged;
+}
+
 export class CloudOrgStorage {
   constructor(private base: CloudStorageBase) {}
 
@@ -18,7 +40,8 @@ export class CloudOrgStorage {
     try {
       const orgs = await this.base.client.getOrganizations();
       const validOrgs: Organization[] = (Array.isArray(orgs) ? orgs : [])
-        .filter((o: any) => o && typeof o === 'object' && o.id && o.name);
+        .filter((o: any) => o && typeof o === 'object' && o.id && o.name)
+        .map((o: Organization) => mergeOrgFiscal(o));
 
       if (validOrgs.length > 0) {
         // Cache to local adapter for offline resilience
@@ -27,10 +50,10 @@ export class CloudOrgStorage {
         }
         return validOrgs;
       }
-      return await this.base.localAdapter.getOrganizations();
+      return (await this.base.localAdapter.getOrganizations()).map(mergeOrgFiscal);
     } catch (err: any) {
       console.warn('[CloudOrgStorage] getOrganizations fallback:', err?.message || err);
-      return await this.base.localAdapter.getOrganizations();
+      return (await this.base.localAdapter.getOrganizations()).map(mergeOrgFiscal);
     }
   }
 
@@ -38,23 +61,34 @@ export class CloudOrgStorage {
     try {
       const org = await this.base.client.getItemById<Organization>('organizations', id);
       if (org && org.id && org.name) {
-        await this.base.localAdapter.saveOrganization(org);
-        return org;
+        const merged = mergeOrgFiscal(org);
+        await this.base.localAdapter.saveOrganization(merged);
+        return merged;
       }
-      return await this.base.localAdapter.getOrganizationById(id);
+      const localOrg = await this.base.localAdapter.getOrganizationById(id);
+      return localOrg ? mergeOrgFiscal(localOrg) : null;
     } catch {
-      return await this.base.localAdapter.getOrganizationById(id);
+      const localOrg = await this.base.localAdapter.getOrganizationById(id);
+      return localOrg ? mergeOrgFiscal(localOrg) : null;
     }
   }
 
   async saveOrganization(org: Partial<Organization>): Promise<Organization> {
+    if (org.id && (org.vat_number !== undefined || org.tax_code !== undefined)) {
+      saveFiscalMetadataCache('org', org.id, {
+        vat_number: org.vat_number,
+        tax_code: org.tax_code,
+      });
+    }
+
     try {
       if (org.id) {
-        const cleanPayload: any = {
+        const basePayload: any = {
           name: org.name,
           slug: org.slug,
           currency: org.currency,
           timezone: org.timezone,
+          default_tax_rate: org.default_tax_rate,
           phone: org.phone ?? null,
           mobile: org.mobile ?? null,
           address: org.address ?? null,
@@ -62,11 +96,36 @@ export class CloudOrgStorage {
           logo: org.logo ?? null,
           signature: org.signature ?? null,
         };
-        Object.keys(cleanPayload).forEach((k) => cleanPayload[k] === undefined && delete cleanPayload[k]);
-        return await this.base.client.updateItem<Organization>('organizations', org.id, cleanPayload);
+        const fullPayload: any = {
+          ...basePayload,
+          ...(org.vat_number !== undefined ? { vat_number: org.vat_number ?? null } : {}),
+          ...(org.tax_code !== undefined ? { tax_code: org.tax_code ?? null } : {}),
+        };
+        Object.keys(basePayload).forEach((k) => basePayload[k] === undefined && delete basePayload[k]);
+        Object.keys(fullPayload).forEach((k) => fullPayload[k] === undefined && delete fullPayload[k]);
+
+        let updated: Organization;
+        try {
+          updated = await this.base.client.updateItem<Organization>('organizations', org.id, fullPayload);
+        } catch (schemaErr: any) {
+          // Graceful fallback if vat_number / tax_code columns are not yet added in Directus schema
+          if (fullPayload.vat_number !== undefined || fullPayload.tax_code !== undefined) {
+            console.warn('[CloudOrgStorage] Retrying organization update without optional fiscal columns:', schemaErr?.message || schemaErr);
+            updated = await this.base.client.updateItem<Organization>('organizations', org.id, basePayload);
+          } else {
+            throw schemaErr;
+          }
+        }
+        const merged = mergeOrgFiscal({
+          ...updated,
+          ...(org.vat_number !== undefined ? { vat_number: org.vat_number ?? null } : {}),
+          ...(org.tax_code !== undefined ? { tax_code: org.tax_code ?? null } : {}),
+        });
+        await this.base.localAdapter.saveOrganization(merged);
+        return merged;
       }
       return await this.base.client.createOrganization({
-        name: org.name || 'سازمان جدید',
+        name: org.name || 'New Organization',
         slug: org.slug,
         currency: org.currency,
         timezone: org.timezone,
@@ -76,7 +135,7 @@ export class CloudOrgStorage {
       console.warn('[CloudOrgStorage] Cloud saveOrganization failed, falling back to local adapter:', err?.message || err);
       const saved = await this.base.localAdapter.saveOrganization(org);
       this.base.syncManager.enqueue({ action: org.id ? 'UPDATE' : 'CREATE', collection: 'organizations', payload: saved });
-      return saved;
+      return mergeOrgFiscal(saved);
     }
   }
 
@@ -313,7 +372,7 @@ export class CloudOrgStorage {
 
   async submitFeedback(feedback: Partial<Feedback>): Promise<Feedback> {
     const payload: any = {
-      subject: feedback.subject || 'بازخورد',
+      subject: feedback.subject || 'Feedback',
       message: feedback.message || '',
       status: feedback.status || 'unread',
       user_id: feedback.user_id || null,

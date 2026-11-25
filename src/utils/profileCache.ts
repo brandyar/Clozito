@@ -10,6 +10,8 @@
  * 3. Falling back to an ultra-minimal auth/plan stub and never throwing out of login/startup flows.
  */
 
+import { isPaidCloudPlan } from '../config/plans';
+
 export const CACHED_USER_KEY = 'tankhor_cached_user_profile';
 
 const PROTECTED_KEYS = new Set([
@@ -114,7 +116,7 @@ function buildMinimalUserStub(user: any): any {
           trial_ends_at: org.trial_ends_at ?? null,
           has_active_subscription: Boolean(org.has_active_subscription),
           has_used_trial: Boolean(org.has_used_trial),
-          currency: org.currency || 'TOMAN',
+          currency: org.currency || 'EUR',
           user_role: org.user_role,
         }
       : null;
@@ -248,8 +250,8 @@ export function safeSaveCachedUserProfile(user: any): boolean {
 
   const activeOrg = user.activeOrganization || user.active_organization;
   const isProUser = Boolean(
-    activeOrg?.plan === 'pro' ||
-      (Array.isArray(user.organizations) && user.organizations.some((o: any) => o?.plan === 'pro'))
+    isPaidCloudPlan(activeOrg?.plan) ||
+      (Array.isArray(user.organizations) && user.organizations.some((o: any) => isPaidCloudPlan(o?.plan)))
   );
 
   try {

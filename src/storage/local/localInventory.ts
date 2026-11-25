@@ -51,7 +51,7 @@ export class LocalInventoryStorage {
       savedWh = {
         id: newId,
         organization_id: this.base.getActiveOrgId() || 1,
-        name: wh.name || 'انبار جدید',
+        name: wh.name || 'New Warehouse',
         type: wh.type || 'warehouse',
         status: wh.status || 'active',
         is_default: false,
@@ -116,7 +116,7 @@ export class LocalInventoryStorage {
       savedLoc = {
         id: newId,
         warehouse_id: loc.warehouse_id || 1,
-        name: loc.name || 'موقعیت جدید',
+        name: loc.name || 'New Location',
         type: loc.type || 'shelf',
         status: loc.status || 'active',
         date_created: new Date().toISOString(),

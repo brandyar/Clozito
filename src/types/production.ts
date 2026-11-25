@@ -1,55 +1,55 @@
 import { Status } from './index';
 
 export type RawMaterialCategory =
-  | 'fabric'       // پارچه
-  | 'thread'       // نخ
-  | 'zipper'       // زیپ
-  | 'button'       // دکمه
-  | 'lining'       // لایی / آستر
-  | 'label'        // مارک و لیبل
-  | 'packaging'    // کاور / بسته‌بندی
-  | 'other';       // سایر خرج‌کار
+  | 'fabric'       // Fabric
+  | 'thread'       // Thread
+  | 'zipper'       // Zipper
+  | 'button'       // Button
+  | 'lining'       // Interfacing / Lining
+  | 'label'        // Brand & Care Labels
+  | 'packaging'    // Cover / Packaging
+  | 'other';       // Other trims & accessories
 
 export type ContractorSpecialty =
-  | 'cutting'      // برش‌کار
-  | 'sewing'       // مزد‌دوز / خیاط
-  | 'embroidery'   // گلدوز
-  | 'printing'     // چاپ‌کار
-  | 'washing'      // سنگ‌شور / شست‌وشو
-  | 'iron_pack'    // اتو و بسته‌بندی
-  | 'general';     // عمومی
+  | 'cutting'      // Pattern & Cutting
+  | 'sewing'       // Sewing / Stitching
+  | 'embroidery'   // Embroidery
+  | 'printing'     // Printing
+  | 'washing'      // Stone-washing / Laundry
+  | 'iron_pack'    // Ironing & Packaging
+  | 'general';     // General
 
 export type ProductionOrderStatus =
-  | 'draft'        // پیش‌نویس
-  | 'cutting'      // در حال برش
-  | 'in_progress'  // در حال دوخت / برون‌سپاری
-  | 'qc'           // در حال کنترل کیفیت
-  | 'completed'    // تکمیل‌شده
-  | 'cancelled';   // لغوشده
+  | 'draft'        // Draft
+  | 'cutting'      // Cutting
+  | 'in_progress'  // Sewing / Outsourced
+  | 'qc'           // Quality Control
+  | 'completed'    // Completed
+  | 'cancelled';   // Cancelled
 
 export type ProductionStageType =
-  | 'cutting'      // برش
-  | 'printing'     // چاپ
-  | 'embroidery'   // گلدوزی
-  | 'sewing'       // دوخت
-  | 'washing'      // شست‌وشو
-  | 'iron_pack'    // اتو و بسته‌بندی
-  | 'qc';          // کنترل کیفیت
+  | 'cutting'      // Cutting
+  | 'printing'     // Printing
+  | 'embroidery'   // Embroidery
+  | 'sewing'       // Sewing
+  | 'washing'      // Washing
+  | 'iron_pack'    // Ironing & Packaging
+  | 'qc';          // Quality Control
 
 export type ProductionStageStatus =
-  | 'pending'      // در انتظار
-  | 'in_progress'  // در حال انجام
-  | 'completed';   // تکمیل‌شده
+  | 'pending'      // Pending
+  | 'in_progress'  // In Progress
+  | 'completed';   // Completed
 
 /**
- * انبار متریال و مواد اولیه / خرج‌کار
+ * Raw materials, fabrics & trims inventory
  */
 export interface RawMaterial {
   id: number;
   organization_id: number;
   name: string;
-  code: string; // شناسه کد متریال (e.g. MAT-001)
-  unit: string; // واحد سنجش (متر، کیلو، طاقه، عدد، جین...)
+  code: string; // Material code (e.g. MAT-001)
+  unit: string; // Unit of measure (m, kg, roll, pcs, dozen...)
   category: RawMaterialCategory;
   warehouse_id?: number | null;
   current_stock: number;
@@ -63,13 +63,13 @@ export interface RawMaterial {
 }
 
 /**
- * آیتم فرمول ساخت (BOM Item)
+ * Bill of Materials line item (BOM Item)
  */
 export interface BomItem {
   id: number;
   bom_id: number;
   raw_material_id: number;
-  quantity_required: number; // مقدار متریال لازم برای ۱ عدد محصول
+  quantity_required: number; // Quantity of material required per 1 finished unit
   unit_cost?: number;
   notes?: string | null;
   // Joined fields
@@ -77,16 +77,16 @@ export interface BomItem {
 }
 
 /**
- * شناسنامه تولید و فرمول ساخت (Bill of Materials)
+ * Production recipe & Bill of Materials
  */
 export interface BillOfMaterials {
   id: number;
   organization_id: number;
   product_id: number;
-  variant_id?: number | null; // در صورت متفاوت بودن فرمول سایز/رنگ
+  variant_id?: number | null; // Optional variant override if formula differs by size/color
   name: string;
   version?: string; // e.g. "v1.0"
-  waste_percentage?: number; // درصد ضایعات استاندارد (e.g. 5%)
+  waste_percentage?: number; // Standard waste percentage (e.g. 5%)
   notes?: string | null;
   status: Status;
   date_created?: string;
@@ -99,7 +99,7 @@ export interface BillOfMaterials {
 }
 
 /**
- * پیمانکاران و کارمزدی‌ها (مزد‌دوز، چاپ‌کار، اتوکار...)
+ * External workshops & contractors (sewing, printing, finishing...)
  */
 export interface Contractor {
   id: number;
@@ -108,22 +108,22 @@ export interface Contractor {
   specialty: ContractorSpecialty;
   phone?: string | null;
   address?: string | null;
-  current_balance?: number; // مثبت = بستانکار (طلبکار)، منفی = بدهکار
+  current_balance?: number; // Positive = creditor (payable), negative = debtor
   status: Status;
   date_created?: string;
   date_updated?: string;
 }
 
 /**
- * دستور کار و سفارش تولید (Production Order / Cut Order)
+ * Production Order / Cut Order
  */
 export interface ProductionOrder {
   id: number;
   organization_id: number;
-  order_number: string; // شماره دستور کار (e.g. CUT-1403-001)
+  order_number: string; // Order number (e.g. CUT-2026-001)
   product_id: number;
   bom_id?: number | null;
-  target_warehouse_id?: number | null; // انبار مقصد کالای ساخته‌شده
+  target_warehouse_id?: number | null; // Target warehouse for finished goods
   total_quantity: number;
   status: ProductionOrderStatus;
   start_date?: string | null;
@@ -142,7 +142,7 @@ export interface ProductionOrder {
 }
 
 /**
- * تفکیک تنوع‌ها و سایزهای سفارش تولید
+ * Variant & size breakdown of a production order
  */
 export interface ProductionOrderItem {
   id: number;
@@ -159,7 +159,7 @@ export interface ProductionOrderItem {
 }
 
 /**
- * مراحل خط تولید و کارمزدی برون‌سپاری
+ * Production line stages & outsourced contractor work
  */
 export interface ProductionStage {
   id: number;
@@ -167,7 +167,7 @@ export interface ProductionStage {
   contractor_id?: number | null;
   stage_type: ProductionStageType;
   status: ProductionStageStatus;
-  unit_fee: number; // اجرت کارمزد به ازای ۱ عدد
+  unit_fee: number; // Contractor fee per unit
   total_fee: number;
   quantity_sent: number;
   quantity_received: number;

@@ -94,4 +94,12 @@ export const sizeguidesEn = {
   searchSizesPlaceholder: 'Search sizes...',
   applySelectedSizes: 'Apply to Matrix',
   removeSizeFromTemplate: 'Remove size from template',
+  euPresetsBtn: 'EU / IT Standard Presets',
+  euPresetsModalTitle: 'European & Italian Size Guide Presets',
+  euPresetsModalSubtitle: 'Install ready-to-use European and Italian apparel & footwear charts with pre-populated cm measurements in one click.',
+  installPresetBtn: 'Install Preset',
+  installingPreset: 'Installing...',
+  presetInstalledSuccess: 'European size guide preset "{name}" installed successfully.',
+  presetSizesCount: '{count} sizes',
+  presetDimensionsCount: '{count} dimensions',
 };

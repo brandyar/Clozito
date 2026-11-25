@@ -53,7 +53,7 @@ fastInitRouter.get(
     const { organizationId } = req.user!;
     const targetOrgId = Number(req.query.organization_id || organizationId);
     if (!targetOrgId || isNaN(targetOrgId) || targetOrgId <= 0) {
-      return res.status(400).json({ error: 'سازمان فعال مشخص نشده است.' });
+      return res.status(400).json({ error: 'Active organization is not specified.' });
     }
 
     const cached = posInitCache.get(targetOrgId);
@@ -149,7 +149,7 @@ fastInitRouter.get(
         const size = sizesMap.get(Number(v.size_id));
         return {
           ...v,
-          product_title: prod?.title || v.product_title || 'محصول',
+          product_title: prod?.title || v.product_title || 'Product',
           color_name: color?.name || v.color_name || '-',
           color_hex: color?.hex || v.color_hex,
           size_name: size?.name || v.size_name || '-',
@@ -170,7 +170,7 @@ fastInitRouter.get(
       return res.json({ data: responseData });
     } catch (err: any) {
       console.error('[POS Init Route Error]:', err);
-      return res.status(500).json({ error: err.message || 'خطا در واکشی داده‌های ثبت سفارش' });
+      return res.status(500).json({ error: err.message || 'Failed to fetch order initialization data.' });
     }
   }
 );
@@ -186,7 +186,7 @@ fastInitRouter.get(
     const { organizationId } = req.user!;
     const targetOrgId = Number(req.query.organization_id || organizationId);
     if (!targetOrgId || isNaN(targetOrgId) || targetOrgId <= 0) {
-      return res.status(400).json({ error: 'سازمان فعال مشخص نشده است.' });
+      return res.status(400).json({ error: 'Active organization is not specified.' });
     }
 
     const cached = barcodeInitCache.get(targetOrgId);
@@ -260,7 +260,7 @@ fastInitRouter.get(
 
         return {
           ...v,
-          product_title: prod?.title || v.product_title || 'محصول',
+          product_title: prod?.title || v.product_title || 'Product',
           color_name: color?.name || v.color_name || '-',
           color_hex: color?.hex || v.color_hex,
           size_name: size?.name || v.size_name || '-',
@@ -281,7 +281,7 @@ fastInitRouter.get(
       return res.json({ data: responseData });
     } catch (err: any) {
       console.error('[Barcode Init Route Error]:', err);
-      return res.status(500).json({ error: err.message || 'خطا در واکشی داده‌های ساخت بارکد' });
+      return res.status(500).json({ error: err.message || 'Failed to fetch barcode data.' });
     }
   }
 );

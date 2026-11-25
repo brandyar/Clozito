@@ -1,5 +1,6 @@
 import { CloudStorageBase } from './cloudBase';
 import { QueryParams, PaginatedResult } from '../types';
+import { getFiscalMetadataCache, saveFiscalMetadataCache } from '../../utils/formatters';
 import {
   Order,
   OrderItem,
@@ -9,6 +10,27 @@ import {
   PosShift,
   PosShiftStatus,
 } from '../../types';
+
+function mergeCustomerFiscal(c: Customer): Customer {
+  if (!c?.id) return c;
+  const cached = getFiscalMetadataCache('customer', c.id);
+  const merged: Customer = {
+    ...c,
+    vat_number: c.vat_number !== undefined && c.vat_number !== null && c.vat_number !== ''
+      ? c.vat_number
+      : (cached.vat_number ?? c.vat_number ?? null),
+    tax_code: c.tax_code !== undefined && c.tax_code !== null && c.tax_code !== ''
+      ? c.tax_code
+      : (cached.tax_code ?? c.tax_code ?? null),
+  };
+  if (c.vat_number || c.tax_code) {
+    saveFiscalMetadataCache('customer', c.id, {
+      vat_number: merged.vat_number,
+      tax_code: merged.tax_code,
+    });
+  }
+  return merged;
+}
 
 export class CloudSalesStorage {
   constructor(private base: CloudStorageBase) {}
@@ -462,24 +484,15 @@ export class CloudSalesStorage {
   // Customers
   async getCustomers(params?: QueryParams): Promise<Customer[]> {
     try {
-      return await this.base.client.getItems<Customer>('customers', {
+      const list = await this.base.client.getItems<Customer>('customers', {
         filter: params?.organization_id ? { organization_id: { _eq: params.organization_id } } : undefined,
         sort: '-id',
-        fields: [
-          'id',
-          'organization_id',
-          'name',
-          'phone',
-          'email',
-          'address',
-          'status',
-          'balance',
-          'credit_limit',
-          'date_created',
-        ],
+        fields: ['*'],
       });
+      return (Array.isArray(list) ? list : []).map(mergeCustomerFiscal);
     } catch {
-      return this.base.localAdapter.getCustomers(params);
+      const localList = await this.base.localAdapter.getCustomers(params);
+      return localList.map(mergeCustomerFiscal);
     }
   }
 
@@ -497,23 +510,12 @@ export class CloudSalesStorage {
         page,
         sort: params.sort || '-id',
         search: params.search,
-        fields: [
-          'id',
-          'organization_id',
-          'name',
-          'phone',
-          'email',
-          'address',
-          'status',
-          'balance',
-          'credit_limit',
-          'date_created',
-        ],
+        fields: ['*'],
       });
 
       const totalCount = res.meta?.filter_count ?? res.meta?.total_count ?? res.data.length;
       return {
-        items: res.data,
+        items: (res.data || []).map(mergeCustomerFiscal),
         totalCount,
         page,
         pageSize,
@@ -521,9 +523,10 @@ export class CloudSalesStorage {
       };
     } catch {
       if (this.base.localAdapter.getPaginatedCustomers) {
-        return this.base.localAdapter.getPaginatedCustomers(params);
+        const localRes = await this.base.localAdapter.getPaginatedCustomers(params);
+        return { ...localRes, items: localRes.items.map(mergeCustomerFiscal) };
       }
-      const all = await this.base.localAdapter.getCustomers(params);
+      const all = (await this.base.localAdapter.getCustomers(params)).map(mergeCustomerFiscal);
       const start = (page - 1) * pageSize;
       return {
         items: all.slice(start, start + pageSize),
@@ -537,31 +540,69 @@ export class CloudSalesStorage {
 
   async getCustomerById(id: number): Promise<Customer | null> {
     try {
-      return await this.base.client.getItemById<Customer>('customers', id, '*');
+      const cust = await this.base.client.getItemById<Customer>('customers', id, '*');
+      return cust ? mergeCustomerFiscal(cust) : null;
     } catch {
-      return this.base.localAdapter.getCustomerById(id);
+      const localCust = await this.base.localAdapter.getCustomerById(id);
+      return localCust ? mergeCustomerFiscal(localCust) : null;
     }
   }
 
   async saveCustomer(cust: Partial<Customer>): Promise<Customer> {
+    const hasFiscalInput = cust.vat_number !== undefined || cust.tax_code !== undefined;
     try {
       const payload: any = { ...cust };
       let savedCust: Customer;
-      if (payload.id) {
-        const id = payload.id;
-        delete payload.id;
-        savedCust = await this.base.client.updateItem<Customer>('customers', id, payload);
-      } else {
-        delete payload.id;
-        savedCust = await this.base.client.createItem<Customer>('customers', payload);
+      const runSave = async (data: any): Promise<Customer> => {
+        if (data.id) {
+          const id = data.id;
+          const rest = { ...data };
+          delete rest.id;
+          return await this.base.client.updateItem<Customer>('customers', id, rest);
+        }
+        const rest = { ...data };
+        delete rest.id;
+        return await this.base.client.createItem<Customer>('customers', rest);
+      };
+
+      try {
+        savedCust = await runSave(payload);
+      } catch (schemaErr: any) {
+        if (hasFiscalInput) {
+          console.warn('[CloudSalesStorage] Retrying saveCustomer without optional fiscal columns:', schemaErr?.message || schemaErr);
+          const fallbackPayload = { ...payload };
+          delete fallbackPayload.vat_number;
+          delete fallbackPayload.tax_code;
+          savedCust = await runSave(fallbackPayload);
+        } else {
+          throw schemaErr;
+        }
       }
-      await this.base.localAdapter.saveCustomer(savedCust);
-      return savedCust;
+
+      if (savedCust?.id && hasFiscalInput) {
+        saveFiscalMetadataCache('customer', savedCust.id, {
+          vat_number: cust.vat_number ?? null,
+          tax_code: cust.tax_code ?? null,
+        });
+      }
+      const merged = mergeCustomerFiscal({
+        ...savedCust,
+        ...(cust.vat_number !== undefined ? { vat_number: cust.vat_number ?? null } : {}),
+        ...(cust.tax_code !== undefined ? { tax_code: cust.tax_code ?? null } : {}),
+      });
+      await this.base.localAdapter.saveCustomer(merged);
+      return merged;
     } catch (err: any) {
       console.warn('[CloudSalesStorage] saveCustomer failed, fallback to local:', err?.message || err);
       const saved = await this.base.localAdapter.saveCustomer(cust);
+      if (saved?.id && hasFiscalInput) {
+        saveFiscalMetadataCache('customer', saved.id, {
+          vat_number: cust.vat_number ?? null,
+          tax_code: cust.tax_code ?? null,
+        });
+      }
       this.base.syncManager.enqueue({ action: cust.id ? 'UPDATE' : 'CREATE', collection: 'customers', payload: saved });
-      return saved;
+      return mergeCustomerFiscal(saved);
     }
   }
 
@@ -578,7 +619,7 @@ export class CloudSalesStorage {
     }
   }
 
-  // POS Shifts (شیفت‌های صندوق)
+  // POS Shifts
   async getPosShifts(params?: QueryParams & { user_id?: string; status?: PosShiftStatus; warehouse_id?: number }): Promise<PosShift[]> {
     const orgId = params?.organization_id || (typeof window !== 'undefined' ? localStorage.getItem('tankhor_active_org_id') : null);
     if (!orgId) return [];

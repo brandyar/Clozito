@@ -1,7 +1,7 @@
 /**
- * TANKHOR (تن‌خور) - Module License Synchronization & Verification Engine
- * Periodically verifies and synchronizes module licenses with Directus backend,
- * ensuring that revoked or disabled module licenses in Directus take immediate effect
+ * Clozito - Module License Synchronization & Verification Engine
+ * Periodically verifies and synchronizes module licenses with the cloud backend,
+ * ensuring that revoked or disabled module licenses take immediate effect
  * in desktop (Tauri SQLite) and web offline storage while supporting graceful offline operation.
  */
 
@@ -55,7 +55,7 @@ export async function syncOrganizationLicenses(
       return {
         success: false,
         offline: true,
-        error: 'اتصال به شبکه برقرار نیست (حالت آفلاین)',
+        error: 'No network connection available (offline mode).',
         activeCount: localModules.filter((m) => m.status === 'active').length,
         revokedCount: localModules.filter((m) => m.status !== 'active').length,
         timestamp,
@@ -91,7 +91,7 @@ export async function syncOrganizationLicenses(
       }
 
       if (!serverData || !Array.isArray(serverData.modules)) {
-        throw new Error('پاسخ نامعتبر از سرور دریافت شد.');
+        throw new Error('Invalid response received from server.');
       }
 
       const serverModules: any[] = serverData.modules;
@@ -214,7 +214,7 @@ export async function syncOrganizationLicenses(
       return {
         success: false,
         offline: true,
-        error: err.message || 'خطا در ارتباط با سرور برای بررسی لایسنس‌ها',
+        error: err.message || 'Failed to connect to server to verify licenses.',
         activeCount: localModules.filter((m) => m.status === 'active').length,
         revokedCount: localModules.filter((m) => m.status !== 'active').length,
         timestamp,

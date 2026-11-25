@@ -14,10 +14,14 @@ import { CreateOrganizationModal } from '../organizations/CreateOrganizationModa
 import { OrganizationMembersSection } from '../organizations/OrganizationMembersSection';
 import { LocalBackupRestoreCard } from './LocalBackupRestoreCard';
 import { ModulesManagementCard } from './ModulesManagementCard';
+import { BillingSubscriptionCard } from './BillingSubscriptionCard';
+import { PrivacyGdprCard } from './PrivacyGdprCard';
 import { UpgradeToProModal } from '../../components/modals/UpgradeToProModal';
 import { checkDesktopUpdate } from '../../utils/updater';
 import { getCurrentAppVersion, APP_VERSION } from '../../utils/version';
+import { resolveCurrencyCode, getOrganizationTaxRate } from '../../utils/formatters';
 import { ProductImage } from '../../components/ui/ProductImage';
+import { isPaidCloudPlan, getPlanDisplayName, SubscriptionTier } from '../../config/plans';
 import {
   Database,
   Cloud,
@@ -54,7 +58,7 @@ interface SettingsViewProps {
 }
 
 export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'settings/org', onNavigate }) => {
-  const { t, locale, setLocale, isPersian } = useTranslation();
+  const { t, locale, setLocale } = useTranslation();
   const { activeOrganization, isOwner, userRole, refreshOrganizations, permissions } = useOrganization();
   const { theme, setTheme } = useTheme();
   const {
@@ -65,16 +69,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
   } = useAuth();
 
   // Resolve current active tab from prop or sub-route
-  const getTabFromRoute = (route: string): 'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'updater' => {
+  const getTabFromRoute = (route: string): 'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'privacy' | 'updater' => {
     if (route.includes('members') || route.includes('users')) return 'members';
     if (route.includes('modules') || route.includes('license')) return 'modules';
     if (route.includes('sync') || route.includes('storage') || route.includes('backup')) return 'sync';
     if (route.includes('appearance') || route.includes('theme')) return 'appearance';
+    if (route.includes('privacy') || route.includes('gdpr') || route.includes('legal')) return 'privacy';
     if (route.includes('updater') || route.includes('version')) return 'updater';
     return 'org';
   };
 
-  const [activeTab, setActiveTab] = useState<'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'updater'>(
+  const [activeTab, setActiveTab] = useState<'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'privacy' | 'updater'>(
     getTabFromRoute(activeSubRoute)
   );
 
@@ -82,7 +87,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
     setActiveTab(getTabFromRoute(activeSubRoute));
   }, [activeSubRoute]);
 
-  const handleTabChange = (tab: 'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'updater') => {
+  const handleTabChange = (tab: 'org' | 'members' | 'modules' | 'sync' | 'appearance' | 'privacy' | 'updater') => {
     setActiveTab(tab);
     if (onNavigate) {
       const targetRoute = tab === 'org' ? 'settings/org' : `settings/${tab}`;
@@ -99,6 +104,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
   const [updateStatusMsg, setUpdateStatusMsg] = useState<{ type: 'info' | 'success' | 'error'; text: string } | null>(null);
   const [isCreateOrgOpen, setIsCreateOrgOpen] = useState(false);
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
+  const [upgradeDefaultTier, setUpgradeDefaultTier] = useState<SubscriptionTier | undefined>(undefined);
 
   const isDesktop = isTauriEnvironment();
 
@@ -207,7 +213,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
   };
 
   const handleManualSync = async () => {
-    if (activeOrganization?.plan !== 'pro') {
+    if (!isPaidCloudPlan(activeOrganization?.plan)) {
       setIsUpgradeModalOpen(true);
       return;
     }
@@ -248,39 +254,45 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
   const tabs = [
     {
       id: 'org',
-      label: t('navigation.settingsGeneral', 'پروفایل و اطلاعات سازمان'),
+      label: t('navigation.settingsGeneral', 'Organization Profile'),
       icon: Building2,
       visible: true,
     },
     {
       id: 'members',
-      label: t('navigation.settingsMembers', 'اعضا و سطوح دسترسی'),
+      label: t('navigation.settingsMembers', 'Members & Roles'),
       icon: Users,
       visible: permissions.canManageUsers || isOwner,
     },
     {
       id: 'modules',
-      label: t('navigation.settingsModules', 'مدیریت ماژول‌ها و لایسنس‌ها'),
+      label: t('navigation.settingsModules', 'Modules & Licenses'),
       icon: Boxes,
       visible: true,
     },
     {
       id: 'sync',
-      label: t('navigation.settingsSync', 'پایگاه‌داده و پشتیبان‌گیری'),
+      label: t('navigation.settingsSync', 'Database & Backup'),
       icon: HardDrive,
       visible: true,
     },
     {
       id: 'appearance',
-      label: t('navigation.settingsAppearance', 'ظاهر و تم سامانه'),
+      label: t('navigation.settingsAppearance', 'Appearance & Theme'),
       icon: Palette,
+      visible: true,
+    },
+    {
+      id: 'privacy',
+      label: t('navigation.settingsPrivacy', 'Privacy & GDPR'),
+      icon: ShieldCheck,
       visible: true,
     },
     ...(isDesktop
       ? [
           {
             id: 'updater',
-            label: t('navigation.settingsUpdater', 'بروزرسانی نرم‌افزار'),
+            label: t('navigation.settingsUpdater', 'Software Updates'),
             icon: ArrowUpCircle,
             visible: true,
           },
@@ -291,8 +303,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
   return (
     <div className="space-y-6">
       <PageHeader
-        title={t('settings.title', 'تنظیمات')}
-        subtitle={t('settings.subtitle', 'مدیریت حساب کاربری، سازمان، اعضا، ماژول‌ها، همگام‌سازی و تم سامانه')}
+        title={t('settings.title', 'Settings')}
+        subtitle={t('settings.subtitle', 'Manage account, organization, members, modules, sync, and theme')}
       />
 
       {/* Settings Submenu Navigation Tabs */}
@@ -329,7 +341,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                     isCloudAuthenticated ? 'bg-blue-600' : 'bg-neutral-800 dark:bg-neutral-700'
                   }`}
                 >
-                  {user?.first_name ? user.first_name[0] : 'T'}
+                  {user?.first_name ? user.first_name[0] : 'C'}
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
@@ -384,7 +396,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                   icon={<Plus className="w-3.5 h-3.5" />}
                   className="text-xs font-medium"
                 >
-                  {t('settings.inviteMember', 'ایجاد سازمان جدید')}
+                  {t('settings.createNewOrg', 'Create Organization')}
                 </Button>
                 {isOwner ? (
                   <Button
@@ -420,18 +432,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                   <div
                     onClick={() => isOwner && setIsEditOrgOpen(true)}
                     className={`w-16 h-16 rounded-2xl bg-white dark:bg-[#13151a] border border-neutral-200/80 dark:border-neutral-700/80 p-1 flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative group ${isOwner ? 'cursor-pointer hover:border-blue-500 transition-colors' : ''}`}
-                    title={isOwner ? t('settings.orgLogoChange', 'تغییر یا بارگذاری لوگو') : undefined}
+                    title={isOwner ? t('settings.orgLogoChange', 'Change or upload logo') : undefined}
                   >
                     {activeOrganization?.logo ? (
                       <ProductImage
                         src={activeOrganization.logo}
                         alt={activeOrganization.name}
                         className="w-full h-full object-contain rounded-xl"
-                        fallbackText={activeOrganization?.name ? activeOrganization.name[0] : 'T'}
+                        fallbackText={activeOrganization?.name ? activeOrganization.name[0] : 'C'}
                       />
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 font-bold text-xl rounded-xl">
-                        {activeOrganization?.name ? activeOrganization.name[0] : 'T'}
+                        {activeOrganization?.name ? activeOrganization.name[0] : 'C'}
                       </div>
                     )}
                     {isOwner && (
@@ -445,13 +457,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                     <div
                       onClick={() => isOwner && setIsEditOrgOpen(true)}
                       className={`w-16 h-16 rounded-2xl bg-white dark:bg-[#13151a] border border-neutral-200/80 dark:border-neutral-700/80 p-1 hidden sm:flex items-center justify-center overflow-hidden shrink-0 shadow-xs relative group ${isOwner ? 'cursor-pointer hover:border-blue-500 transition-colors' : ''}`}
-                      title={t('settings.orgSignatureLabel', 'مهر و امضای رسمی سازمان')}
+                      title={t('settings.orgSignatureLabel', 'Official Stamp & Signature')}
                     >
                       <ProductImage
                         src={activeOrganization.signature}
-                        alt="مهر و امضا"
+                        alt={t('settings.signature', 'Signature')}
                         className="w-full h-full object-contain rounded-xl"
-                        fallbackText="امضا"
+                        fallbackText={t('settings.signature', 'Sign')}
                       />
                       {isOwner && (
                         <div className="absolute inset-0 bg-neutral-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white text-[10px] font-bold rounded-xl backdrop-blur-2xs">
@@ -506,7 +518,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                 )}
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 p-4 rounded-xl bg-neutral-50/70 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl bg-neutral-50/70 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
                 <div className="space-y-1">
                   <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">{t('settings.orgName')}</span>
                   <p className="text-sm font-bold text-neutral-900 dark:text-neutral-100 flex items-center gap-1.5">
@@ -525,15 +537,23 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                 <div className="space-y-1">
                   <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">{t('settings.orgCurrency')}</span>
                   <p className="text-xs font-bold text-neutral-800 dark:text-neutral-200">
-                    {(!activeOrganization?.currency || activeOrganization.currency === 'TOMAN' || activeOrganization.currency === 'EUR')
-                      ? t('settings.currencyEur')
-                      : activeOrganization.currency === 'USD'
-                      ? t('settings.currencyUsd')
-                      : activeOrganization.currency === 'GBP'
-                      ? t('settings.currencyGbp')
-                      : activeOrganization.currency === 'CHF'
-                      ? t('settings.currencyChf')
-                      : activeOrganization.currency}
+                    {(() => {
+                      const code = resolveCurrencyCode(activeOrganization?.currency);
+                      if (code === 'EUR') return t('settings.currencyEur');
+                      if (code === 'USD') return t('settings.currencyUsd');
+                      if (code === 'GBP') return t('settings.currencyGbp');
+                      if (code === 'CHF') return t('settings.currencyChf');
+                      return code;
+                    })()}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
+                    {t('settings.defaultVatRate', 'Default VAT (%)')}
+                  </span>
+                  <p className="text-xs font-mono font-bold text-neutral-800 dark:text-neutral-200">
+                    {getOrganizationTaxRate(activeOrganization)}%
                   </p>
                 </div>
 
@@ -546,8 +566,26 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                 </div>
               </div>
 
-              {/* Contact Information (Phone, Mobile, Address) */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 p-4 rounded-xl bg-neutral-50/70 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
+              {/* Contact & Fiscal Information (Phone, Mobile, VAT, Tax Code, Legal Address) */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 p-4 rounded-xl bg-neutral-50/70 dark:bg-[#181a20] border border-neutral-200/80 dark:border-neutral-800">
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
+                    {t('settings.orgVatNumber', 'VAT Number / Partita IVA')}
+                  </span>
+                  <p className="text-xs font-mono font-bold text-neutral-900 dark:text-neutral-100 dir-ltr text-start">
+                    {activeOrganization?.vat_number || '-'}
+                  </p>
+                </div>
+
+                <div className="space-y-1">
+                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium">
+                    {t('settings.orgTaxCode', 'Tax Code / Codice Fiscale')}
+                  </span>
+                  <p className="text-xs font-mono font-bold text-neutral-900 dark:text-neutral-100 dir-ltr text-start">
+                    {activeOrganization?.tax_code || '-'}
+                  </p>
+                </div>
+
                 <div className="space-y-1">
                   <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center gap-1">
                     <Phone className="w-3.5 h-3.5 text-neutral-400" />
@@ -571,7 +609,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                 <div className="space-y-1 sm:col-span-2 lg:col-span-1">
                   <span className="text-[11px] text-neutral-500 dark:text-neutral-400 font-medium flex items-center gap-1">
                     <MapPin className="w-3.5 h-3.5 text-neutral-400" />
-                    <span>{t('customers.address')}</span>
+                    <span>{t('settings.orgLegalAddress', 'Legal / Registered Address')}</span>
                   </span>
                   <p className="text-xs font-medium text-neutral-800 dark:text-neutral-200 line-clamp-2">
                     {activeOrganization?.address || '-'}
@@ -586,8 +624,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
                     {activeOrganization?.status === 'active' ? t('settings.statusActive') : activeOrganization?.status || '-'}
                   </Badge>
                   <span className="ms-2">{t('settings.activePlanBadge')}:</span>
-                  <Badge variant={activeOrganization?.plan === 'pro' ? 'info' : 'neutral'}>
-                    {activeOrganization?.plan === 'pro' ? t('settings.planPro') : t('settings.planFree')}
+                  <Badge variant={isPaidCloudPlan(activeOrganization?.plan) ? 'info' : 'neutral'}>
+                    {getPlanDisplayName(activeOrganization?.plan, locale)}
                   </Badge>
                 </div>
                 {activeOrganization?.date_created && (
@@ -598,6 +636,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
               </div>
             </div>
           </Card>
+
+          {/* Subscription & Stripe Billing Portal Card */}
+          <BillingSubscriptionCard
+            onOpenUpgrade={(tier?: SubscriptionTier) => {
+              setUpgradeDefaultTier(tier);
+              setIsUpgradeModalOpen(true);
+            }}
+          />
         </div>
       )}
 
@@ -731,8 +777,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
       {activeTab === 'appearance' && (
         <div className="space-y-6 animate-fade-in">
           <Card
-            title={t('settings.appearanceTitle', 'ظاهر و تم سامانه')}
-            subtitle={t('settings.appearanceSubtitle', 'انتخاب حالت نمایشی روز (روشن)، شب (تاریک) یا هماهنگ با سیستم‌عامل')}
+            title={t('settings.appearanceTitle', 'Appearance & Theme')}
+            subtitle={t('settings.appearanceSubtitle', 'Choose light, dark, or system-synced appearance')}
           >
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {/* Light Theme Option */}
@@ -906,10 +952,17 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ activeSubRoute = 'se
         </div>
       )}
 
-      {/* Upgrade to Pro Modal */}
+      {/* TAB: Privacy & GDPR */}
+      {activeTab === 'privacy' && <PrivacyGdprCard />}
+
+      {/* Upgrade Cloud Subscription Modal */}
       <UpgradeToProModal
         isOpen={isUpgradeModalOpen}
-        onClose={() => setIsUpgradeModalOpen(false)}
+        defaultTier={upgradeDefaultTier}
+        onClose={() => {
+          setIsUpgradeModalOpen(false);
+          setUpgradeDefaultTier(undefined);
+        }}
         onSuccess={() => {
           setMode('cloud_synced');
           refreshOrganizations();

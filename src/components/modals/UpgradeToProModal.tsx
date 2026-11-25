@@ -6,18 +6,21 @@ import { directusClient } from '../../api/directus';
 import { CloudMigrationManager, MigrationStepProgress } from '../../storage/cloudMigrationManager';
 import { useTranslation } from '../../i18n';
 import { BRAND } from '../../config/brand';
+import {
+  SUBSCRIPTION_TIERS,
+  SubscriptionTier,
+  isPaidCloudPlan,
+  normalizePlanTier,
+  getPlanDisplayName,
+} from '../../config/plans';
 import { Button } from '../ui/Button';
 import { formatCurrency } from '../../utils/formatters';
 import { openExternalUrl } from '../../utils/desktop';
 import {
   Sparkles,
-  Cloud,
   CheckCircle2,
   X,
   Zap,
-  ShieldCheck,
-  Users,
-  Smartphone,
   CreditCard,
   Check,
   RefreshCw,
@@ -30,63 +33,24 @@ import {
   Radio,
   Download,
   Database,
+  Store,
+  Scissors,
 } from 'lucide-react';
 
 interface UpgradeToProModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  defaultTier?: SubscriptionTier;
 }
 
-interface PlanOption {
-  months: number;
-  titleEn: string;
-  titleIt: string;
-  priceEur: number;
-  discountPercent: number;
-  badgeEn?: string;
-  badgeIt?: string;
-}
-
-const PLAN_OPTIONS: PlanOption[] = [
-  {
-    months: 1,
-    titleEn: '1 Month',
-    titleIt: '1 Mese',
-    priceEur: 29,
-    discountPercent: 0,
-  },
-  {
-    months: 3,
-    titleEn: '3 Months',
-    titleIt: '3 Mesi',
-    priceEur: 79,
-    discountPercent: 9,
-    badgeEn: 'Most Popular',
-    badgeIt: 'Più Scelto',
-  },
-  {
-    months: 6,
-    titleEn: '6 Months',
-    titleIt: '6 Mesi',
-    priceEur: 149,
-    discountPercent: 14,
-  },
-  {
-    months: 12,
-    titleEn: '12 Months',
-    titleIt: '12 Mesi',
-    priceEur: 269,
-    discountPercent: 23,
-    badgeEn: 'Best Value',
-    badgeIt: 'Miglior Risparmio',
-  },
-];
+const CYCLE_ORDER: Array<1 | 3 | 6 | 12> = [1, 3, 6, 12];
 
 export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
   isOpen,
   onClose,
   onSuccess,
+  defaultTier,
 }) => {
   const { locale } = useTranslation();
   const isIt = locale === 'it';
@@ -94,8 +58,13 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
   const { isCloudAuthenticated, openLoginModal, updateUserOrganization } = useAuth();
   const isDesktop = isTauriEnvironment();
 
-  const [selectedMonths, setSelectedMonths] = useState<number>(3);
+  const currentTier = normalizePlanTier(activeOrganization?.plan);
+  const [selectedTier, setSelectedTier] = useState<SubscriptionTier>(
+    defaultTier || (currentTier === 'boutique' ? 'atelier' : 'boutique')
+  );
+  const [selectedMonths, setSelectedMonths] = useState<1 | 3 | 6 | 12>(1);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
+  const [isOpeningPortal, setIsOpeningPortal] = useState(false);
   const [isChecking, setIsChecking] = useState(false);
   const [isActivatingTrial, setIsActivatingTrial] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -135,7 +104,7 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
     const checkInterval = setInterval(async () => {
       try {
         const res = await directusClient.checkOrganizationPlan();
-        if (res && (res.isPro || res.plan === 'pro')) {
+        if (res && (res.isPro || isPaidCloudPlan(res.plan))) {
           clearInterval(checkInterval);
           pollingTimerRef.current = null;
           setWaitingPayment(null);
@@ -159,27 +128,34 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
   }, [waitingPayment, success, refreshOrganizations, onSuccess]);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      if (defaultTier) {
+        setSelectedTier(defaultTier);
+      } else {
+        setSelectedTier(currentTier === 'boutique' ? 'atelier' : 'boutique');
+      }
+    } else {
       setError(null);
       setWaitingPayment(null);
     }
-  }, [isOpen]);
+  }, [isOpen, defaultTier, currentTier]);
 
   if (!isOpen) return null;
 
-  const selectedPlan = PLAN_OPTIONS.find((p) => p.months === selectedMonths) || PLAN_OPTIONS[1];
-  const isPro = activeOrganization?.plan === 'pro';
+  const activeTierDef = SUBSCRIPTION_TIERS[selectedTier];
+  const selectedCycle = activeTierDef.cycles[selectedMonths] || activeTierDef.cycles[1];
+  const isPro = isPaidCloudPlan(activeOrganization?.plan);
 
   const now = Date.now();
   const trialDaysRemaining = activeOrganization?.trial_ends_at
     ? Math.max(0, Math.ceil((new Date(activeOrganization.trial_ends_at).getTime() - now) / (1000 * 60 * 60 * 24)))
     : null;
   const isTrialActive = Boolean(
-    activeOrganization?.plan === 'pro' &&
+    isPro &&
       activeOrganization?.trial_ends_at &&
       new Date(activeOrganization.trial_ends_at).getTime() > now
   );
-  const canStartTrial = !activeOrganization?.has_used_trial && activeOrganization?.plan !== 'pro';
+  const canStartTrial = !activeOrganization?.has_used_trial && !isPro;
 
   const handleStripeCheckout = async () => {
     if (!activeOrganization?.id) return;
@@ -195,6 +171,8 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
       const res = await directusClient.requestPayment({
         organizationId: activeOrganization.id,
         durationMonths: selectedMonths,
+        planTier: selectedTier,
+        locale,
       });
 
       if (res && res.success && res.paymentUrl) {
@@ -203,7 +181,7 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
           setWaitingPayment({
             sessionId: String(res.sessionId || res.trackId || ''),
             paymentUrl: res.paymentUrl,
-            amountEur: res.amountEur || selectedPlan.priceEur,
+            amountEur: res.amountEur || selectedCycle.priceEur,
             durationMonths: selectedMonths,
           });
         } else {
@@ -229,6 +207,44 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
     }
   };
 
+  const handleOpenBillingPortal = async () => {
+    if (!activeOrganization?.id) return;
+    setError(null);
+
+    if (!isCloudAuthenticated) {
+      openLoginModal();
+      return;
+    }
+
+    setIsOpeningPortal(true);
+    try {
+      const res = await directusClient.createBillingPortalSession(activeOrganization.id, locale);
+      if (res?.success && res.portalUrl) {
+        if (isDesktop) {
+          await openExternalUrl(res.portalUrl);
+        } else {
+          window.location.href = res.portalUrl;
+        }
+      } else {
+        setError(
+          res?.error ||
+            (isIt
+              ? 'Impossibile aprire il Portale di Fatturazione Stripe.'
+              : 'Unable to open Stripe Billing Portal.')
+        );
+      }
+    } catch (err: any) {
+      setError(
+        err?.message ||
+          (isIt
+            ? 'Errore durante l\'apertura del Portale Stripe.'
+            : 'Error opening Stripe Billing Portal.')
+      );
+    } finally {
+      setIsOpeningPortal(false);
+    }
+  };
+
   const handleCheckPlanOnline = async () => {
     if (!activeOrganization) return;
     setIsChecking(true);
@@ -242,7 +258,7 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
 
     try {
       const res = await directusClient.checkOrganizationPlan();
-      if (res && (res.isPro || res.plan === 'pro')) {
+      if (res && (res.isPro || isPaidCloudPlan(res.plan))) {
         await refreshOrganizations();
         storageManager.setMode('cloud_synced', { verifiedPro: true });
         setWaitingPayment(null);
@@ -273,11 +289,12 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
     setError(null);
     try {
       const res = await directusClient.startFreeTrial(activeOrganization.id);
-      if (res && (res.isPro || res.plan === 'pro')) {
+      if (res && (res.isPro || isPaidCloudPlan(res.plan))) {
+        const resolvedPlan = (res.plan || res.organization?.plan || 'atelier') as 'atelier' | 'boutique' | 'pro';
         const updatedOrg = {
           ...activeOrganization,
           ...(res.organization || {}),
-          plan: 'pro' as const,
+          plan: resolvedPlan,
           has_used_trial: true,
           trial_ends_at: res.trialEndsAt || res.organization?.trial_ends_at,
         };
@@ -286,7 +303,7 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
         storageManager.setMode('cloud_synced', { verifiedPro: true });
         setSuccess(true);
         setSubscriptionDetails({
-          Transaction_id: isIt ? 'Prova Gratuita 14 Giorni' : '14-Day Free Pro Trial',
+          Transaction_id: isIt ? 'Prova Gratuita 14 Giorni (Atelier)' : '14-Day Free Atelier Trial',
           transaction_amount: formatCurrency(0, 'EUR', false, locale),
         });
         if (onSuccess) onSuccess();
@@ -357,20 +374,6 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
     }
   };
 
-  const proBenefits = isIt
-    ? [
-        { icon: Cloud, title: 'Sincronizzazione Cloud Multi-Dispositivo', desc: 'Accedi a inventario e vendite in tempo reale da negozio, magazzino e sede.' },
-        { icon: Users, title: 'Team Multi-Utente e Ruoli RBAC', desc: 'Assegna permessi dedicati a vendite, magazzinieri e amministratori.' },
-        { icon: Smartphone, title: 'Accesso Mobile e Web Ovunque', desc: 'Monitora incassi, scorte e consegne da qualsiasi browser o dispositivo.' },
-        { icon: ShieldCheck, title: 'Backup Automatici Crittografati', desc: 'I tuoi dati aziendali sono sempre protetti e replicati nel cloud.' },
-      ]
-    : [
-        { icon: Cloud, title: 'Real-Time Multi-Device Cloud Sync', desc: 'Keep stock, POS sales, and warehouses synchronized across all locations.' },
-        { icon: Users, title: 'Multi-User Team & RBAC Permissions', desc: 'Invite managers, sales associates, and warehouse staff with role controls.' },
-        { icon: Smartphone, title: 'Web & Mobile Access Anywhere', desc: 'Monitor revenue, orders, and stock alerts from any browser or device.' },
-        { icon: ShieldCheck, title: 'Automated Encrypted Cloud Backups', desc: 'Continuous protection for your catalog, ledgers, and order history.' },
-      ];
-
   return (
     <div
       id="upgrade-pro-modal-backdrop"
@@ -379,7 +382,7 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
     >
       <div
         id="upgrade-pro-modal-card"
-        className="relative w-full max-w-3xl max-h-[92vh] overflow-y-auto bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl"
+        className="relative w-full max-w-4xl max-h-[92vh] overflow-y-auto bg-white dark:bg-neutral-900 rounded-2xl border border-neutral-200 dark:border-neutral-800 shadow-2xl"
       >
         {/* Header */}
         <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 bg-white/95 dark:bg-neutral-900/95 backdrop-blur-md border-b border-neutral-100 dark:border-neutral-800">
@@ -389,12 +392,12 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-bold text-neutral-900 dark:text-white">
-                {isIt ? `Passa a ${BRAND.name} Pro` : `Upgrade to ${BRAND.name} Pro`}
+                {isIt ? `Piani Cloud ${BRAND.name}` : `${BRAND.name} Cloud Plans`}
               </h2>
               <p className="text-xs text-neutral-500 dark:text-neutral-400">
                 {isIt
-                  ? 'Sincronizzazione cloud, gestione team e pagamenti sicuri con Stripe'
-                  : 'Cloud workspace sync, multi-user teams & secure EUR billing via Stripe'}
+                  ? 'Scegli Boutique Cloud o Atelier & Produzione Cloud • Pagamento EUR con Stripe'
+                  : 'Choose Boutique Cloud or Atelier & Production Cloud • Secure EUR billing via Stripe'}
               </p>
             </div>
           </div>
@@ -580,12 +583,12 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
                     </div>
                     <div>
                       <h4 className="text-sm font-bold text-emerald-950 dark:text-emerald-200">
-                        {isIt ? 'Prova Pro gratuitamente per 14 giorni' : 'Try Pro Free for 14 Days'}
+                        {isIt ? 'Prova Atelier Cloud gratis per 14 giorni' : 'Try Full Atelier Cloud Free for 14 Days'}
                       </h4>
                       <p className="text-xs text-emerald-800 dark:text-emerald-300/90 mt-0.5">
                         {isIt
-                          ? 'Nessuna carta richiesta. Testa sincronizzazione cloud e collaborazione team subito.'
-                          : 'No credit card required. Experience full cloud sync and multi-user workflows immediately.'}
+                          ? 'Nessuna carta richiesta. Testa sincronizzazione cloud, WooCommerce, produzione e contabilità subito.'
+                          : 'No credit card required. Experience cloud sync, WooCommerce, production BOMs & accounting immediately.'}
                       </p>
                     </div>
                   </div>
@@ -601,49 +604,164 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
                 </div>
               )}
 
-              {/* Pro Benefits Grid */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {proBenefits.map((b, idx) => {
-                  const Icon = b.icon;
-                  return (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-3 p-3.5 rounded-xl bg-neutral-50 dark:bg-neutral-800/50 border border-neutral-200/70 dark:border-neutral-800"
-                    >
-                      <div className="w-8 h-8 rounded-lg bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 flex items-center justify-center shrink-0">
-                        <Icon className="w-4 h-4" />
-                      </div>
-                      <div>
-                        <h4 className="text-sm font-semibold text-neutral-900 dark:text-white">{b.title}</h4>
-                        <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 leading-relaxed">{b.desc}</p>
-                      </div>
-                    </div>
-                  );
-                })}
+              {/* Step 1: 2-Tier Cloud Plan Selector (Boutique vs Atelier) */}
+              <div className="space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-neutral-900 dark:text-white">
+                    {isIt ? '1. Scegli il livello del piano Cloud' : '1. Choose Your Cloud Plan Tier'}
+                  </h3>
+                  {isPro && !isTrialActive && (
+                    <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
+                      {isIt ? 'Piano attuale:' : 'Current plan:'}{' '}
+                      <strong className="text-neutral-900 dark:text-white">
+                        {getPlanDisplayName(activeOrganization?.plan, locale)}
+                      </strong>
+                    </span>
+                  )}
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {(['boutique', 'atelier'] as SubscriptionTier[]).map((tierId) => {
+                    const tier = SUBSCRIPTION_TIERS[tierId];
+                    const isSelected = selectedTier === tierId;
+                    const isCurrentPlan = !isTrialActive && currentTier === tierId;
+                    const monthlyPrice = tier.cycles[1].priceEur;
+                    const highlights = isIt ? tier.highlightsIt : tier.highlights;
+                    const TierIcon = tierId === 'boutique' ? Store : Scissors;
+
+                    return (
+                      <button
+                        key={tierId}
+                        type="button"
+                        onClick={() => setSelectedTier(tierId)}
+                        className={`relative text-left p-5 rounded-2xl border-2 transition-all flex flex-col justify-between gap-4 cursor-pointer ${
+                          isSelected
+                            ? tierId === 'atelier'
+                              ? 'border-indigo-600 dark:border-indigo-400 bg-indigo-50/40 dark:bg-indigo-950/20 shadow-sm'
+                              : 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-neutral-800/70 shadow-sm'
+                            : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700 bg-white dark:bg-neutral-900/40'
+                        }`}
+                      >
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="flex items-center gap-2.5">
+                              <div
+                                className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                                  tierId === 'atelier'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900'
+                                }`}
+                              >
+                                <TierIcon className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-base font-bold text-neutral-900 dark:text-white">
+                                    {isIt ? tier.nameIt : tier.name}
+                                  </span>
+                                  {tier.badge && (
+                                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-indigo-600/15 text-indigo-700 dark:text-indigo-300">
+                                      {isIt ? tier.badgeIt : tier.badge}
+                                    </span>
+                                  )}
+                                  {isCurrentPlan && (
+                                    <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-300">
+                                      {isIt ? 'Attivo' : 'Current'}
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5">
+                                  {isIt ? tier.taglineIt : tier.tagline}
+                                </p>
+                              </div>
+                            </div>
+
+                            <span
+                              className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                                isSelected
+                                  ? tierId === 'atelier'
+                                    ? 'bg-indigo-600 text-white'
+                                    : 'bg-neutral-900 dark:bg-white text-white dark:text-neutral-900'
+                                  : 'border border-neutral-300 dark:border-neutral-700'
+                              }`}
+                            >
+                              {isSelected && <Check className="w-3 h-3" />}
+                            </span>
+                          </div>
+
+                          <div className="flex items-baseline gap-1 pt-1">
+                            <span className="text-2xl font-extrabold text-neutral-900 dark:text-white">
+                              {formatCurrency(monthlyPrice, 'EUR', false, locale)}
+                            </span>
+                            <span className="text-xs text-neutral-500 dark:text-neutral-400">
+                              {isIt ? '/ mese (base)' : '/ month (base)'}
+                            </span>
+                          </div>
+
+                          <ul className="space-y-1.5 pt-2 border-t border-neutral-200/70 dark:border-neutral-800">
+                            {highlights.map((item, idx) => (
+                              <li
+                                key={idx}
+                                className="flex items-start gap-2 text-xs text-neutral-700 dark:text-neutral-300 leading-snug"
+                              >
+                                <CheckCircle2
+                                  className={`w-3.5 h-3.5 shrink-0 mt-0.5 ${
+                                    tierId === 'atelier'
+                                      ? 'text-indigo-600 dark:text-indigo-400'
+                                      : 'text-emerald-600 dark:text-emerald-400'
+                                  }`}
+                                />
+                                <span>{item}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
 
-              {/* EUR Plan Selection */}
+              {/* Step 2: EUR Billing Cycle Selection */}
               <div className="space-y-3">
-                <div className="flex items-center justify-between">
+                <div className="flex flex-wrap items-center justify-between gap-2">
                   <h3 className="text-sm font-bold text-neutral-900 dark:text-white">
-                    {isIt ? 'Seleziona la durata del piano (EUR)' : 'Choose Your Billing Cycle (EUR)'}
+                    {isIt
+                      ? `2. Ciclo di fatturazione — ${activeTierDef.nameIt}`
+                      : `2. Billing Cycle — ${activeTierDef.name}`}
                   </h3>
                   <span className="text-xs text-neutral-500 dark:text-neutral-400">
-                    {isIt ? 'IVA calcolata al checkout se applicabile' : 'Taxes calculated at checkout if applicable'}
+                    {isIt
+                      ? 'Partita IVA / EU VAT supportati al checkout • Disdici quando vuoi'
+                      : 'EU VAT / Partita IVA collected at checkout • Cancel anytime'}
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-                  {PLAN_OPTIONS.map((plan) => {
-                    const isSelected = selectedMonths === plan.months;
-                    const monthlyEquivalent = plan.priceEur / plan.months;
-                    const badge = isIt ? plan.badgeIt : plan.badgeEn;
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                  {CYCLE_ORDER.map((months) => {
+                    const cycle = activeTierDef.cycles[months];
+                    const isSelected = selectedMonths === months;
+                    const cycleLabel =
+                      months === 1
+                        ? isIt ? '1 Mese' : '1 Month'
+                        : months === 3
+                        ? isIt ? '3 Mesi' : '3 Months'
+                        : months === 6
+                        ? isIt ? '6 Mesi' : '6 Months'
+                        : isIt ? '12 Mesi' : '12 Months';
+                    const badge =
+                      months === 12
+                        ? isIt ? 'Miglior Risparmio' : 'Best Value'
+                        : months === 3
+                        ? isIt ? 'Popolare' : 'Popular'
+                        : null;
+
                     return (
                       <button
-                        key={plan.months}
+                        key={months}
                         type="button"
-                        onClick={() => setSelectedMonths(plan.months)}
-                        className={`relative text-left p-4 rounded-xl border-2 transition-all ${
+                        onClick={() => setSelectedMonths(months)}
+                        className={`relative text-left p-4 rounded-xl border-2 transition-all cursor-pointer ${
                           isSelected
                             ? 'border-neutral-900 dark:border-white bg-neutral-50 dark:bg-neutral-800/80 shadow-sm'
                             : 'border-neutral-200 dark:border-neutral-800 hover:border-neutral-300 dark:hover:border-neutral-700'
@@ -656,7 +774,7 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
                         )}
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-bold text-neutral-900 dark:text-white">
-                            {isIt ? plan.titleIt : plan.titleEn}
+                            {cycleLabel}
                           </span>
                           {isSelected && (
                             <span className="w-5 h-5 rounded-full bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 flex items-center justify-center">
@@ -665,18 +783,18 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
                           )}
                         </div>
                         <div className="mt-2">
-                          <span className="text-2xl font-extrabold text-neutral-900 dark:text-white">
-                            {formatCurrency(plan.priceEur, 'EUR', false, locale)}
+                          <span className="text-xl sm:text-2xl font-extrabold text-neutral-900 dark:text-white">
+                            {formatCurrency(cycle.priceEur, 'EUR', false, locale)}
                           </span>
                         </div>
                         <div className="mt-1 flex items-center justify-between text-xs text-neutral-500 dark:text-neutral-400">
                           <span>
-                            {formatCurrency(monthlyEquivalent, 'EUR', false, locale)}
+                            {formatCurrency(cycle.monthlyEquivalentEur, 'EUR', false, locale)}
                             {isIt ? '/mese' : '/mo'}
                           </span>
-                          {plan.discountPercent > 0 && (
+                          {cycle.discountPercent > 0 && (
                             <span className="font-semibold text-emerald-600 dark:text-emerald-400">
-                              -{plan.discountPercent}%
+                              -{cycle.discountPercent}%
                             </span>
                           )}
                         </div>
@@ -692,8 +810,8 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
                   <div className="flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-white">
                     <CreditCard className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     <span>
-                      {isIt ? 'Totale selezionato:' : 'Selected Total:'}{' '}
-                      {formatCurrency(selectedPlan.priceEur, 'EUR', false, locale)}
+                      {isIt ? activeTierDef.nameIt : activeTierDef.name} •{' '}
+                      {formatCurrency(selectedCycle.priceEur, 'EUR', false, locale)}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs text-neutral-500 dark:text-neutral-400">
@@ -706,7 +824,19 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {activeOrganization?.stripe_customer_id && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleOpenBillingPortal}
+                      isLoading={isOpeningPortal}
+                      className="gap-1.5"
+                    >
+                      <ExternalLink className="w-3.5 h-3.5" />
+                      {isIt ? 'Gestisci Fatturazione' : 'Manage Billing'}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
@@ -724,7 +854,7 @@ export const UpgradeToProModal: React.FC<UpgradeToProModalProps> = ({
                     className="gap-2"
                   >
                     <CreditCard className="w-4 h-4" />
-                    {isIt ? 'Paga con Stripe' : 'Pay with Stripe'}
+                    {isIt ? 'Abbonati con Stripe' : 'Subscribe with Stripe'}
                   </Button>
                 </div>
               </div>

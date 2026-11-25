@@ -1,7 +1,8 @@
 import React from 'react';
 import { useTranslation } from '../../../i18n';
+import { useOrganization } from '../../../context/OrganizationContext';
 import { FinancialAccount, TreasuryTransaction } from '../../../types/accounting';
-import { formatCurrency, formatPersianDate } from '../../../utils/formatters';
+import { formatCurrency, formatDate, resolveCurrencyCode } from '../../../utils/formatters';
 import {
   Wallet,
   Landmark,
@@ -23,7 +24,10 @@ export const AccountHistoryDrawer: React.FC<AccountHistoryDrawerProps> = ({
   historyTransactions,
   onClose,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
+  const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
 
   if (!account) return null;
 
@@ -50,10 +54,10 @@ export const AccountHistoryDrawer: React.FC<AccountHistoryDrawerProps> = ({
             </div>
             <div>
               <h3 className="text-sm font-bold text-neutral-900 dark:text-white">
-                گردش تراکنش‌های {account.name}
+                {isIt ? `Movimenti di ${account.name}` : `${account.name} Transactions`}
               </h3>
               <p className="text-[11px] text-neutral-500">
-                موجودی فعلی: {formatCurrency(account.current_balance)} {t('accounting.toman')}
+                {isIt ? 'Saldo attuale:' : 'Current Balance:'} {formatCurrency(account.current_balance, activeCurrency)}
               </p>
             </div>
           </div>
@@ -100,15 +104,15 @@ export const AccountHistoryDrawer: React.FC<AccountHistoryDrawerProps> = ({
                         <div className="font-semibold text-neutral-900 dark:text-white">
                           {tx.type === 'transfer'
                             ? isDebit
-                              ? `انتقال به ${tx.destination_account_name || 'حساب دیگر'}`
-                              : `واریز از ${tx.source_account_name || 'حساب دیگر'}`
+                              ? `${isIt ? 'Trasferimento a' : 'Transfer to'} ${tx.destination_account_name || (isIt ? 'Altro conto' : 'Other Account')}`
+                              : `${isIt ? 'Trasferimento da' : 'Transfer from'} ${tx.source_account_name || (isIt ? 'Altro conto' : 'Other Account')}`
                             : tx.type === 'deposit'
-                            ? 'واریز مستقیم وجه'
-                            : 'برداشت نقدی'}
+                            ? (isIt ? 'Versamento diretto' : 'Direct Deposit')
+                            : (isIt ? 'Prelievo' : 'Withdrawal')}
                         </div>
                         <div className="text-[11px] text-neutral-500 flex items-center gap-2 mt-0.5">
-                          <span>{formatPersianDate(tx.transaction_date)}</span>
-                          {tx.tracking_code && <span>• پیگیری: {tx.tracking_code}</span>}
+                          <span>{formatDate(tx.transaction_date)}</span>
+                          {tx.tracking_code && <span>• {isIt ? 'Rif.' : 'Ref'}: {tx.tracking_code}</span>}
                           {tx.description && <span>• {tx.description}</span>}
                         </div>
                       </div>
@@ -122,7 +126,7 @@ export const AccountHistoryDrawer: React.FC<AccountHistoryDrawerProps> = ({
                       }`}
                     >
                       {isDebit ? '-' : '+'}
-                      {formatCurrency(tx.amount)} {t('accounting.toman')}
+                      {formatCurrency(tx.amount, activeCurrency)}
                     </div>
                   </div>
                 );
@@ -137,7 +141,7 @@ export const AccountHistoryDrawer: React.FC<AccountHistoryDrawerProps> = ({
             onClick={onClose}
             className="px-4 py-2 text-xs font-semibold rounded-lg bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-800 dark:text-neutral-200 cursor-pointer transition-colors"
           >
-            بستن
+            {t('common.close', isIt ? 'Chiudi' : 'Close')}
           </button>
         </div>
       </div>

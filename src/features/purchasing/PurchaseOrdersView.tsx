@@ -22,7 +22,7 @@ import { SearchableRawMaterialSelect } from '../../components/ui/SearchableRawMa
 import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { DataTable } from '../../components/ui/DataTable';
-import { formatDate, formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { formatDate, formatCurrency, toPersianDigits, resolveCurrencyCode, roundCurrency } from '../../utils/formatters';
 import { confirmAction } from '../../utils/confirm';
 import {
   Truck,
@@ -279,7 +279,9 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({ initialC
       const orgId = activeOrganization?.id || 1;
       const poNumber = `PO-${Math.floor(100000 + Math.random() * 900000)}`;
 
-      const totalAmount = items.reduce((sum, i) => sum + i.quantity * i.unit_cost, 0);
+      const totalAmount = roundCurrency(
+        items.reduce((sum, i) => sum + roundCurrency(i.quantity * i.unit_cost), 0)
+      );
 
       const poData: Partial<PurchaseOrder> = {
         organization_id: orgId,
@@ -288,7 +290,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({ initialC
         purchase_number: poNumber,
         purchase_type: purchaseType,
         status,
-        currency: activeOrganization?.currency || 'TOMAN',
+        currency: resolveCurrencyCode(activeOrganization?.currency),
         subtotal: totalAmount,
         discount: 0,
         tax: 0,
@@ -302,8 +304,8 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({ initialC
         raw_material_id: i.raw_material_id || null,
         quantity_ordered: i.quantity,
         quantity_received: status === 'received' ? i.quantity : 0,
-        unit_cost: i.unit_cost,
-        total: i.quantity * i.unit_cost,
+        unit_cost: roundCurrency(i.unit_cost),
+        total: roundCurrency(i.quantity * i.unit_cost),
       }));
 
       const savedPO = await adapter.savePurchaseOrder(poData, poItems);
@@ -992,6 +994,8 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({ initialC
                 <Input
                   label={t('purchasing.unitCostLabel')}
                   type="number"
+                  min={0}
+                  step="0.01"
                   value={itemCost}
                   onChange={(e) => setItemCost(Number(e.target.value))}
                 />
@@ -1114,7 +1118,7 @@ export const PurchaseOrdersView: React.FC<PurchaseOrdersViewProps> = ({ initialC
           />
           <Input
             label={t('purchasing.quickSupplierPhoneLabel')}
-            placeholder="09121234567"
+            placeholder="+39 02 1234 5678"
             value={newSupplierPhone}
             onChange={(e) => setNewSupplierPhone(e.target.value)}
           />

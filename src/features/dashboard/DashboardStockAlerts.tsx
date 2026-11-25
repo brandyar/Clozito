@@ -116,7 +116,7 @@ export const DashboardStockAlerts: React.FC<DashboardStockAlertsProps> = ({
                         {p.title}
                       </p>
                       <p className="text-[10px] text-neutral-500 dark:text-neutral-400 mt-0.5 truncate">
-                        {p.categoryName} • {isPersian ? toPersianDigits(p.variantsCount) : p.variantsCount} تنوع
+                        {p.categoryName} • {p.variantsCount} {t('dashboard.colorSizeVariants')}
                       </p>
                     </div>
                   </div>

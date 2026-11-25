@@ -33,7 +33,7 @@ export const WebcamScanButton: React.FC<WebcamScanButtonProps> = ({
     return null;
   }
 
-  const tooltip = title || t('common.scanWithWebcam', 'اسکن بارکد با وب‌کم');
+  const tooltip = title || t('common.scanWithWebcam', 'Scan barcode with webcam');
 
   if (variant === 'button') {
     const sizeClasses =

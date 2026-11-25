@@ -6,7 +6,7 @@ import { ProfitLossSummary, Expense, PersonTransaction } from '../../types';
 import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
-import { formatCurrency, formatPersianDate, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency, formatDate, resolveCurrencyCode } from '../../utils/formatters';
 import {
   TrendingUp,
   TrendingDown,
@@ -39,8 +39,10 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
   onOpenNewExpense,
   onOpenNewTransaction,
 }) => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState<ProfitLossSummary | null>(null);
   const [recentExpenses, setRecentExpenses] = useState<Expense[]>([]);
@@ -132,7 +134,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
               icon={<Plus className="w-3.5 h-3.5" />}
             >
               <span className="hidden sm:inline">{t('accounting.newExpense')}</span>
-              <span className="sm:hidden">هزینه جدید</span>
+              <span className="sm:hidden">{isIt ? 'Spesa' : 'Expense'}</span>
             </Button>
           )}
           {onOpenNewTransaction && (
@@ -143,7 +145,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
               icon={<Wallet className="w-3.5 h-3.5" />}
             >
               <span className="hidden sm:inline">{t('accounting.newTransaction')}</span>
-              <span className="sm:hidden">سند جدید</span>
+              <span className="sm:hidden">{isIt ? 'Nuovo' : 'Entry'}</span>
             </Button>
           )}
           <Button
@@ -170,15 +172,15 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
           </div>
           <div className="mt-2 sm:mt-3">
             <h3 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white">
-              {loading ? '...' : formatCurrency(summary?.total_revenue || 0)}
+              {loading ? '...' : formatCurrency(summary?.total_revenue || 0, activeCurrency)}
             </h3>
             <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 line-clamp-1">
-              مجموع فاکتورهای فروش قطعی
+              {isIt ? 'Totale fatture di vendita confermate' : 'Total confirmed sales invoices'}
             </p>
           </div>
         </Card>
 
-        {/* 2. COGS (بهای تمام‌شده) */}
+        {/* 2. COGS */}
         <Card className="p-3 sm:p-4 border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900">
           <div className="flex items-center justify-between">
             <span className="text-[11px] sm:text-xs font-medium text-neutral-500 dark:text-neutral-400">
@@ -190,10 +192,10 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
           </div>
           <div className="mt-2 sm:mt-3">
             <h3 className="text-base sm:text-lg font-bold text-neutral-900 dark:text-white">
-              {loading ? '...' : formatCurrency(summary?.total_cogs || 0)}
+              {loading ? '...' : formatCurrency(summary?.total_cogs || 0, activeCurrency)}
             </h3>
             <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 line-clamp-1">
-              بهای خرید کالاهای فروخته‌شده
+              {isIt ? 'Costo d\'acquisto dei beni venduti' : 'Purchase cost of goods sold'}
             </p>
           </div>
         </Card>
@@ -210,10 +212,10 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
           </div>
           <div className="mt-2 sm:mt-3">
             <h3 className="text-base sm:text-lg font-bold text-rose-600 dark:text-rose-400">
-              {loading ? '...' : formatCurrency(summary?.total_expenses || 0)}
+              {loading ? '...' : formatCurrency(summary?.total_expenses || 0, activeCurrency)}
             </h3>
             <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 line-clamp-1">
-              هزینه‌های جاری و حقوق
+              {isIt ? 'Spese operative e stipendi' : 'Operating expenses & payroll'}
             </p>
           </div>
         </Card>
@@ -241,14 +243,14 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
               <h3 className={`text-base sm:text-lg font-bold ${
                 isNetProfitable ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
               }`}>
-                {loading ? '...' : formatCurrency(summary?.net_profit || 0)}
+                {loading ? '...' : formatCurrency(summary?.net_profit || 0, activeCurrency)}
               </h3>
               <Badge variant={isNetProfitable ? 'success' : 'error'}>
-                {toPersianDigits(summary?.net_margin_percentage?.toFixed(1) || 0)}%
+                {summary?.net_margin_percentage?.toFixed(1) || 0}%
               </Badge>
             </div>
             <p className="text-[10px] sm:text-[11px] text-neutral-500 mt-1 line-clamp-1">
-              سود ناخالص: {formatCurrency(summary?.gross_profit || 0)}
+              {isIt ? 'Utile lordo:' : 'Gross Profit:'} {formatCurrency(summary?.gross_profit || 0, activeCurrency)}
             </p>
           </div>
         </Card>
@@ -256,32 +258,32 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
 
       {/* Secondary Balance Sheet KPIs: Receivables vs Payables */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        {/* Receivables (مطالبات از مشتریان) */}
+        {/* Receivables */}
         <Card className="p-4 border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
               {t('accounting.receivables')}
             </span>
             <h4 className="text-base font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-              {loading ? '...' : formatCurrency(summary?.total_receivables || 0)}
+              {loading ? '...' : formatCurrency(summary?.total_receivables || 0, activeCurrency)}
             </h4>
-            <span className="text-[10px] text-neutral-400">مانده بدهکاری مشتریان به سازمان</span>
+            <span className="text-[10px] text-neutral-400">{isIt ? 'Crediti da incassare dai clienti' : 'Outstanding customer balances'}</span>
           </div>
           <div className="p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 border border-emerald-200/50">
             <ArrowUpRight className="w-5 h-5" />
           </div>
         </Card>
 
-        {/* Payables (بدهی به تامین‌کنندگان) */}
+        {/* Payables */}
         <Card className="p-4 border-neutral-200/80 dark:border-neutral-800 bg-white dark:bg-neutral-900 flex items-center justify-between">
           <div>
             <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400">
               {t('accounting.payables')}
             </span>
             <h4 className="text-base font-bold text-rose-600 dark:text-rose-400 mt-1">
-              {loading ? '...' : formatCurrency(summary?.total_payables || 0)}
+              {loading ? '...' : formatCurrency(summary?.total_payables || 0, activeCurrency)}
             </h4>
-            <span className="text-[10px] text-neutral-400">مانده بستانکاری تامین‌کنندگان از سازمان</span>
+            <span className="text-[10px] text-neutral-400">{isIt ? 'Debiti verso i fornitori' : 'Outstanding supplier balances'}</span>
           </div>
           <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 border border-rose-200/50">
             <ArrowDownLeft className="w-5 h-5" />
@@ -297,9 +299,9 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
             <h4 className="text-base font-bold text-neutral-900 dark:text-white mt-1">
               {loading
                 ? '...'
-                : formatCurrency((summary?.total_receivables || 0) - (summary?.total_payables || 0))}
+                : formatCurrency((summary?.total_receivables || 0) - (summary?.total_payables || 0), activeCurrency)}
             </h4>
-            <span className="text-[10px] text-neutral-400">خالص مطالبات منهای تعهدات</span>
+            <span className="text-[10px] text-neutral-400">{isIt ? 'Crediti netti meno debiti' : 'Net receivables minus payables'}</span>
           </div>
           <div className="p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 border border-blue-200/50">
             <Wallet className="w-5 h-5" />
@@ -324,7 +326,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                   onClick={() => onNavigateSubRoute('accounting/expenses')}
                   className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors"
                 >
-                  مشاهده همه
+                  {isIt ? 'Vedi tutto' : 'View All'}
                 </button>
               )}
             </div>
@@ -343,10 +345,10 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                         </span>
                         <div className="flex items-center gap-2">
                           <span className="font-bold text-neutral-900 dark:text-white font-mono">
-                            {formatCurrency(cat.amount)}
+                            {formatCurrency(cat.amount, activeCurrency)}
                           </span>
                           <span className="text-neutral-400 text-[10px]">
-                            ({toPersianDigits(percentage)}%)
+                            ({percentage}%)
                           </span>
                         </div>
                       </div>
@@ -368,9 +370,9 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
           </div>
 
           <div className="mt-6 pt-4 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-between text-xs">
-            <span className="text-neutral-500">مجموع کل هزینه‌ها</span>
+            <span className="text-neutral-500">{isIt ? 'Totale spese' : 'Total Expenses'}</span>
             <span className="font-bold text-neutral-900 dark:text-white font-mono">
-              {formatCurrency(summary?.total_expenses || 0)}
+              {formatCurrency(summary?.total_expenses || 0, activeCurrency)}
             </span>
           </div>
         </Card>
@@ -390,7 +392,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                   onClick={() => onNavigateSubRoute('accounting/persons')}
                   className="text-xs text-neutral-500 hover:text-neutral-900 dark:hover:text-white transition-colors"
                 >
-                  دفاتر معین
+                  {isIt ? 'Partitari' : 'Contact Ledgers'}
                 </button>
               )}
             </div>
@@ -419,10 +421,10 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                         </div>
                         <div>
                           <p className="font-semibold text-neutral-900 dark:text-white">
-                            {tx.party_name || 'طرف‌حساب نامشخص'}
+                            {tx.party_name || (isIt ? 'Contatto sconosciuto' : 'Unknown Contact')}
                           </p>
                           <p className="text-[10px] text-neutral-400 mt-0.5">
-                            {tx.description || (isReceive ? 'دریافت وجه' : 'پرداخت وجه')}
+                            {tx.description || (isReceive ? (isIt ? 'Incasso' : 'Payment Received') : (isIt ? 'Pagamento' : 'Payment Sent'))}
                           </p>
                         </div>
                       </div>
@@ -431,10 +433,10 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                         <span className={`font-bold font-mono ${
                           isReceive ? 'text-emerald-600 dark:text-emerald-400' : 'text-neutral-900 dark:text-white'
                         }`}>
-                          {isReceive ? '+' : '-'}{formatCurrency(tx.amount)}
+                          {isReceive ? '+' : '-'}{formatCurrency(tx.amount, activeCurrency)}
                         </span>
                         <p className="text-[10px] text-neutral-400 mt-0.5 font-mono">
-                          {formatPersianDate(tx.transaction_date)}
+                          {formatDate(tx.transaction_date)}
                         </p>
                       </div>
                     </div>
@@ -464,7 +466,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
         </Card>
       </div>
 
-      {/* Phase 3: Advanced Modules Quick Links */}
+      {/* Advanced Modules Quick Links */}
       {onNavigateSubRoute && (
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 pt-2">
           <Card
@@ -480,7 +482,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                   {t('navigation.landedCosts')}
                 </h4>
                 <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">
-                  تسهیم کرایه حمل و ترخیص بر اقلام فاکتور خرید
+                  {isIt ? 'Ripartisci costi di spedizione e dogana sugli ordini' : 'Allocate freight & customs costs across PO items'}
                 </p>
               </div>
             </div>
@@ -499,7 +501,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                   {t('navigation.taxReports')}
                 </h4>
                 <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">
-                  محاسبه ارزش افزوده فصلی و اعتبار مالیاتی
+                  {isIt ? 'Riepilogo IVA periodico e crediti d\'imposta' : 'Periodic VAT summary & input tax credits'}
                 </p>
               </div>
             </div>
@@ -518,7 +520,7 @@ export const AccountingDashboardPage: React.FC<AccountingDashboardPageProps> = (
                   {t('navigation.accountingExport')}
                 </h4>
                 <p className="text-[11px] text-neutral-400 line-clamp-1 mt-0.5">
-                  خروجی اکسل سامانه مودیان، سپیدار و هلو
+                  {isIt ? 'Esporta registri contabili in CSV ed Excel' : 'Export accounting ledgers & VAT in CSV/Excel'}
                 </p>
               </div>
             </div>

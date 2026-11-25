@@ -10,7 +10,7 @@ import { Select } from '../../components/ui/Select';
 import { Modal } from '../../components/ui/Modal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Pagination } from '../../components/ui/Pagination';
-import { formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency } from '../../utils/formatters';
 import { confirmAction } from '../../utils/confirm';
 import {
   Plus,
@@ -197,8 +197,8 @@ export const BomsView: React.FC = () => {
     }
   };
 
-  const formatNum = (num: number) => (isPersian ? toPersianDigits(num) : num.toString());
-  const percentSymbol = isPersian ? '٪' : '%';
+  const formatNum = (num: number) => num.toString();
+  const percentSymbol = '%';
 
   return (
     <div className="space-y-6">

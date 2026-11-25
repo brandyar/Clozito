@@ -9,7 +9,7 @@ import { Input } from '../../components/ui/Input';
 import { Select } from '../../components/ui/Select';
 import { Badge } from '../../components/ui/Badge';
 import { ImageUpload } from '../../components/ui/ImageUpload';
-import { formatCurrency, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency, resolveCurrencyCode } from '../../utils/formatters';
 import { confirmAction } from '../../utils/confirm';
 import { Image, Shirt, Plus, Trash2, Tag, Layers, Sun } from 'lucide-react';
 
@@ -55,7 +55,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
   const [variants, setVariants] = useState<ProductVariant[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
-  const isPersian = false;
+  const isIt = locale === 'it';
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -210,15 +210,15 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
       <form id="product-detail-form" onSubmit={handleSave} className="space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
-            label={`${t('products.productTitle', 'عنوان محصول')} *`}
-            placeholder={isPersian ? "مثال: کت چرم مردانه VIP" : "e.g. Men's Leather Jacket VIP"}
+            label={`${t('products.productTitle', 'Product Title')} *`}
+            placeholder={isIt ? 'es. Giacca in pelle uomo' : "e.g. Men's Leather Jacket"}
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             required
           />
           <Input
-            label={t('products.slugHeader', 'شناسه یکتا (اسلاگ)')}
-            placeholder="men-leather-jacket-vip"
+            label={t('products.slugHeader', 'Unique Identifier (Slug)')}
+            placeholder="men-leather-jacket"
             value={slug}
             onChange={(e) => setSlug(e.target.value)}
           />
@@ -290,8 +290,8 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <Input
-            label={t('products.tags', 'برچسب‌ها (تگ‌ها)')}
-            placeholder={t('products.tagsPlaceholder', 'مثال: مردانه, چرم, زمستانه, VIP')}
+            label={t('products.tags', 'Tags')}
+            placeholder={t('products.tagsPlaceholder', 'e.g. Men, Leather, Winter, VIP')}
             value={tags}
             onChange={(e) => setTags(e.target.value)}
             icon={<Tag className="w-4 h-4" />}
@@ -325,7 +325,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
             <div className="flex items-center justify-between mb-3">
               <h4 className="text-xs font-bold text-slate-800 dark:text-neutral-200 flex items-center gap-2">
                 <Shirt className="w-4 h-4 text-indigo-600" />
-                <span>{t('products.variantsCount')} ({isPersian ? toPersianDigits(variants.length) : variants.length})</span>
+                <span>{t('products.variantsCount')} ({variants.length})</span>
               </h4>
               <Button
                 type="button"
@@ -360,7 +360,7 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="font-bold text-slate-900 dark:text-neutral-100">
-                        {formatCurrency(v.price, activeOrganization?.currency, isPersian)}
+                        {formatCurrency(v.price, resolveCurrencyCode(activeOrganization?.currency))}
                       </span>
                       <button
                         type="button"

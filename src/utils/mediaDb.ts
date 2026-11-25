@@ -1,5 +1,5 @@
 /**
- * TANKHOR (تن‌خور) - IndexedDB Local Media Store
+ * Clozito - IndexedDB Local Media Store
  * Provides robust client-side binary and dataUrl storage for images,
  * bypassing localStorage 5MB size limits and surviving browser reloads.
  */

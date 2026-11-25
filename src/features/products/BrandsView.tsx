@@ -306,7 +306,7 @@ export const BrandsView: React.FC = () => {
         <form id="brand-form" onSubmit={handleSave} className="space-y-4">
           <Input
             label={`${t('products.brandName')} *`}
-            placeholder="مثال: Zara"
+            placeholder="e.g. Zara"
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -315,7 +315,7 @@ export const BrandsView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label={t('products.brandCode')}
-              placeholder="TNK"
+              placeholder="CLZ"
               value={code}
               onChange={(e) => setCode(e.target.value)}
             />

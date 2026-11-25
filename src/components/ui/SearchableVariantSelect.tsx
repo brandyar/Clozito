@@ -3,7 +3,6 @@ import { ProductVariant, Product } from '../../types';
 import { ProductImage } from './ProductImage';
 import { useTranslation } from '../../i18n';
 import { Search, Check, ChevronDown, X, Package } from 'lucide-react';
-import { toPersianDigits } from '../../utils/formatters';
 import { WebcamScanButton } from './WebcamScanButton';
 import { WebcamBarcodeScannerModal } from '../modals/WebcamBarcodeScannerModal';
 
@@ -34,8 +33,7 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
   className = '',
   id,
 }) => {
-  const { t, locale } = useTranslation();
-  const isPersian = false;
+  const { t } = useTranslation();
   const containerRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -49,14 +47,13 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
     return variants.find((v) => v.id === Number(value)) || null;
   }, [variants, value]);
 
-  // Normalize search helper (Arabic/Persian character normalization)
+  // Normalize search helper (accent-insensitive Latin)
   const normalize = (str?: string | null) => {
     if (!str) return '';
     return str
       .toLowerCase()
-      .replace(/ي/g, 'ی')
-      .replace(/ك/g, 'ک')
-      .replace(/ة/g, 'ه')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
       .trim();
   };
 
@@ -121,7 +118,7 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
     const prod = products.find(
       (p) => p.id === (typeof v.product_id === 'object' ? v.product_id.id : v.product_id)
     );
-    return v.product_title || prod?.title || t('products.product', 'کالا');
+    return v.product_title || prod?.title || t('products.product', 'Product');
   };
 
   return (
@@ -178,13 +175,13 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
         ) : (
           <span className="text-xs text-neutral-400 dark:text-neutral-500 flex items-center gap-2">
             <Search className="w-3.5 h-3.5" />
-            {placeholder || t('inventory.selectOrSearchVariant', 'جستجو و انتخاب کالا یا تنوع (SKU)...')}
+            {placeholder || t('inventory.selectOrSearchVariant', 'Search and select product or variant (SKU)...')}
           </span>
         )}
 
         <div className="flex items-center gap-1 shrink-0 text-neutral-400">
           <span className="text-[10px] font-medium text-indigo-600 dark:text-indigo-400 hidden sm:inline-block px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50">
-            {selectedVariant ? t('inventory.changeVariant', 'تغییر') : t('common.select', 'انتخاب')}
+            {selectedVariant ? t('inventory.changeVariant', 'Change') : t('common.select', 'Select')}
           </span>
           <ChevronDown
             className={`w-4 h-4 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
@@ -208,7 +205,7 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t(
                 'inventory.searchVariantPlaceholder',
-                'جستجو با نام، SKU، بارکد، رنگ یا سایز...'
+                'Search by name, SKU, barcode, color, or size...'
               )}
               className="w-full text-xs bg-transparent text-neutral-900 dark:text-neutral-100 placeholder:text-neutral-400 outline-none"
             />
@@ -234,7 +231,7 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
               <div className="p-6 text-center text-neutral-400 dark:text-neutral-500 flex flex-col items-center justify-center">
                 <Package className="w-8 h-8 mb-2 stroke-1 text-neutral-300 dark:text-neutral-600" />
                 <p className="text-xs font-medium">
-                  {t('inventory.noVariantFound', 'هیچ کالایی با این مشخصات یافت نشد')}
+                  {t('inventory.noVariantFound', 'No matching products found')}
                 </p>
                 {searchTerm && (
                   <button
@@ -242,7 +239,7 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
                     onClick={() => setSearchTerm('')}
                     className="mt-2 text-xs text-indigo-600 dark:text-indigo-400 hover:underline cursor-pointer"
                   >
-                    {t('common.clearFilter', 'پاک کردن جستجو')}
+                    {t('common.clearFilter', 'Clear search')}
                   </button>
                 )}
               </div>
@@ -298,9 +295,9 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
                           )}
                           {v.stock_quantity !== undefined && (
                             <span className="text-neutral-500 text-[10px]">
-                              {t('inventory.stockCol', 'موجودی')}:{' '}
+                              {t('inventory.stockCol', 'Stock')}:{' '}
                               <strong className="font-mono">
-                                {isPersian ? toPersianDigits(v.stock_quantity) : v.stock_quantity}
+                                {v.stock_quantity}
                               </strong>
                             </span>
                           )}
@@ -322,12 +319,10 @@ export const SearchableVariantSelect: React.FC<SearchableVariantSelectProps> = (
           {/* Footer Stats */}
           <div className="px-3 py-1.5 bg-neutral-50 dark:bg-neutral-900/60 border-t border-neutral-100 dark:border-neutral-800 text-[11px] text-neutral-500 flex items-center justify-between font-mono">
             <span>
-              {isPersian
-                ? `${toPersianDigits(filteredVariants.length)} کالا`
-                : `${filteredVariants.length} items`}
+              {`${filteredVariants.length} items`}
             </span>
             <span className="text-[10px] text-neutral-400">
-              ESC: {t('common.close', 'بستن')}
+              ESC: {t('common.close', 'Close')}
             </span>
           </div>
         </div>

@@ -112,7 +112,7 @@ export class CloudAccountingStorage {
         const cat = typeof exp.category_id === 'object' ? (exp.category_id as any) : null;
         mergedMap.set(exp.id, {
           ...exp,
-          category_title: cat?.title || exp.category_title || 'سایر هزینه‌ها',
+          category_title: cat?.title || exp.category_title || 'Other Expenses',
           category_code: cat?.code || exp.category_code,
           category_icon: cat?.icon || exp.category_icon || 'Receipt',
         });
@@ -146,7 +146,7 @@ export class CloudAccountingStorage {
         const cat = typeof exp.category_id === 'object' ? (exp.category_id as any) : null;
         return {
           ...exp,
-          category_title: cat?.title || exp.category_title || 'سایر هزینه‌ها',
+          category_title: cat?.title || exp.category_title || 'Other Expenses',
           category_code: cat?.code || exp.category_code,
           category_icon: cat?.icon || exp.category_icon || 'Receipt',
         };
@@ -199,13 +199,13 @@ export class CloudAccountingStorage {
       }
 
       const noteParts: string[] = [];
-      if (exp.paid_to) noteParts.push(`دریافت‌کننده: ${exp.paid_to}`);
-      if (exp.reference_code) noteParts.push(`کد پیگیری: ${exp.reference_code}`);
+      if (exp.paid_to) noteParts.push(`Paid to: ${exp.paid_to}`);
+      if (exp.reference_code) noteParts.push(`Ref: ${exp.reference_code}`);
       if (exp.description) noteParts.push(exp.description);
       if (exp.notes && exp.notes !== exp.description) noteParts.push(exp.notes);
 
       const directusPayload: Record<string, any> = {
-        title: exp.title || 'هزینه جاری',
+        title: exp.title || 'Operating Expense',
         amount: Number(exp.amount) || 0,
         category_id: catId,
         payment_method: pm,
@@ -463,7 +463,7 @@ export class CloudAccountingStorage {
       });
       filteredExpenses.forEach((e) => {
         const cId = typeof e.category_id === 'number' ? e.category_id : (e.category_id as any)?.id || 1;
-        const existing = catMap.get(cId) || { title: e.category_title || 'سایر', amount: 0 };
+        const existing = catMap.get(cId) || { title: e.category_title || 'Other', amount: 0 };
         existing.amount += Number(e.amount) || 0;
         catMap.set(cId, existing);
       });
@@ -587,7 +587,7 @@ export class CloudAccountingStorage {
             type: 'deposit',
             amount: ordTotal,
             tracking_code: `ORD-${orderNum}`,
-            description: `دریافت وجه فاکتور فروش #${orderNum} (همگام‌سازی خودکار)`,
+            description: `Sales invoice payment #${orderNum} (Auto-reconciled)`,
             transaction_date: txDate,
           });
         }

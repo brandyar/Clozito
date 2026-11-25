@@ -9,6 +9,7 @@ import {
 } from '../utils/profileCache';
 import { getActiveLocale } from '../utils/formatters';
 import { BRAND } from '../config/brand';
+import { isPaidCloudPlan } from '../config/plans';
 
 export interface UserRole {
   id?: string;
@@ -47,6 +48,7 @@ export interface RegisterParams {
   locale?: 'en' | 'it';
   initialCategoryName?: string;
   initialWarehouseName?: string;
+  acceptedTerms?: boolean;
 }
 
 export type RegisterFunction = {
@@ -87,7 +89,7 @@ const MAX_INACTIVITY_MS = 24 * 60 * 60 * 1000; // 24 hours of inactivity require
 function sanitizeOrgPlanClient(org: any): any {
   if (!org) return org;
   const now = Date.now();
-  if (org.plan === 'pro') {
+  if (isPaidCloudPlan(org.plan)) {
     if (org.trial_ends_at && new Date(org.trial_ends_at).getTime() <= now && !org.has_active_subscription) {
       return { ...org, plan: 'free', is_trial: false, trial_expired: true };
     }
@@ -456,6 +458,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         locale: regLocale,
         initial_category_name: finalParams.initialCategoryName,
         initial_warehouse_name: finalParams.initialWarehouseName,
+        accepted_terms: Boolean(finalParams.acceptedTerms),
       });
 
       // 2. Fetch authenticated profile & organization
@@ -477,6 +480,17 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
         if (activeOrg && activeOrg.id) {
           safeSetLocalStorageItem('tankhor_active_org_id', String(activeOrg.id));
+          const consentAt =
+            regRes?.organization?.terms_accepted_at ||
+            activeOrg?.terms_accepted_at ||
+            new Date().toISOString();
+          safeSetLocalStorageItem(
+            `clozito_gdpr_consent_${activeOrg.id}`,
+            JSON.stringify({
+              terms_accepted_at: consentAt,
+              privacy_accepted_at: consentAt,
+            })
+          );
         }
         safeSaveCachedUserProfile(normalizedUser);
 

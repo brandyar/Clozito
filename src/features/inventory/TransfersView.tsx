@@ -563,7 +563,7 @@ export const TransfersView: React.FC = () => {
                   <div className="space-y-2 p-3 rounded-xl bg-neutral-100 dark:bg-neutral-800/90 border border-neutral-200 dark:border-neutral-700 text-xs">
                     <div className="flex items-start gap-2 min-w-0">
                       <span className="text-xs font-bold text-neutral-500 dark:text-neutral-400 whitespace-nowrap shrink-0 mt-0.5">
-                        مبدأ:
+                        {t('inventory.sourceWarehouse')}:
                       </span>
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <Building2 className="w-3.5 h-3.5 text-neutral-500 dark:text-neutral-400 shrink-0" />
@@ -575,7 +575,7 @@ export const TransfersView: React.FC = () => {
 
                     <div className="flex items-start gap-2 min-w-0 pt-1.5 border-t border-neutral-200 dark:border-neutral-700">
                       <span className="text-xs font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap shrink-0 mt-0.5">
-                        مقصد:
+                        {t('inventory.destinationWarehouse')}:
                       </span>
                       <div className="flex items-center gap-1.5 min-w-0 flex-1">
                         <Building2 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400 shrink-0" />

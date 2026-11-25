@@ -70,4 +70,10 @@ export const authIt = {
   completeRegistration: 'Completa Registrazione e Accedi',
   multiTenantFooter: 'Dati Aziendali Isolati (Architettura Multi-Tenant)',
   allRightsReserved: 'Tutti i diritti riservati',
+  acceptTermsPrefix: 'Ho letto e accetto i',
+  termsOfService: 'Termini di Servizio',
+  andLabel: 'e l\'',
+  privacyPolicy: 'Informativa sulla Privacy (GDPR)',
+  cookiePolicy: 'Cookie Policy',
+  acceptTermsRequiredError: 'Devi accettare i Termini di Servizio e l\'Informativa sulla Privacy per registrarti.',
 };

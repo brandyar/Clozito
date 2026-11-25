@@ -11,7 +11,7 @@ import { DateInput } from '../../components/ui/DateInput';
 import { Select } from '../../components/ui/Select';
 import { Modal } from '../../components/ui/Modal';
 import { Badge } from '../../components/ui/Badge';
-import { formatCurrency, formatPersianDate, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency, formatDate, resolveCurrencyCode, roundCurrency } from '../../utils/formatters';
 import {
   Receipt,
   Plus,
@@ -32,8 +32,10 @@ import {
 } from 'lucide-react';
 
 export const ExpensesPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [categories, setCategories] = useState<ExpenseCategory[]>([]);
   const [financialAccounts, setFinancialAccounts] = useState<FinancialAccount[]>([]);
@@ -78,13 +80,13 @@ export const ExpensesPage: React.FC = () => {
       // If no categories exist, auto-seed apparel boutique standard expense categories
       if (!cats || cats.length === 0) {
         const defaultCats = [
-          { title: 'اجاره و رهن فروشگاه', code: 'EXP-RENT', icon: 'Building2', status: 'active' as const },
-          { title: 'حقوق و دستمزد پرسنل', code: 'EXP-SALARY', icon: 'Users', status: 'active' as const },
-          { title: 'بسته‌بندی، پاکت و نایلون', code: 'EXP-PACK', icon: 'Package', status: 'active' as const },
-          { title: 'قبوض، برق و اینترنت', code: 'EXP-UTIL', icon: 'Zap', status: 'active' as const },
-          { title: 'تبلیغات و بازاریابی', code: 'EXP-ADS', icon: 'Megaphone', status: 'active' as const },
-          { title: 'حمل و نقل و پیک', code: 'EXP-SHIP', icon: 'Truck', status: 'active' as const },
-          { title: 'سایر هزینه‌های عمومی', code: 'EXP-MISC', icon: 'Receipt', status: 'active' as const },
+          { title: 'Store Rent & Lease', code: 'EXP-RENT', icon: 'Building2', status: 'active' as const },
+          { title: 'Staff Salaries & Payroll', code: 'EXP-SALARY', icon: 'Users', status: 'active' as const },
+          { title: 'Packaging & Shopping Bags', code: 'EXP-PACK', icon: 'Package', status: 'active' as const },
+          { title: 'Utilities & Internet', code: 'EXP-UTIL', icon: 'Zap', status: 'active' as const },
+          { title: 'Marketing & Advertising', code: 'EXP-ADS', icon: 'Megaphone', status: 'active' as const },
+          { title: 'Shipping & Delivery', code: 'EXP-SHIP', icon: 'Truck', status: 'active' as const },
+          { title: 'Other General Expenses', code: 'EXP-MISC', icon: 'Receipt', status: 'active' as const },
         ];
         for (const dc of defaultCats) {
           await adapter.saveExpenseCategory({ ...dc, organization_id: orgId });
@@ -148,12 +150,12 @@ export const ExpensesPage: React.FC = () => {
   const handleSaveExpense = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!expenseForm.title || !expenseForm.title.trim()) {
-      alert('لطفاً عنوان هزینه را وارد کنید.');
+      alert(isIt ? 'Inserisci il titolo della spesa.' : 'Please enter an expense title.');
       return;
     }
     const numAmount = Number(expenseForm.amount);
     if (isNaN(numAmount) || numAmount <= 0) {
-      alert('لطفاً مبلغ معتبر هزینه را وارد کنید.');
+      alert(isIt ? 'Inserisci un importo valido.' : 'Please enter a valid expense amount.');
       return;
     }
 
@@ -165,7 +167,7 @@ export const ExpensesPage: React.FC = () => {
       const payload: Partial<Expense> = {
         organization_id: orgId,
         title: expenseForm.title.trim(),
-        amount: numAmount,
+        amount: roundCurrency(numAmount),
         category_id: catId,
         account_id: expenseForm.account_id ? Number(expenseForm.account_id) : undefined,
         expense_date: expenseForm.expense_date || new Date().toISOString().split('T')[0],
@@ -184,7 +186,7 @@ export const ExpensesPage: React.FC = () => {
       await loadData();
     } catch (err) {
       console.error('[ExpensesPage] Failed to save expense:', err);
-      alert('خطا در ذخیره اطلاعات هزینه.');
+      alert(isIt ? 'Errore durante il salvataggio della spesa.' : 'Failed to save expense.');
     }
   };
 
@@ -219,7 +221,7 @@ export const ExpensesPage: React.FC = () => {
   const handleSaveCategory = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!categoryForm.title || !categoryForm.title.trim()) {
-      alert('لطفاً عنوان سرفصل را وارد کنید.');
+      alert(isIt ? 'Inserisci il nome della categoria.' : 'Please enter a category title.');
       return;
     }
 
@@ -297,7 +299,7 @@ export const ExpensesPage: React.FC = () => {
             icon={<Layers className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           >
             <span className="hidden sm:inline">{t('accounting.expenseCategories')}</span>
-            <span className="sm:hidden">سرفصل‌ها</span>
+            <span className="sm:hidden">{isIt ? 'Categorie' : 'Categories'}</span>
           </Button>
           <Button
             variant="primary"
@@ -318,7 +320,7 @@ export const ExpensesPage: React.FC = () => {
               <Search className="w-4 h-4 absolute start-3 top-3 text-neutral-400" />
               <input
                 type="text"
-                placeholder="جستجو در شرح، بابت، دریافت‌کننده و شماره پیگیری..."
+                placeholder={isIt ? 'Cerca per titolo, note, beneficiario o riferimento...' : 'Search by title, notes, payee, or reference...'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full ps-9 pe-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-hidden focus:ring-1 focus:ring-neutral-950 dark:focus:ring-white"
@@ -342,9 +344,9 @@ export const ExpensesPage: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-end text-xs">
-            <span className="text-neutral-500">مجموع هزینه‌های نمایش‌یافته:</span>
+            <span className="text-neutral-500">{isIt ? 'Totale spese filtrate:' : 'Total Filtered Expenses:'}</span>
             <span className="font-bold text-rose-600 dark:text-rose-400 font-mono text-sm">
-              {formatCurrency(totalFilteredAmount)}
+              {formatCurrency(totalFilteredAmount, activeCurrency)}
             </span>
           </div>
         </div>
@@ -355,7 +357,7 @@ export const ExpensesPage: React.FC = () => {
         {loading ? (
           <div className="py-12 flex justify-center items-center text-xs text-neutral-500">
             <RefreshCw className="w-4 h-4 animate-spin me-2" />
-            در حال بارگذاری اطلاعات هزینه‌ها...
+            {isIt ? 'Caricamento spese...' : 'Loading expenses...'}
           </div>
         ) : filteredExpenses.length === 0 ? (
           <div className="py-16 text-center">
@@ -364,7 +366,7 @@ export const ExpensesPage: React.FC = () => {
               {t('accounting.noExpenses')}
             </h4>
             <p className="text-xs text-neutral-500 mt-1">
-              برای ثبت اولین هزینه روی دکمه «ثبت هزینه جدید» کلیک کنید.
+              {isIt ? 'Clicca su "Nuova spesa" per registrare la tua prima spesa.' : 'Click "New Expense" to record your first expense.'}
             </p>
           </div>
         ) : (
@@ -374,13 +376,13 @@ export const ExpensesPage: React.FC = () => {
               <table className="w-full text-xs text-start">
                 <thead className="bg-neutral-50 dark:bg-neutral-800/60 border-b border-neutral-200/80 dark:border-neutral-800 text-neutral-500">
                   <tr>
-                    <th className="py-3 px-4 text-start font-semibold">عنوان و شرح هزینه</th>
-                    <th className="py-3 px-4 text-start font-semibold">سرفصل</th>
-                    <th className="py-3 px-4 text-start font-semibold">تاریخ ثبت</th>
-                    <th className="py-3 px-4 text-start font-semibold">روش پرداخت</th>
-                    <th className="py-3 px-4 text-start font-semibold">طرف‌حساب / دریافت‌کننده</th>
-                    <th className="py-3 px-4 text-start font-semibold">مبلغ</th>
-                    <th className="py-3 px-4 text-center font-semibold">عملیات</th>
+                    <th className="py-3 px-4 text-start font-semibold">{isIt ? 'Titolo e descrizione' : 'Title & Description'}</th>
+                    <th className="py-3 px-4 text-start font-semibold">{isIt ? 'Categoria' : 'Category'}</th>
+                    <th className="py-3 px-4 text-start font-semibold">{isIt ? 'Data' : 'Date'}</th>
+                    <th className="py-3 px-4 text-start font-semibold">{isIt ? 'Metodo di pagamento' : 'Payment Method'}</th>
+                    <th className="py-3 px-4 text-start font-semibold">{isIt ? 'Beneficiario' : 'Paid To'}</th>
+                    <th className="py-3 px-4 text-start font-semibold">{isIt ? 'Importo' : 'Amount'}</th>
+                    <th className="py-3 px-4 text-center font-semibold">{isIt ? 'Azioni' : 'Actions'}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
@@ -397,31 +399,31 @@ export const ExpensesPage: React.FC = () => {
                         )}
                         {exp.reference_code && (
                           <div className="text-[10px] text-neutral-400 mt-0.5 font-mono">
-                            کد پیگیری: {exp.reference_code}
+                            {isIt ? 'Rif.' : 'Ref'}: {exp.reference_code}
                           </div>
                         )}
                       </td>
                       <td className="py-3 px-4">
                         <Badge variant="neutral">
-                          {exp.category_title || 'سایر هزینه‌ها'}
+                          {exp.category_title || (isIt ? 'Altre spese' : 'Other Expenses')}
                         </Badge>
                       </td>
                       <td className="py-3 px-4 font-mono text-neutral-600 dark:text-neutral-300">
-                        {formatPersianDate(exp.expense_date)}
+                        {formatDate(exp.expense_date)}
                       </td>
                       <td className="py-3 px-4">
                         <span className="text-[11px] text-neutral-600 dark:text-neutral-400">
-                          {exp.payment_method === 'cash' && 'نقدی / تنخواه'}
-                          {exp.payment_method === 'card_transfer' && 'کارت به کارت / پایا'}
-                          {exp.payment_method === 'cheque' && 'چک'}
-                          {exp.payment_method === 'bank_account' && 'حساب بانکی'}
+                          {exp.payment_method === 'cash' && (isIt ? 'Contanti / Piccola cassa' : 'Cash / Petty Cash')}
+                          {exp.payment_method === 'card_transfer' && (isIt ? 'Carta / Bonifico' : 'Card / Transfer')}
+                          {exp.payment_method === 'cheque' && (isIt ? 'Assegno' : 'Cheque')}
+                          {exp.payment_method === 'bank_account' && (isIt ? 'Conto bancario' : 'Bank Account')}
                         </span>
                       </td>
                       <td className="py-3 px-4 text-neutral-700 dark:text-neutral-300">
                         {exp.paid_to || '-'}
                       </td>
                       <td className="py-3 px-4 font-bold text-rose-600 dark:text-rose-400 font-mono">
-                        {formatCurrency(exp.amount)}
+                        {formatCurrency(exp.amount, activeCurrency)}
                       </td>
                       <td className="py-3 px-4 text-center">
                         <div className="flex items-center justify-center gap-1">
@@ -429,14 +431,14 @@ export const ExpensesPage: React.FC = () => {
                             variant="ghost"
                             size="sm"
                             onClick={() => handleOpenEditExpense(exp)}
-                            title="ویرایش"
+                            title={t('common.edit', isIt ? 'Modifica' : 'Edit')}
                             icon={<Edit2 className="w-3.5 h-3.5" />}
                           />
                           <Button
                             variant="ghost"
                             size="sm"
                             onClick={() => exp.id && handleDeleteExpense(exp.id)}
-                            title="حذف"
+                            title={t('common.delete', isIt ? 'Elimina' : 'Delete')}
                             className="text-rose-500 hover:text-rose-700"
                             icon={<Trash2 className="w-3.5 h-3.5" />}
                           />
@@ -460,15 +462,15 @@ export const ExpensesPage: React.FC = () => {
                       )}
                     </div>
                     <span className="font-mono font-bold text-rose-600 dark:text-rose-400 text-xs shrink-0">
-                      {formatCurrency(exp.amount)}
+                      {formatCurrency(exp.amount, activeCurrency)}
                     </span>
                   </div>
 
                   <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] pt-2 border-t border-neutral-200/60 dark:border-neutral-700/60">
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      <Badge variant="neutral">{exp.category_title || 'سایر هزینه‌ها'}</Badge>
+                      <Badge variant="neutral">{exp.category_title || (isIt ? 'Altre spese' : 'Other Expenses')}</Badge>
                       <span className="text-neutral-400">·</span>
-                      <span className="font-mono text-neutral-500">{formatPersianDate(exp.expense_date)}</span>
+                      <span className="font-mono text-neutral-500">{formatDate(exp.expense_date)}</span>
                     </div>
 
                     <div className="flex items-center gap-1 shrink-0">
@@ -476,14 +478,14 @@ export const ExpensesPage: React.FC = () => {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleOpenEditExpense(exp)}
-                        title="ویرایش"
+                        title={t('common.edit', isIt ? 'Modifica' : 'Edit')}
                         icon={<Edit2 className="w-3.5 h-3.5" />}
                       />
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => exp.id && handleDeleteExpense(exp.id)}
-                        title="حذف"
+                        title={t('common.delete', isIt ? 'Elimina' : 'Delete')}
                         className="text-rose-500 hover:text-rose-700"
                         icon={<Trash2 className="w-3.5 h-3.5" />}
                       />
@@ -504,8 +506,8 @@ export const ExpensesPage: React.FC = () => {
       >
         <form onSubmit={handleSaveExpense} className="space-y-4">
           <Input
-            label="عنوان هزینه *"
-            placeholder="مثال: هزینه اجاره دفتر، شارژ، خرید بسته‌بندی..."
+            label={isIt ? 'Titolo spesa *' : 'Expense Title *'}
+            placeholder={isIt ? 'es. Affitto negozio, utenze, packaging...' : 'e.g. Store rent, utilities, packaging supplies...'}
             value={expenseForm.title || ''}
             onChange={(e) => setExpenseForm({ ...expenseForm, title: e.target.value })}
             required
@@ -514,27 +516,29 @@ export const ExpensesPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <Input
-                label="مبلغ هزینه (تومان) *"
-                type="text"
-                inputMode="numeric"
-                placeholder="0"
+                label={`${isIt ? 'Importo' : 'Amount'} (${activeCurrency}) *`}
+                type="number"
+                inputMode="decimal"
+                min={0}
+                step="0.01"
+                placeholder="0.00"
                 value={expenseForm.amount ? String(expenseForm.amount) : ''}
                 onChange={(e) => {
-                  const raw = e.target.value.replace(/[^0-9]/g, '');
-                  setExpenseForm({ ...expenseForm, amount: raw ? Number(raw) : 0 });
+                  const val = parseFloat(e.target.value);
+                  setExpenseForm({ ...expenseForm, amount: Number.isFinite(val) ? val : 0 });
                 }}
                 required
               />
-              {expenseForm.amount > 0 && (
+              {(expenseForm.amount || 0) > 0 && (
                 <p className="text-[11px] text-neutral-500 mt-1">
-                  {formatCurrency(expenseForm.amount, 'TOMAN', true)}
+                  {formatCurrency(expenseForm.amount || 0, activeCurrency)}
                 </p>
               )}
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                سرفصل هزینه *
+                {isIt ? 'Categoria spesa *' : 'Expense Category *'}
               </label>
               <select
                 value={expenseForm.category_id ? String(expenseForm.category_id) : (categories[0] ? String(categories[0].id) : '1')}
@@ -543,7 +547,7 @@ export const ExpensesPage: React.FC = () => {
                 required
               >
                 {categories.length === 0 && (
-                  <option value="1">هزینه‌های عمومی</option>
+                  <option value="1">{isIt ? 'Spese generali' : 'General Expenses'}</option>
                 )}
                 {categories.map((cat) => (
                   <option key={cat.id} value={String(cat.id)}>
@@ -556,7 +560,7 @@ export const ExpensesPage: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <DateInput
-              label="تاریخ ثبت *"
+              label={isIt ? 'Data spesa *' : 'Expense Date *'}
               value={expenseForm.expense_date || ''}
               onChange={(iso) => setExpenseForm({ ...expenseForm, expense_date: iso })}
               required
@@ -564,17 +568,17 @@ export const ExpensesPage: React.FC = () => {
 
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                روش پرداخت
+                {isIt ? 'Metodo di pagamento' : 'Payment Method'}
               </label>
               <select
                 value={expenseForm.payment_method || 'card_transfer'}
                 onChange={(e) => setExpenseForm({ ...expenseForm, payment_method: e.target.value as any })}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
               >
-                <option value="card_transfer">کارت به کارت / پایا</option>
-                <option value="cash">نقدی / تنخواه</option>
-                <option value="bank_account">حساب بانکی مستقیم</option>
-                <option value="cheque">چک بانکی</option>
+                <option value="card_transfer">{isIt ? 'Carta / Bonifico' : 'Card / Bank Transfer'}</option>
+                <option value="cash">{isIt ? 'Contanti / Piccola cassa' : 'Cash / Petty Cash'}</option>
+                <option value="bank_account">{isIt ? 'Conto bancario' : 'Bank Account'}</option>
+                <option value="cheque">{isIt ? 'Assegno bancario' : 'Bank Cheque'}</option>
               </select>
             </div>
           </div>
@@ -582,17 +586,17 @@ export const ExpensesPage: React.FC = () => {
           {financialAccounts.length > 0 && (
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                کسر از صندوق یا حساب بانکی (اختیاری)
+                {isIt ? 'Addebita su cassa o conto bancario (opzionale)' : 'Deduct from Cashbox or Bank Account (Optional)'}
               </label>
               <select
                 value={expenseForm.account_id ? String(expenseForm.account_id) : ''}
                 onChange={(e) => setExpenseForm({ ...expenseForm, account_id: e.target.value ? Number(e.target.value) : undefined })}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
               >
-                <option value="">-- بدون انتساب به حساب مالی (فقط ثبت هزینه) --</option>
+                <option value="">{isIt ? '-- Nessun conto collegato (solo registrazione spesa) --' : '-- Do not link to an account (record expense only) --'}</option>
                 {financialAccounts.map((acc) => (
                   <option key={acc.id} value={String(acc.id)}>
-                    {acc.name} ({acc.type === 'cashbox' ? 'صندوق' : 'بانک'}{acc.current_balance !== undefined ? ` - موجودی: ${formatCurrency(acc.current_balance, 'TOMAN', true)}` : ''})
+                    {acc.name} ({acc.type === 'cashbox' ? 'Cash' : 'Bank'}{acc.current_balance !== undefined ? ` - ${formatCurrency(acc.current_balance, activeCurrency)}` : ''})
                   </option>
                 ))}
               </select>
@@ -601,15 +605,15 @@ export const ExpensesPage: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label="دریافت‌کننده وجه / طرف‌حساب"
-              placeholder="نام فروشنده، صاحب ملک، پرسنل..."
+              label={isIt ? 'Beneficiario / Fornitore' : 'Payee / Paid To'}
+              placeholder={isIt ? 'Nome fornitore, locatore, dipendente...' : 'Vendor, landlord, staff name...'}
               value={expenseForm.paid_to || ''}
               onChange={(e) => setExpenseForm({ ...expenseForm, paid_to: e.target.value })}
             />
 
             <Input
-              label="شماره پیگیری / شماره فاکتور"
-              placeholder="مثال: TRX-998822"
+              label={isIt ? 'Codice riferimento / Fattura' : 'Reference / Invoice No.'}
+              placeholder="e.g. TRX-998822"
               value={expenseForm.reference_code || ''}
               onChange={(e) => setExpenseForm({ ...expenseForm, reference_code: e.target.value })}
             />
@@ -617,11 +621,11 @@ export const ExpensesPage: React.FC = () => {
 
           <div>
             <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-              شرح و توضیحات تکمیلی
+              {isIt ? 'Note aggiuntive' : 'Additional Notes'}
             </label>
             <textarea
               rows={3}
-              placeholder="توضیحات و بابت هزینه..."
+              placeholder={isIt ? 'Dettagli e causale della spesa...' : 'Expense details and description...'}
               value={expenseForm.description || ''}
               onChange={(e) => setExpenseForm({ ...expenseForm, description: e.target.value })}
               className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-hidden focus:ring-1 focus:ring-neutral-950 dark:focus:ring-white"
@@ -630,10 +634,10 @@ export const ExpensesPage: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100 dark:border-neutral-800">
             <Button variant="outline" size="sm" type="button" onClick={() => setIsExpenseModalOpen(false)}>
-              انصراف
+              {t('common.cancel', isIt ? 'Annulla' : 'Cancel')}
             </Button>
             <Button variant="primary" size="sm" type="submit">
-              {editingExpense ? 'بروزرسانی هزینه' : 'ثبت نهایی هزینه'}
+              {editingExpense ? (isIt ? 'Aggiorna spesa' : 'Update Expense') : (isIt ? 'Salva spesa' : 'Save Expense')}
             </Button>
           </div>
         </form>
@@ -646,25 +650,25 @@ export const ExpensesPage: React.FC = () => {
           setIsCategoryModalOpen(false);
           setEditingCategory(null);
         }}
-        title="مدیریت سرفصل‌های هزینه"
+        title={isIt ? 'Gestione Categorie di Spesa' : 'Manage Expense Categories'}
       >
         <div className="space-y-6">
           {/* Add / Edit Category Mini Form */}
           <form onSubmit={handleSaveCategory} className="p-3 bg-neutral-50 dark:bg-neutral-800/50 rounded-xl border border-neutral-200/80 dark:border-neutral-700/60 space-y-3">
             <h4 className="text-xs font-bold text-neutral-900 dark:text-white">
-              {editingCategory ? 'ویرایش سرفصل' : 'افزودن سرفصل جدید'}
+              {editingCategory ? (isIt ? 'Modifica categoria' : 'Edit Category') : (isIt ? 'Nuova categoria' : 'Add New Category')}
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Input
-                label="عنوان سرفصل *"
-                placeholder="مثال: هزینه بازاریابی و تبلیغات"
+                label={isIt ? 'Nome categoria *' : 'Category Name *'}
+                placeholder={isIt ? 'es. Marketing e pubblicità' : 'e.g. Marketing & Advertising'}
                 value={categoryForm.title || ''}
                 onChange={(e) => setCategoryForm({ ...categoryForm, title: e.target.value })}
                 required
               />
               <Input
-                label="کد سرفصل"
-                placeholder="مثال: MARKETING"
+                label={isIt ? 'Codice categoria' : 'Category Code'}
+                placeholder="e.g. MARKETING"
                 value={categoryForm.code || ''}
                 onChange={(e) => setCategoryForm({ ...categoryForm, code: e.target.value })}
               />
@@ -680,18 +684,18 @@ export const ExpensesPage: React.FC = () => {
                     setCategoryForm({ title: '', code: '', icon: 'Receipt', status: 'active' });
                   }}
                 >
-                  انصراف
+                  {t('common.cancel', isIt ? 'Annulla' : 'Cancel')}
                 </Button>
               )}
               <Button variant="primary" size="sm" type="submit">
-                {editingCategory ? 'ذخیره تغییرات' : 'افزودن سرفصل'}
+                {editingCategory ? (isIt ? 'Salva modifiche' : 'Save Changes') : (isIt ? 'Aggiungi categoria' : 'Add Category')}
               </Button>
             </div>
           </form>
 
           {/* Existing Categories List */}
           <div className="space-y-2 max-h-60 overflow-y-auto custom-scrollbar">
-            <h4 className="text-xs font-semibold text-neutral-500">سرفصل‌های تعریف‌شده:</h4>
+            <h4 className="text-xs font-semibold text-neutral-500">{isIt ? 'Categorie configurate:' : 'Configured Categories:'}</h4>
             {categories.map((cat) => (
               <div
                 key={cat.id}

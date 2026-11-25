@@ -1,5 +1,5 @@
 /**
- * TANKHOR (تن‌خور) - Client-side Image Optimization Engine
+ * Clozito - Client-side Image Optimization Engine
  * Compresses, resizes, and converts images to WebP/JPEG before local saving or cloud upload.
  */
 

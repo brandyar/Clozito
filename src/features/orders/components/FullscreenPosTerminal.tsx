@@ -8,6 +8,7 @@ import { POSPaymentType } from './OrderPaymentSection';
 import { ProductImage } from '../../../components/ui/ProductImage';
 import { WebcamScanButton } from '../../../components/ui/WebcamScanButton';
 import { formatCurrency, toPersianDigits, formatDate } from '../../../utils/formatters';
+import { BRAND } from '../../../config/brand';
 import {
   Minimize2,
   Barcode,
@@ -67,8 +68,10 @@ interface FullscreenPosTerminalProps {
   totalDiscount: number;
   hasTax: boolean;
   setHasTax: (val: boolean) => void;
+  taxPercent?: number;
   taxAmount: number;
   grandTotal: number;
+  currency?: string;
   paymentType: POSPaymentType;
   onPaymentTypeChange: (type: POSPaymentType) => void;
   cashReceived: number;
@@ -124,8 +127,10 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
   totalDiscount,
   hasTax,
   setHasTax,
+  taxPercent = 22,
   taxAmount,
   grandTotal,
+  currency = 'EUR',
   paymentType,
   onPaymentTypeChange,
   cashReceived,
@@ -139,13 +144,14 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
   isSaving,
   onSubmitOrder,
   onPreviewPrint,
-  organizationName = 'تن‌خور',
+  organizationName = BRAND.name,
   userName,
   scannerToast,
   errorMsg,
   onOpenWebcamScanner,
 }) => {
   const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const isPersian = false;
   const barcodeInputRef = useRef<HTMLInputElement>(null);
 
@@ -285,14 +291,20 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
     return () => clearTimeout(timeout);
   }, [cart.length]);
 
-  // Quick Cash Presets
-  const quickCashPresets = [
-    { label: t('orders.exactAmount'), amount: grandTotal },
-    { label: isPersian ? '+ ۵۰,۰۰۰' : '+50K', amount: Math.ceil(grandTotal / 50000) * 50000 },
-    { label: isPersian ? '+ ۱۰۰,۰۰۰' : '+100K', amount: Math.ceil(grandTotal / 100000) * 100000 },
-    { label: isPersian ? '+ ۵۰۰,۰۰۰' : '+500K', amount: Math.ceil(grandTotal / 500000) * 500000 },
-    { label: isPersian ? '+ ۱,۰۰۰,۰۰۰' : '+1M', amount: Math.ceil(grandTotal / 1000000) * 1000000 },
-  ];
+  // Quick Cash Presets (European / global standard banknote rounding)
+  const quickCashPresets = (() => {
+    const candidates = [10, 20, 50, 100, 200]
+      .map((step) => Math.max(step, Math.ceil(grandTotal / step) * step))
+      .filter((val, idx, arr) => val > grandTotal && arr.indexOf(val) === idx)
+      .slice(0, 4);
+    return [
+      { label: t('orders.exactAmount'), amount: grandTotal },
+      ...candidates.map((amt) => ({
+        label: formatCurrency(amt, currency, isPersian),
+        amount: amt,
+      })),
+    ];
+  })();
 
   const terminalContent = (
     <div
@@ -326,7 +338,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                 )}
                 {activeShift && (
                   <span className="text-emerald-600 dark:text-emerald-400 font-mono font-medium">
-                    {isPersian ? `شیفت #${activeShift.id}` : `Shift #${activeShift.id}`}
+                    {isIt ? `Turno #${activeShift.id}` : `Shift #${activeShift.id}`}
                   </span>
                 )}
               </div>
@@ -394,7 +406,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
           >
             <Clock className="w-3.5 h-3.5 text-emerald-600" />
             <span className="hidden sm:inline">
-              {activeShift ? (isPersian ? 'مدیریت شیفت' : 'Shift') : (isPersian ? 'افتتاح شیفت' : 'Open Shift')}
+              {activeShift ? (isIt ? 'Turno' : 'Shift') : (isIt ? 'Apri turno' : 'Open Shift')}
             </span>
           </button>
 
@@ -610,7 +622,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                       <div className="pt-2 border-t border-neutral-100 dark:border-neutral-800/80 flex items-center justify-between">
                         <div>
                           <div className="font-black text-xs font-mono text-neutral-900 dark:text-neutral-100">
-                            {formatCurrency(v.price, 'TOMAN', isPersian)}
+                            {formatCurrency(v.price, currency, isPersian)}
                           </div>
                           <div
                             className={`text-[10px] font-mono mt-0.5 ${
@@ -664,7 +676,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                   </option>
                   {customers.map((c) => (
                     <option key={c.id} value={c.id} className="bg-white dark:bg-neutral-900">
-                      {c.name || `مشتری #${c.id}`} {c.phone ? `(${c.phone})` : ''}
+                      {c.name || `${isIt ? 'Cliente' : 'Customer'} #${c.id}`} {c.phone ? `(${c.phone})` : ''}
                     </option>
                   ))}
                 </select>
@@ -709,18 +721,18 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                       <input
                         type="number"
                         min="0"
-                        step="1000"
+                        step="0.01"
                         value={line.unitPrice}
                         onChange={(e) => onUpdatePrice(line.variant.id, Math.max(0, parseFloat(e.target.value) || 0))}
                         className="w-24 px-1.5 py-0.5 text-xs font-mono font-bold text-neutral-900 dark:text-neutral-100 bg-white dark:bg-[#121418] border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-1 focus:ring-emerald-500 shadow-2xs"
                         title={t('orders.editUnitPrice')}
                       />
-                      <span className="text-[10px] text-neutral-400">{t('common.currency')}</span>
+                      <span className="text-[10px] text-neutral-400 font-mono">{currency}</span>
                       {line.unitPrice !== (line.variant.price || 0) && (
                         <button
                           type="button"
                           onClick={() => onUpdatePrice(line.variant.id, line.variant.price || 0)}
-                          title={`${t('orders.resetPrice')} (${formatCurrency(line.variant.price || 0, 'TOMAN', isPersian)})`}
+                          title={`${t('orders.resetPrice')} (${formatCurrency(line.variant.price || 0, currency, isPersian)})`}
                           className="text-[10px] text-amber-600 dark:text-amber-400 hover:underline font-bold px-1"
                         >
                           {t('orders.resetPrice')}
@@ -753,7 +765,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                   {/* Line Total & Remove */}
                   <div className="text-end shrink-0 ps-2">
                     <div className="font-black font-mono text-xs text-neutral-900 dark:text-neutral-100">
-                      {formatCurrency(line.quantity * line.unitPrice, 'TOMAN', isPersian)}
+                      {formatCurrency(line.quantity * line.unitPrice, currency, isPersian)}
                     </div>
                     <button
                       type="button"
@@ -780,10 +792,10 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                 <input
                   type="number"
                   min="0"
-                  step="1000"
+                  step="0.01"
                   value={extraDiscount === 0 ? '' : extraDiscount}
                   onChange={(e) => setExtraDiscount(parseFloat(e.target.value) || 0)}
-                  placeholder="0"
+                  placeholder="0.00"
                   className="w-24 px-2 py-1 bg-[#f4f5f7] dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-mono text-neutral-900 dark:text-neutral-100 focus:outline-none"
                 />
               </div>
@@ -796,7 +808,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                   onChange={(e) => setHasTax(e.target.checked)}
                   className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 cursor-pointer"
                 />
-                <span>{isPersian ? 'ارزش افزوده (۹٪)' : 'VAT (9%)'}</span>
+                <span>{`${t('orders.vatRate')} (${taxPercent}%)`}</span>
               </label>
             </div>
 
@@ -811,7 +823,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                 </span>
               </div>
               <div className="text-2xl xl:text-3xl font-black font-mono tracking-tight">
-                {formatCurrency(grandTotal, 'TOMAN', isPersian)}
+                {formatCurrency(grandTotal, currency, isPersian)}
               </div>
             </div>
 
@@ -827,7 +839,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                 }`}
               >
                 <CreditCard className="w-4 h-4 mx-auto mb-1" />
-                <span className="text-[11px] font-bold block">{isPersian ? 'کارتخوان' : 'POS'}</span>
+                <span className="text-[11px] font-bold block">POS</span>
               </button>
 
               <button
@@ -840,7 +852,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                 }`}
               >
                 <Banknote className="w-4 h-4 mx-auto mb-1" />
-                <span className="text-[11px] font-bold block">{isPersian ? 'نقدی' : 'Cash'}</span>
+                <span className="text-[11px] font-bold block">{isIt ? 'Contanti' : 'Cash'}</span>
               </button>
 
               <button
@@ -853,7 +865,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                 }`}
               >
                 <ArrowRightLeft className="w-4 h-4 mx-auto mb-1" />
-                <span className="text-[11px] font-bold block">{isPersian ? 'کارت به کارت' : 'Transfer'}</span>
+                <span className="text-[11px] font-bold block">{isIt ? 'Bonifico' : 'Transfer'}</span>
               </button>
 
               <button
@@ -866,7 +878,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                 }`}
               >
                 <Sparkles className="w-4 h-4 mx-auto mb-1" />
-                <span className="text-[11px] font-bold block">{isPersian ? 'نسیه / اعتباری' : 'Credit'}</span>
+                <span className="text-[11px] font-bold block">{isIt ? 'Credito' : 'Credit'}</span>
               </button>
             </div>
 
@@ -897,7 +909,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                   <input
                     type="number"
                     min="0"
-                    step="10000"
+                    step="0.01"
                     value={cashReceived === 0 ? '' : cashReceived}
                     onChange={(e) => setCashReceived(parseFloat(e.target.value) || 0)}
                     placeholder={String(grandTotal)}
@@ -919,7 +931,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                   ))}
                 </div>
 
-                {/* Change Due (باقی‌مانده) */}
+                {/* Change Due */}
                 <div className="flex items-center justify-between pt-1 border-t border-neutral-200/60 dark:border-neutral-800/80 text-xs">
                   <span className="font-bold text-neutral-700 dark:text-neutral-300">{t('orders.cashChangeDue')}</span>
                   <span
@@ -931,7 +943,7 @@ export const FullscreenPosTerminal: React.FC<FullscreenPosTerminalProps> = ({
                         : 'text-neutral-500'
                     }`}
                   >
-                    {formatCurrency(Math.max(0, cashChange), 'TOMAN', isPersian)}
+                    {formatCurrency(Math.max(0, cashChange), currency, isPersian)}
                   </span>
                 </div>
               </div>

@@ -28,7 +28,7 @@ export class SqliteProcurementStorage {
     const list = await this.base.getItems<Supplier>('suppliers');
     const validId = typeof sup.id === 'number' && sup.id > 0 ? sup.id : this.base.generateUniqueId(list);
     const saved: Supplier = {
-      name: sup.name || 'تامین‌کننده جدید',
+      name: sup.name || 'New Supplier',
       status: 'active',
       date_created: new Date().toISOString(),
       organization_id: sup.organization_id || 1,
@@ -103,7 +103,7 @@ export class SqliteProcurementStorage {
       warehouse_id: po.warehouse_id || 1,
       purchase_number: po.purchase_number || `PO-${Math.floor(1000 + Math.random() * 9000)}`,
       status: po.status || 'draft',
-      currency: 'TOMAN',
+      currency: 'EUR',
       subtotal: po.subtotal || 0,
       discount: po.discount || 0,
       tax: po.tax || 0,

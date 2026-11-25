@@ -104,7 +104,7 @@ export class LocalSalesStorage {
       savedCustomer = {
         id: newId,
         organization_id: this.base.getActiveOrgId() || 1,
-        name: customer.name || 'مشتری جدید',
+        name: customer.name || 'New Customer',
         status: customer.status || 'active',
         balance: Number(customer.balance) || 0,
         credit_limit: Number(customer.credit_limit) || 0,
@@ -226,7 +226,7 @@ export class LocalSalesStorage {
         order_number: order.order_number || `ORD-${Date.now().toString().slice(-6)}`,
         status: (order.status || 'confirmed') as OrderStatus,
         payment_status: (order.payment_status || 'paid') as PaymentStatus,
-        currency: order.currency || 'IRR',
+        currency: order.currency || 'EUR',
         subtotal,
         discount: totalDiscount,
         tax: totalTax,
@@ -311,7 +311,7 @@ export class LocalSalesStorage {
           quantity: qty,
           reference_type: 'order',
           reference_id: String(savedOrder.id),
-          note: `ثبت سفارش فروش ${savedOrder.order_number}`,
+          note: `Sales order ${savedOrder.order_number}`,
           created_at: new Date().toISOString(),
         });
 
@@ -356,7 +356,7 @@ export class LocalSalesStorage {
           quantity: qty,
           reference_type: 'order',
           reference_id: String(savedOrder.id),
-          note: `لغو سفارش فروش ${savedOrder.order_number}`,
+          note: `Cancelled sales order ${savedOrder.order_number}`,
           created_at: new Date().toISOString(),
         });
 
@@ -413,7 +413,7 @@ export class LocalSalesStorage {
             order_id: savedOrder.id,
             reference_code: savedOrder.order_number,
             transaction_date: savedOrder.date_created || new Date().toISOString(),
-            description: `فاکتور فروش شماره ${savedOrder.order_number}`,
+            description: `Sales invoice ${savedOrder.order_number}`,
             date_created: new Date().toISOString(),
           });
         }
@@ -437,7 +437,7 @@ export class LocalSalesStorage {
               order_id: savedOrder.id,
               reference_code: savedOrder.order_number,
               transaction_date: savedOrder.date_created || new Date().toISOString(),
-              description: `تسویه فاکتور فروش ${savedOrder.order_number}`,
+              description: `Payment received for order ${savedOrder.order_number}`,
               date_created: new Date().toISOString(),
             });
           }
@@ -774,7 +774,7 @@ export class LocalSalesStorage {
           amount: Number(order.total) || 0,
           tracking_code: order.order_number,
           transaction_date: order.date_created || new Date().toISOString(),
-          description: `واریز فروش فاکتور ${order.order_number}`,
+          description: `Sales payment deposit for order ${order.order_number}`,
           date_created: new Date().toISOString(),
         });
       }

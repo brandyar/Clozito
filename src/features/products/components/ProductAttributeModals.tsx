@@ -142,15 +142,15 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
       >
         <div className="space-y-3">
           <Input
-            label={`${t('products.colorName', 'نام رنگ')} *`}
+            label={`${t('products.colorName', 'Color Name')} *`}
             value={newColorName}
             onChange={(e) => setNewColorName(e.target.value)}
-            placeholder={t('products.colorNamePlaceholder', 'مثال: مشکی ذغالی')}
+            placeholder={t('products.colorNamePlaceholder', 'e.g. Charcoal Black')}
             autoFocus
           />
           <div>
             <label className="block text-xs font-medium text-neutral-700 dark:text-neutral-300 mb-1">
-              {t('products.colorHexLabel', 'کد رنگ (Hex)')}
+              {t('products.colorHexLabel', 'Color Code (Hex)')}
             </label>
             <div className="flex items-center gap-3">
               <input
@@ -178,7 +178,7 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
         title={
           <div className="flex items-center gap-2">
             <Ruler className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <span>{t('products.createNewSizeTitle', 'افزودن سایز جدید')}</span>
+            <span>{t('products.createNewSizeTitle', 'Add New Size')}</span>
           </div>
         }
         maxWidth="sm"
@@ -188,17 +188,17 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
               {t('common.cancel')}
             </Button>
             <Button size="sm" isLoading={isCreatingSize} onClick={onCreateSize}>
-              {t('products.createAndSelectSize', 'ثبت و انتخاب سایز')}
+              {t('products.createAndSelectSize', 'Create & Select Size')}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
           <Input
-            label={`${t('products.sizeName', 'عنوان سایز')} *`}
+            label={`${t('products.sizeName', 'Size Name')} *`}
             value={newSizeName}
             onChange={(e) => setNewSizeName(e.target.value)}
-            placeholder={t('products.sizeNamePlaceholder', 'مثال: XL یا ۴۲')}
+            placeholder={t('products.sizeNamePlaceholder', 'e.g. XL or 42')}
             autoFocus
           />
         </div>
@@ -211,7 +211,7 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
         title={
           <div className="flex items-center gap-2">
             <FolderTree className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-            <span>{t('products.createNewCategoryTitle', 'افزودن دسته‌بندی جدید')}</span>
+            <span>{t('products.createNewCategoryTitle', 'Add New Category')}</span>
           </div>
         }
         maxWidth="sm"
@@ -221,25 +221,25 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
               {t('common.cancel')}
             </Button>
             <Button size="sm" isLoading={isCreatingCategory} onClick={onCreateCategory}>
-              {t('products.createAndSelectCategory', 'ثبت و انتخاب دسته‌بندی')}
+              {t('products.createAndSelectCategory', 'Create & Select Category')}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
           <Input
-            label={`${t('products.categoryName', 'عنوان دسته‌بندی')} *`}
+            label={`${t('products.categoryName', 'Category Name')} *`}
             value={newCategoryName}
             onChange={(e) => setNewCategoryName(e.target.value)}
-            placeholder={t('products.categoryNamePlaceholder', 'مثال: کت و کاپشن مردانه')}
+            placeholder={t('products.categoryNamePlaceholder', 'e.g. Men Jackets')}
             autoFocus
           />
           <Select
-            label={t('products.parentCategory', 'دسته‌بندی والد')}
+            label={t('products.parentCategory', 'Parent Category')}
             value={newCategoryParentId}
             onChange={(e) => setNewCategoryParentId(e.target.value ? Number(e.target.value) : '')}
             options={[
-              { value: '', label: t('products.noParentCategory', 'دسته‌بندی اصلی (سطح اول)') },
+              { value: '', label: t('products.noParentCategory', 'Root Category (Top Level)') },
               ...categoryOptions,
             ]}
           />
@@ -253,7 +253,7 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
         title={
           <div className="flex items-center gap-2">
             <Sparkles className="w-4 h-4 text-purple-600 dark:text-purple-400" />
-            <span>{t('products.createNewCollectionTitle', 'افزودن مجموعه جدید')}</span>
+            <span>{t('products.createNewCollectionTitle', 'Add New Collection')}</span>
           </div>
         }
         maxWidth="sm"
@@ -263,17 +263,17 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
               {t('common.cancel')}
             </Button>
             <Button size="sm" isLoading={isCreatingCollection} onClick={onCreateCollection}>
-              {t('products.createAndSelectCollection', 'ثبت و انتخاب مجموعه')}
+              {t('products.createAndSelectCollection', 'Create & Select Collection')}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
           <Input
-            label={`${t('products.collectionName', 'عنوان مجموعه')} *`}
+            label={`${t('products.collectionName', 'Collection Name')} *`}
             value={newCollectionName}
             onChange={(e) => setNewCollectionName(e.target.value)}
-            placeholder={t('products.collectionName', 'عنوان مجموعه')}
+            placeholder={t('products.collectionName', 'Collection Name')}
             autoFocus
           />
         </div>
@@ -286,7 +286,7 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
         title={
           <div className="flex items-center gap-2">
             <Sun className="w-4 h-4 text-amber-500 dark:text-amber-400" />
-            <span>{t('products.createNewSeasonTitle', 'افزودن فصل جدید')}</span>
+            <span>{t('products.createNewSeasonTitle', 'Add New Season')}</span>
           </div>
         }
         maxWidth="sm"
@@ -296,24 +296,24 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
               {t('common.cancel')}
             </Button>
             <Button size="sm" isLoading={isCreatingSeason} onClick={onCreateSeason}>
-              {t('products.createAndSelectSeason', 'ثبت و انتخاب فصل')}
+              {t('products.createAndSelectSeason', 'Create & Select Season')}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
           <Input
-            label={`${t('products.seasonName', 'عنوان فصل')} *`}
+            label={`${t('products.seasonName', 'Season Name')} *`}
             value={newSeasonName}
             onChange={(e) => setNewSeasonName(e.target.value)}
-            placeholder={t('products.seasonNamePlaceholder', 'مثال: بهاره ۱۴۰۴ یا تابستانه')}
+            placeholder={t('products.seasonNamePlaceholder', 'e.g. Spring/Summer 2026')}
             autoFocus
           />
           <Input
-            label={t('products.seasonCode', 'کد اختصاری فصل')}
+            label={t('products.seasonCode', 'Season Code')}
             value={newSeasonCode}
             onChange={(e) => setNewSeasonCode(e.target.value)}
-            placeholder="مثال: SS25 یا FW24"
+            placeholder="e.g. SS26 or FW26"
           />
         </div>
       </Modal>
@@ -325,7 +325,7 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
         title={
           <div className="flex items-center gap-2">
             <Tag className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>{t('products.createNewBrandTitle', 'افزودن برند جدید')}</span>
+            <span>{t('products.createNewBrandTitle', 'Add New Brand')}</span>
           </div>
         }
         maxWidth="sm"
@@ -335,17 +335,17 @@ export const ProductAttributeModals: React.FC<ProductAttributeModalsProps> = ({
               {t('common.cancel')}
             </Button>
             <Button size="sm" isLoading={isCreatingBrand} onClick={onCreateBrand}>
-              {t('products.createAndSelectBrand', 'ثبت و انتخاب برند')}
+              {t('products.createAndSelectBrand', 'Create & Select Brand')}
             </Button>
           </div>
         }
       >
         <div className="space-y-3">
           <Input
-            label={`${t('products.brandName', 'نام برند')} *`}
+            label={`${t('products.brandName', 'Brand Name')} *`}
             value={newBrandName}
             onChange={(e) => setNewBrandName(e.target.value)}
-            placeholder={t('products.brandName', 'نام برند')}
+            placeholder={t('products.brandName', 'Brand Name')}
             autoFocus
           />
         </div>

@@ -1,11 +1,11 @@
 /**
- * TANKHOR (تن‌خور) - Core Domain Types
+ * Clozito - Core Domain Types
  * Derived strictly from directus-schema.json (25 collections)
  */
 
 export type Status = 'active' | 'archived' | 'draft' | 'published' | 'suspended' | 'invited' | 'inactive';
 
-export type PlanType = 'free' | 'pro';
+export type PlanType = 'free' | 'boutique' | 'atelier' | 'pro';
 
 export type UserRole = 'owner' | 'manager' | 'warehouse' | 'sales' | 'viewer';
 
@@ -18,11 +18,19 @@ export interface Organization {
   phone?: string | null;
   mobile?: string | null;
   address?: string | null;
-  currency: string; // e.g. 'TOMAN', 'IRR', 'USD'
+  vat_number?: string | null; // EU VAT Number / Partita IVA (e.g. IT01234567890)
+  tax_code?: string | null; // Fiscal / Tax Code / Codice Fiscale
+  currency: string; // e.g. 'EUR', 'USD', 'GBP', 'CHF'
   timezone: string;
+  default_tax_rate?: number | null; // Default VAT / Tax percentage (e.g. 22 for Italy)
   plan: PlanType;
   has_used_trial?: boolean | null;
   trial_ends_at?: string | null;
+  stripe_customer_id?: string | null;
+  stripe_subscription_id?: string | null;
+  stripe_subscription_status?: 'active' | 'past_due' | 'canceled' | 'trialing' | 'incomplete' | 'unpaid' | string | null;
+  terms_accepted_at?: string | null;
+  privacy_accepted_at?: string | null;
   status: Status;
   date_created?: string;
   date_updated?: string;
@@ -283,8 +291,10 @@ export interface Customer {
   phone?: string;
   email?: string;
   address?: string;
+  vat_number?: string | null; // EU VAT Number / Partita IVA
+  tax_code?: string | null; // Fiscal / Tax Code / Codice Fiscale
   notes?: string;
-  balance?: number; // Instant account balance: positive = debtor (بدهکار), negative = creditor (بستانکار)
+  balance?: number; // Instant account balance: positive = debtor, negative = creditor
   credit_limit?: number; // Maximum credit limit allowed for credit sales
   status: Status;
   date_created?: string;
@@ -421,7 +431,7 @@ export interface Supplier {
   email?: string;
   address?: string;
   notes?: string;
-  balance?: number; // Instant account balance: positive = creditor (ما بدهکاریم به تامین‌کننده)
+  balance?: number; // Instant account balance: positive = creditor (payable to supplier)
   status: Status;
   date_created?: string;
 }

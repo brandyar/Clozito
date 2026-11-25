@@ -72,7 +72,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
     details?: string[];
   } | null>(null);
 
-  const isPersian = false;
+  const isIt = locale === 'it';
 
   const loadAttributes = async () => {
     try {
@@ -424,7 +424,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
           className="font-mono text-xs font-semibold text-neutral-800 dark:text-neutral-200 bg-neutral-100 dark:bg-neutral-800 hover:bg-neutral-200 dark:hover:bg-neutral-700 px-2.5 py-0.5 rounded-full border border-neutral-200/80 dark:border-neutral-700 cursor-pointer transition-colors inline-flex items-center gap-1"
         >
           <Layers className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
-          <span>{isPersian ? toPersianDigits(p.variants_count || 0) : (p.variants_count || 0)}</span>
+          <span>{p.variants_count || 0}</span>
         </button>
       ),
     },
@@ -433,14 +433,14 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
       header: t('products.totalStock'),
       render: (p) => (
         <span className="font-mono text-xs font-semibold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 px-2.5 py-0.5 rounded-full">
-          {isPersian ? toPersianDigits(p.total_stock || 0) : (p.total_stock || 0)}
+          {p.total_stock || 0}
         </span>
       ),
     },
     {
       key: 'date_created',
       header: t('common.date'),
-      render: (p) => <span className="text-slate-500 dark:text-neutral-400">{formatDate(p.date_created, isPersian)}</span>,
+      render: (p) => <span className="text-slate-500 dark:text-neutral-400">{formatDate(p.date_created, false, locale)}</span>,
     },
   ];
 
@@ -574,18 +574,24 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
       if (exportedCount === 0) {
         setExcelFeedback({
           type: 'warning',
-          message: 'هیچ محصولی مطابق فیلترهای فعلی برای خروجی اکسل یافت نشد.',
+          message: isIt
+            ? 'Nessun prodotto corrispondente ai filtri correnti trovato per l\'esportazione Excel.'
+            : 'No products matching the current filters were found for Excel export.',
         });
       } else {
         setExcelFeedback({
           type: 'success',
-          message: `خروجی اکسل با موفقیت تهیه شد (${isPersian ? toPersianDigits(list.length) : list.length} محصول و ${isPersian ? toPersianDigits(exportedCount) : exportedCount} سطر تنوع).`,
+          message: isIt
+            ? `Esportazione Excel completata (${list.length} prodotti e ${exportedCount} righe varianti).`
+            : `Excel export completed successfully (${list.length} products and ${exportedCount} variant rows).`,
         });
       }
     } catch (err: any) {
       setExcelFeedback({
         type: 'error',
-        message: `خطا در تهیه خروجی اکسل: ${err?.message || err}`,
+        message: isIt
+          ? `Errore durante l'esportazione Excel: ${err?.message || err}`
+          : `Error exporting to Excel: ${err?.message || err}`,
       });
     } finally {
       setIsExportingExcel(false);
@@ -604,8 +610,10 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
       if (!res.success || res.items.length === 0) {
         setExcelFeedback({
           type: 'error',
-          message: 'خطا در خواندن فایل اکسل محصولات',
-          details: res.errors.length > 0 ? res.errors.slice(0, 10) : ['هیچ ردیف معتبری یافت نشد.'],
+          message: isIt
+            ? 'Errore durante la lettura del file Excel prodotti'
+            : 'Error reading products Excel file',
+          details: res.errors.length > 0 ? res.errors.slice(0, 10) : [isIt ? 'Nessuna riga valida trovata.' : 'No valid rows found.'],
         });
         return;
       }
@@ -668,7 +676,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
         if (defaultSizeGroupId) return defaultSizeGroupId;
         const createdGroup = await adapter.saveSizeGroup({
           organization_id: orgId,
-          name: 'سایزهای عمومی',
+          name: 'General Sizes',
           category: 'apparel',
           status: 'active',
         });
@@ -870,22 +878,25 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
             varByComposite.set(`${product.id}_${colorId || 0}_${sizeId || 0}`, savedVar);
           }
         } catch (rowErr: any) {
-          importErrors.push(`سطر ${row.rowNumber} (${row.title}): ${rowErr?.message || rowErr}`);
+          importErrors.push(`${isIt ? 'Riga' : 'Row'} ${row.rowNumber} (${row.title}): ${rowErr?.message || rowErr}`);
         }
       }
 
       await Promise.all([loadAttributes(), loadProducts()]);
 
-      const formatCount = (n: number) => (isPersian ? toPersianDigits(n) : String(n));
       setExcelFeedback({
         type: importErrors.length > 0 && createdProducts + createdVariants + updatedVariants === 0 ? 'error' : importErrors.length > 0 ? 'warning' : 'success',
-        message: `ورود اطلاعات از اکسل انجام شد: ${formatCount(createdProducts)} محصول جدید، ${formatCount(updatedProducts)} محصول به‌روزرسانی، ${formatCount(createdVariants)} تنوع جدید و ${formatCount(updatedVariants)} تنوع به‌روزرسانی گردید.`,
+        message: isIt
+          ? `Importazione Excel completata: ${createdProducts} nuovi prodotti, ${updatedProducts} prodotti aggiornati, ${createdVariants} nuove varianti e ${updatedVariants} varianti aggiornate.`
+          : `Excel import completed: ${createdProducts} new products, ${updatedProducts} updated products, ${createdVariants} new variants, and ${updatedVariants} updated variants.`,
         details: importErrors.length > 0 ? importErrors.slice(0, 10) : undefined,
       });
     } catch (err: any) {
       setExcelFeedback({
         type: 'error',
-        message: `خطا در پردازش فایل اکسل: ${err?.message || err}`,
+        message: isIt
+          ? `Errore durante l'elaborazione del file Excel: ${err?.message || err}`
+          : `Error processing Excel file: ${err?.message || err}`,
       });
     } finally {
       setIsImportingExcel(false);
@@ -924,8 +935,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
               onClick={() => fileInputRef.current?.click()}
               icon={<Upload className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-neutral-500 dark:text-neutral-400" />}
             >
-              <span className="hidden sm:inline">ورود اکسل</span>
-              <span className="sm:hidden">ورود</span>
+              <span className="hidden sm:inline">{isIt ? 'Importa Excel' : 'Import Excel'}</span>
+              <span className="sm:hidden">{isIt ? 'Importa' : 'Import'}</span>
             </Button>
             <Button
               variant="outline"
@@ -934,8 +945,8 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
               onClick={handleExportExcel}
               icon={<FileSpreadsheet className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />}
             >
-              <span className="hidden sm:inline">خروجی اکسل</span>
-              <span className="sm:hidden">خروجی</span>
+              <span className="hidden sm:inline">{isIt ? 'Esporta Excel' : 'Export Excel'}</span>
+              <span className="sm:hidden">{isIt ? 'Esporta' : 'Export'}</span>
             </Button>
             {permissions.canEditProducts && (
               <Button size="sm" onClick={handleOpenNewProduct} icon={<Plus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}>
@@ -989,7 +1000,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
             <div className="sm:col-span-2 lg:col-span-2 flex items-center gap-1.5">
               <div className="relative flex-1">
                 <Input
-                  placeholder={t('products.searchPlaceholder', 'جستجو در نام، کد مدل، بارکد، رنگ، سایز، برند و...')}
+                  placeholder={t('products.searchPlaceholder', 'Search by name, SKU, barcode, color, size, brand...')}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   icon={<Search className="w-4 h-4" />}
@@ -1000,7 +1011,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
                     type="button"
                     onClick={() => setSearch('')}
                     className="absolute inset-y-0 end-0 pe-2.5 flex items-center text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200 transition-colors"
-                    title={t('common.clear') || 'پاک کردن'}
+                    title={t('common.clear', 'Clear')}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -1219,7 +1230,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
                     <div className="flex items-center justify-between p-2 rounded-xl bg-neutral-50 dark:bg-neutral-900/60 border border-neutral-100 dark:border-neutral-800">
                       <span className="text-neutral-500 dark:text-neutral-400 text-[11px]">{t('products.totalStock')}:</span>
                       <span className="font-mono font-bold text-amber-900 dark:text-amber-300">
-                        {isPersian ? toPersianDigits(p.total_stock || 0) : (p.total_stock || 0)}
+                        {p.total_stock || 0}
                       </span>
                     </div>
 
@@ -1233,7 +1244,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
                         {t('products.variants')}:
                       </span>
                       <span className="font-mono font-bold">
-                        {isPersian ? toPersianDigits(p.variants_count || 0) : (p.variants_count || 0)}
+                        {p.variants_count || 0}
                       </span>
                     </button>
                   </div>
@@ -1241,7 +1252,7 @@ export const ProductsView: React.FC<ProductsViewProps> = ({ initialCreateMode = 
                   {/* Bottom Actions Row */}
                   <div className="flex items-center justify-between pt-1">
                     <span className="text-[11px] text-neutral-400 font-mono">
-                      {formatDate(p.date_created, isPersian)}
+                      {formatDate(p.date_created, false, locale)}
                     </span>
 
                     <div className="flex items-center gap-1">

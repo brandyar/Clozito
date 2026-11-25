@@ -43,4 +43,9 @@ export const customersIt = {
   importExcel: 'Importa Excel',
   importSuccess: '{count} clienti importati con successo.',
   importError: 'Impossibile importare i clienti dal file Excel.',
+  vatNumber: 'Partita IVA / VAT Number',
+  vatNumberPlaceholder: 'es. IT01234567890 (opzionale)',
+  taxCode: 'Codice Fiscale / Tax Code',
+  taxCodePlaceholder: 'es. RSSMRA85M01H501Z (opzionale)',
+  fiscalDetails: 'Dati Fiscali / B2B',
 };

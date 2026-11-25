@@ -9,7 +9,7 @@ import {
 export class CloudWooCommerceStorage {
   constructor(private base: CloudStorageBase) {}
 
-  // WooCommerce Integration (ماژول همگام‌سازی ووکامرس)
+  // WooCommerce Integration
   async getWooCommerceSettings(params?: QueryParams): Promise<WooCommerceSettings | null> {
     try {
       const items = await this.base.client.getItems<WooCommerceSettings>('woocommerce_settings', {

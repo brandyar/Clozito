@@ -55,6 +55,7 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
   const [isSaving, setIsSaving] = useState(false);
 
   const isPersian = false;
+  const isIt = locale === 'it';
 
   const loadData = async () => {
     setIsLoading(true);
@@ -240,7 +241,7 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
     { key: 'collections', label: t('navigation.collections'), icon: Bookmark },
     { key: 'seasons', label: t('navigation.seasons'), icon: Sun },
     { key: 'colors', label: t('navigation.colors'), icon: Palette },
-    { key: 'size_groups', label: t('navigation.sizeGroups') || 'گروه‌های سایزبندی', icon: Folder },
+    { key: 'size_groups', label: t('navigation.sizeGroups', 'Size Groups'), icon: Folder },
     { key: 'sizes', label: t('navigation.sizes'), icon: Tag },
   ] as const;
 
@@ -282,14 +283,14 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
         {/* Categories Tab with Hierarchical Tree Indentation */}
         {activeTab === 'categories' && (
           <div className="overflow-x-auto">
-            <table className="w-full text-right text-xs">
+            <table className="w-full text-start text-xs">
               <thead className="bg-slate-50 text-slate-600 font-bold border-b border-slate-200">
                 <tr>
                   <th className="p-3">{t('products.categoryTreeHeader')}</th>
                   <th className="p-3">{t('products.slugHeader')}</th>
                   <th className="p-3">{t('products.parentCategoryHeader')}</th>
                   <th className="p-3">{t('common.status')}</th>
-                  <th className="p-3 text-left">{t('common.actions')}</th>
+                  <th className="p-3 text-end">{t('common.actions')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -338,7 +339,7 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
                           {item.status === 'active' ? t('common.active') : t('common.inactive')}
                         </Badge>
                       </td>
-                      <td className="p-3 text-left">
+                      <td className="p-3 text-end">
                         <div className="flex items-center justify-end gap-1">
                           <Button
                             variant="ghost"
@@ -515,10 +516,10 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
                 header: t('products.sizeCategoryType'),
                 render: (grp) => {
                   const labels: Record<SizeCategory, string> = {
-                    apparel: isPersian ? 'پوشاک (Apparel)' : 'Apparel',
-                    shoes: isPersian ? 'کفش (Footwear)' : 'Footwear',
-                    accessories: isPersian ? 'اکسسوری و کیف' : 'Accessories & Bags',
-                    other: isPersian ? 'سایر' : 'Other',
+                    apparel: isIt ? 'Abbigliamento' : 'Apparel',
+                    shoes: isIt ? 'Calzature' : 'Footwear',
+                    accessories: isIt ? 'Accessori e borse' : 'Accessories & Bags',
+                    other: isIt ? 'Altro' : 'Other',
                   };
                   return <Badge variant="info">{labels[grp.category] || grp.category}</Badge>;
                 },
@@ -603,7 +604,7 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
             : activeTab === 'colors'
             ? t('products.createColor')
             : activeTab === 'size_groups'
-            ? (t('products.createSizeGroup') || 'تعریف گروه سایز جدید')
+            ? t('products.createSizeGroup', 'Create Size Group')
             : t('products.createSize')
         }
         footer={
@@ -621,14 +622,14 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
           <Input
             label={
               activeTab === 'categories'
-                ? `${t('products.categoryName', 'عنوان دسته‌بندی')} *`
+                ? `${t('products.categoryName', 'Category Name')} *`
                 : activeTab === 'seasons'
-                ? `${t('products.seasonName', 'عنوان فصل')} *`
+                ? `${t('products.seasonName', 'Season Name')} *`
                 : activeTab === 'collections'
-                ? `${t('products.collectionName', 'عنوان مجموعه')} *`
+                ? `${t('products.collectionName', 'Collection Name')} *`
                 : activeTab === 'colors'
-                ? `${t('products.colorName', 'نام رنگ')} *`
-                : `${t('products.titleOrName', 'عنوان / نام')} *`
+                ? `${t('products.colorName', 'Color Name')} *`
+                : `${t('products.titleOrName', 'Title / Name')} *`
             }
             value={name}
             onChange={(e) => setName(e.target.value)}
@@ -674,7 +675,7 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
                   onChange={(e) => setDescription(e.target.value)}
                   rows={2}
                   className="w-full bg-white border border-slate-300 rounded-xl text-slate-900 text-sm p-3 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  placeholder="مجموعه تابستانه محصولات چرمی..."
+                  placeholder={isIt ? 'Collezione estiva in pelle...' : 'Summer leather collection...'}
                 />
               </div>
             </>
@@ -737,10 +738,10 @@ export const AttributesView: React.FC<AttributesViewProps> = ({ initialTab = 'ca
               value={sizeCategory}
               onChange={(e) => setSizeCategory(e.target.value as SizeCategory)}
               options={[
-                { value: 'apparel', label: isPersian ? 'پوشاک (Apparel)' : 'Apparel' },
-                { value: 'shoes', label: isPersian ? 'کفش (Footwear)' : 'Footwear' },
-                { value: 'accessories', label: isPersian ? 'اکسسوری و کیف' : 'Accessories & Bags' },
-                { value: 'other', label: isPersian ? 'سایر' : 'Other' },
+                { value: 'apparel', label: isIt ? 'Abbigliamento' : 'Apparel' },
+                { value: 'shoes', label: isIt ? 'Calzature' : 'Footwear' },
+                { value: 'accessories', label: isIt ? 'Accessori e borse' : 'Accessories & Bags' },
+                { value: 'other', label: isIt ? 'Altro' : 'Other' },
               ]}
             />
           )}

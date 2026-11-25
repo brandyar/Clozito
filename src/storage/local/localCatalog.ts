@@ -93,7 +93,7 @@ export class LocalCatalogStorage {
     const newProduct: Product = {
       id: this.base.generateUniqueId(list),
       organization_id: product.organization_id || 1,
-      title: product.title || 'محصول جدید',
+      title: product.title || 'New Product',
       status: product.status || 'published',
       date_created: new Date().toISOString(),
       variants_count: 0,
@@ -177,7 +177,7 @@ export class LocalCatalogStorage {
         product_id: prodId || v.product_id,
         color_id: colorId,
         size_id: sizeId,
-        product_title: prod?.title || v.product_title || 'محصول',
+        product_title: prod?.title || v.product_title || 'Product',
         color_name: color?.name || v.color_name || '-',
         size_name: size?.name || v.size_name || '-',
         stock_quantity: totalStock,
@@ -216,7 +216,7 @@ export class LocalCatalogStorage {
         product_id: productId,
         color_id: cId,
         size_id: sId,
-        product_title: prod?.title || 'محصول',
+        product_title: prod?.title || 'Product',
         color_name: matchedColor?.name || v.color_name || '-',
         size_name: matchedSize?.name || v.size_name || '-',
         stock_quantity: totalStock,
@@ -347,7 +347,7 @@ export class LocalCatalogStorage {
           quantity: qtyNum,
           reference_type: 'manual',
           reference_id: `INIT-${saved.id}`,
-          note: 'موجودی اولیه هنگام ایجاد متغیر کالا',
+          note: 'Initial stock on variant creation',
           created_at: new Date().toISOString(),
         });
         this.base.setItem('inventory_movements', movementsList);
@@ -407,7 +407,7 @@ export class LocalCatalogStorage {
     const newCat: Category = {
       id: this.base.generateUniqueId(list),
       organization_id: cat.organization_id || this.base.getActiveOrgId() || 1,
-      name: cat.name || 'دسته‌بندی جدید',
+      name: cat.name || 'New Category',
       slug: cat.slug || 'cat-new',
       status: 'active',
       ...cat,
@@ -449,7 +449,7 @@ export class LocalCatalogStorage {
     const newCol: Collection = {
       id: this.base.generateUniqueId(list),
       organization_id: col.organization_id || this.base.getActiveOrgId() || 1,
-      name: col.name || 'مجموعه جدید',
+      name: col.name || 'New Collection',
       slug: col.slug || 'col-new',
       status: 'active',
       ...col,
@@ -491,7 +491,7 @@ export class LocalCatalogStorage {
     const newBrand: Brand = {
       id: this.base.generateUniqueId(list),
       organization_id: brand.organization_id || this.base.getActiveOrgId() || 1,
-      name: brand.name || 'برند جدید',
+      name: brand.name || 'New Brand',
       code: brand.code || '',
       status: 'active',
       date_created: new Date().toISOString(),
@@ -534,7 +534,7 @@ export class LocalCatalogStorage {
     const newSeason: Season = {
       id: this.base.generateUniqueId(list),
       organization_id: season.organization_id || this.base.getActiveOrgId() || 1,
-      name: season.name || 'فصل جدید',
+      name: season.name || 'New Season',
       status: 'active',
       ...season,
     };
@@ -575,7 +575,7 @@ export class LocalCatalogStorage {
     const newColor: Color = {
       id: this.base.generateUniqueId(list),
       organization_id: color.organization_id || this.base.getActiveOrgId() || 1,
-      name: color.name || 'رنگ جدید',
+      name: color.name || 'New Color',
       hex: color.hex || '#000000',
       status: 'active',
       ...color,
@@ -617,7 +617,7 @@ export class LocalCatalogStorage {
     const newGroup: SizeGroup = {
       id: this.base.generateUniqueId(list),
       organization_id: group.organization_id || this.base.getActiveOrgId() || 1,
-      name: group.name || 'گروه سایز جدید',
+      name: group.name || 'New Size Group',
       category: group.category || 'apparel',
       status: 'active',
       ...group,
@@ -659,7 +659,7 @@ export class LocalCatalogStorage {
     const newSize: Size = {
       id: this.base.generateUniqueId(list),
       organization_id: size.organization_id || this.base.getActiveOrgId() || 1,
-      name: size.name || 'سایز جدید',
+      name: size.name || 'New Size',
       status: 'active',
       ...size,
     };
@@ -701,7 +701,7 @@ export class LocalCatalogStorage {
     const newTpl: SizeGuideTemplate = {
       id: this.base.generateUniqueId(list),
       organization_id: tpl.organization_id || this.base.getActiveOrgId() || 1,
-      name: tpl.name || 'قالب راهنمای سایز جدید',
+      name: tpl.name || 'New Size Guide Template',
       type: tpl.type || 'apparel',
       unit: tpl.unit || 'cm',
       status: 'active',
@@ -738,7 +738,7 @@ export class LocalCatalogStorage {
     const newMeas: SizeGuideMeasurement = {
       id: this.base.generateUniqueId(list),
       template_id: meas.template_id || 1,
-      name: meas.name || 'اندازه جدید',
+      name: meas.name || 'New Measurement',
       unit: meas.unit || 'cm',
       type: meas.type || 'width',
       status: 'active',

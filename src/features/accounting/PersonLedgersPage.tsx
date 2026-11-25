@@ -8,7 +8,8 @@ import { Input } from '../../components/ui/Input';
 import { DateInput } from '../../components/ui/DateInput';
 import { Modal } from '../../components/ui/Modal';
 import { Badge } from '../../components/ui/Badge';
-import { formatCurrency, formatPersianDate, toPersianDigits } from '../../utils/formatters';
+import { useOrganization } from '../../context/OrganizationContext';
+import { formatCurrency, formatDate, resolveCurrencyCode } from '../../utils/formatters';
 import { printElement } from '../../utils/print';
 import {
   Users,
@@ -41,7 +42,10 @@ interface PartySummary {
 }
 
 export const PersonLedgersPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
+  const { activeOrganization } = useOrganization();
+  const activeCurrency = resolveCurrencyCode(activeOrganization?.currency);
   const [parties, setParties] = useState<PartySummary[]>([]);
   const [selectedParty, setSelectedParty] = useState<PartySummary | null>(null);
   const [transactions, setTransactions] = useState<PersonTransaction[]>([]);
@@ -140,9 +144,8 @@ export const PersonLedgersPage: React.FC = () => {
       );
 
       // Compute running balance:
-      // In Iranian ledger format for customers:
-      // debit (بدهکار): order_invoice, pay_money -> increases customer debt (+)
-      // credit (بستانکار): receive_money -> decreases customer debt (-)
+      // debit: order_invoice, pay_money -> increases balance (+)
+      // credit: receive_money -> decreases balance (-)
       let running = 0;
       const computed = sorted.map((item) => {
         const debit = item.debit_amount || 0;
@@ -193,7 +196,7 @@ export const PersonLedgersPage: React.FC = () => {
   const handleSaveTransaction = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!txForm.amount || Number(txForm.amount) <= 0) {
-      alert('لطفاً مبلغ معتبر تراکنش را وارد کنید.');
+      alert(isIt ? 'Inserisci un importo valido per la transazione.' : 'Please enter a valid transaction amount.');
       return;
     }
 
@@ -218,12 +221,12 @@ export const PersonLedgersPage: React.FC = () => {
       }
     } catch (err) {
       console.error('[PersonLedgersPage] Failed to save transaction:', err);
-      alert('خطا در ثبت تراکنش مالی.');
+      alert(isIt ? 'Errore durante il salvataggio della transazione.' : 'Failed to save financial transaction.');
     }
   };
 
   const handleDeleteTransaction = async (id: number) => {
-    if (!window.confirm('آیا از حذف این تراکنش اطمینان دارید؟')) return;
+    if (!window.confirm(isIt ? 'Sei sicuro di voler eliminare questa transazione?' : 'Are you sure you want to delete this transaction?')) return;
     try {
       const adapter = storageManager.getAdapter();
       await adapter.deletePersonTransaction(id);
@@ -238,7 +241,7 @@ export const PersonLedgersPage: React.FC = () => {
 
   const handlePrintLedger = () => {
     if (!selectedParty) return;
-    printElement('printable-party-ledger', { title: `صورت‌حساب_${selectedParty.name}` });
+    printElement('printable-party-ledger', { title: `Statement_${selectedParty.name}` });
   };
 
   // Filtered parties list
@@ -291,7 +294,7 @@ export const PersonLedgersPage: React.FC = () => {
               <Search className="w-3.5 h-3.5 absolute start-3 top-2.5 text-neutral-400" />
               <input
                 type="text"
-                placeholder="جستجوی شخص یا شماره تلفن..."
+                placeholder={isIt ? 'Cerca contatto o telefono...' : 'Search contact or phone...'}
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full ps-8 pe-3 py-1.5 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-neutral-50/50 dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 focus:outline-hidden"
@@ -307,7 +310,7 @@ export const PersonLedgersPage: React.FC = () => {
                     : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
                 }`}
               >
-                همه ({toPersianDigits(parties.length)})
+                {isIt ? 'Tutti' : 'All'} ({parties.length})
               </button>
               <button
                 onClick={() => setFilterType('customer')}
@@ -317,7 +320,7 @@ export const PersonLedgersPage: React.FC = () => {
                     : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
                 }`}
               >
-                مشتریان
+                {isIt ? 'Clienti' : 'Customers'}
               </button>
               <button
                 onClick={() => setFilterType('supplier')}
@@ -327,7 +330,7 @@ export const PersonLedgersPage: React.FC = () => {
                     : 'bg-neutral-100 dark:bg-neutral-800 text-neutral-600 dark:text-neutral-400'
                 }`}
               >
-                تامین‌کنندگان
+                {isIt ? 'Fornitori' : 'Suppliers'}
               </button>
               <button
                 onClick={() => setFilterType('debtor')}
@@ -337,7 +340,7 @@ export const PersonLedgersPage: React.FC = () => {
                     : 'bg-neutral-100 dark:bg-neutral-800 text-emerald-600'
                 }`}
               >
-                بدهکاران (طلب)
+                {isIt ? 'Debitori (Crediti)' : 'Debtors (Receivable)'}
               </button>
               <button
                 onClick={() => setFilterType('creditor')}
@@ -347,7 +350,7 @@ export const PersonLedgersPage: React.FC = () => {
                     : 'bg-neutral-100 dark:bg-neutral-800 text-rose-600'
                 }`}
               >
-                بستانکاران (بدهی)
+                {isIt ? 'Creditori (Debiti)' : 'Creditors (Payable)'}
               </button>
             </div>
           </div>
@@ -357,11 +360,11 @@ export const PersonLedgersPage: React.FC = () => {
             {loading ? (
               <div className="py-8 text-center text-xs text-neutral-500">
                 <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2" />
-                در حال بارگذاری اشخاص...
+                {isIt ? 'Caricamento contatti...' : 'Loading contacts...'}
               </div>
             ) : filteredParties.length === 0 ? (
               <div className="py-8 text-center text-xs text-neutral-400">
-                طرف‌حسابی یافت نشد.
+                {isIt ? 'Nessun contatto trovato.' : 'No contacts found.'}
               </div>
             ) : (
               filteredParties.map((p) => {
@@ -389,7 +392,7 @@ export const PersonLedgersPage: React.FC = () => {
                             {p.name}
                           </p>
                           <span className="text-[10px] text-neutral-400 font-mono">
-                            {p.phone || (p.type === 'customer' ? 'مشتری' : 'تامین‌کننده')}
+                            {p.phone || (p.type === 'customer' ? (isIt ? 'Cliente' : 'Customer') : (isIt ? 'Fornitore' : 'Supplier'))}
                           </span>
                         </div>
                       </div>
@@ -402,12 +405,16 @@ export const PersonLedgersPage: React.FC = () => {
                             ? 'text-rose-600 dark:text-rose-400'
                             : 'text-neutral-500'
                         }`}>
-                          {formatCurrency(Math.abs(p.balance))}
+                          {formatCurrency(Math.abs(p.balance), activeCurrency)}
                         </div>
                         <span className={`text-[10px] ${
                           isDebtor ? 'text-emerald-600' : isCreditor ? 'text-rose-600' : 'text-neutral-400'
                         }`}>
-                          {isDebtor ? 'بدهکار (طلب ما)' : isCreditor ? 'بستانکار (بدهی ما)' : 'تسویه'}
+                          {isDebtor
+                            ? (isIt ? 'Debitore (Da incassare)' : 'Debtor (Receivable)')
+                            : isCreditor
+                            ? (isIt ? 'Creditore (Da pagare)' : 'Creditor (Payable)')
+                            : (isIt ? 'Saldato' : 'Settled')}
                         </span>
                       </div>
                     </div>
@@ -434,18 +441,18 @@ export const PersonLedgersPage: React.FC = () => {
                         {selectedParty.name}
                       </h3>
                       <Badge variant={selectedParty.type === 'customer' ? 'default' : 'neutral'}>
-                        {selectedParty.type === 'customer' ? 'مشتری' : 'تامین‌کننده'}
+                        {selectedParty.type === 'customer' ? (isIt ? 'Cliente' : 'Customer') : (isIt ? 'Fornitore' : 'Supplier')}
                       </Badge>
                     </div>
                     <p className="text-[11px] sm:text-xs text-neutral-500 font-mono mt-0.5">
-                      شماره تماس: {selectedParty.phone || 'ثبت نشده'}
+                      {isIt ? 'Telefono' : 'Phone'}: {selectedParty.phone || (isIt ? 'Non registrato' : 'Not provided')}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex flex-wrap items-center justify-between sm:justify-end gap-2.5 sm:gap-3 pt-2 sm:pt-0 border-t sm:border-t-0 border-neutral-200 dark:border-neutral-700">
                   <div className="text-start sm:text-end">
-                    <span className="text-[10px] sm:text-[11px] text-neutral-500 block">مانده حساب نهایی:</span>
+                    <span className="text-[10px] sm:text-[11px] text-neutral-500 block">{isIt ? 'Saldo finale:' : 'Final Balance:'}</span>
                     <div className={`text-sm sm:text-base font-bold font-mono ${
                       selectedParty.balance > 0
                         ? 'text-emerald-600 dark:text-emerald-400'
@@ -453,9 +460,9 @@ export const PersonLedgersPage: React.FC = () => {
                         ? 'text-rose-600 dark:text-rose-400'
                         : 'text-neutral-500'
                     }`}>
-                      {formatCurrency(Math.abs(selectedParty.balance))}
+                      {formatCurrency(Math.abs(selectedParty.balance), activeCurrency)}
                       <span className="text-[11px] sm:text-xs font-normal ms-1">
-                        ({selectedParty.balance > 0 ? 'بدهکار' : selectedParty.balance < 0 ? 'بستانکار' : 'بی‌حساب'})
+                        ({selectedParty.balance > 0 ? (isIt ? 'Debitore' : 'Debtor') : selectedParty.balance < 0 ? (isIt ? 'Creditore' : 'Creditor') : (isIt ? 'Saldato' : 'Settled')})
                       </span>
                     </div>
                   </div>
@@ -465,7 +472,7 @@ export const PersonLedgersPage: React.FC = () => {
                       variant="outline"
                       size="sm"
                       onClick={handlePrintLedger}
-                      title="چاپ صورتحساب"
+                      title={isIt ? 'Stampa estratto conto' : 'Print Statement'}
                       icon={<Printer className="w-3.5 h-3.5" />}
                     />
                     <Button
@@ -474,7 +481,7 @@ export const PersonLedgersPage: React.FC = () => {
                       onClick={() => handleOpenNewTransaction(selectedParty)}
                       icon={<Plus className="w-3.5 h-3.5" />}
                     >
-                      <span>ثبت تراکنش</span>
+                      <span>{isIt ? 'Nuova transazione' : 'Add Transaction'}</span>
                     </Button>
                   </div>
                 </div>
@@ -485,21 +492,21 @@ export const PersonLedgersPage: React.FC = () => {
                 <div className="flex items-center justify-between mb-3">
                   <h4 className="text-xs font-bold text-neutral-800 dark:text-neutral-200 flex items-center gap-1.5">
                     <FileText className="w-4 h-4 text-neutral-500" />
-                    <span>گردش حساب و ریز اسناد مالی</span>
+                    <span>{isIt ? 'Estratto conto e movimenti' : 'Account Statement & Ledger Entries'}</span>
                   </h4>
                   <span className="text-xs text-neutral-400">
-                    تعداد اسناد: {toPersianDigits(transactions.length)}
+                    {isIt ? 'Totale movimenti' : 'Entries'}: {transactions.length}
                   </span>
                 </div>
 
                 {txLoading ? (
                   <div className="py-12 text-center text-xs text-neutral-500">
                     <RefreshCw className="w-4 h-4 animate-spin mx-auto mb-2" />
-                    در حال دریافت سوابق تراکنش‌ها...
+                    {isIt ? 'Caricamento storico transazioni...' : 'Loading transaction history...'}
                   </div>
                 ) : transactions.length === 0 ? (
                   <div className="py-12 text-center text-xs text-neutral-400 border border-dashed border-neutral-200 dark:border-neutral-800 rounded-xl">
-                    هنوز هیچ سند مالی یا تراکنشی برای این شخص ثبت نشده است.
+                    {isIt ? 'Nessuna transazione finanziaria registrata per questo contatto.' : 'No financial entries or transactions recorded for this contact yet.'}
                   </div>
                 ) : (
                   <div className="rounded-xl border border-neutral-200/80 dark:border-neutral-800 overflow-hidden">
@@ -508,13 +515,13 @@ export const PersonLedgersPage: React.FC = () => {
                       <table className="w-full text-xs text-start">
                         <thead className="bg-neutral-50 dark:bg-neutral-800/60 border-b border-neutral-200/80 dark:border-neutral-800 text-neutral-500">
                           <tr>
-                            <th className="py-2.5 px-3 text-start font-semibold">تاریخ</th>
-                            <th className="py-2.5 px-3 text-start font-semibold">شرح سند</th>
-                            <th className="py-2.5 px-3 text-start font-semibold">شماره پیگیری / فاکتور</th>
-                            <th className="py-2.5 px-3 text-start font-semibold text-rose-600">بدهکار (+)</th>
-                            <th className="py-2.5 px-3 text-start font-semibold text-emerald-600">بستانکار (-)</th>
-                            <th className="py-2.5 px-3 text-start font-semibold">مانده</th>
-                            <th className="py-2.5 px-3 text-center font-semibold">عملیات</th>
+                            <th className="py-2.5 px-3 text-start font-semibold">{isIt ? 'Data' : 'Date'}</th>
+                            <th className="py-2.5 px-3 text-start font-semibold">{isIt ? 'Descrizione' : 'Description'}</th>
+                            <th className="py-2.5 px-3 text-start font-semibold">{isIt ? 'Riferimento / Fattura' : 'Reference / Invoice'}</th>
+                            <th className="py-2.5 px-3 text-start font-semibold text-rose-600">{isIt ? 'Dare (+)' : 'Debit (+)'}</th>
+                            <th className="py-2.5 px-3 text-start font-semibold text-emerald-600">{isIt ? 'Avere (-)' : 'Credit (-)'}</th>
+                            <th className="py-2.5 px-3 text-start font-semibold">{isIt ? 'Saldo' : 'Balance'}</th>
+                            <th className="py-2.5 px-3 text-center font-semibold">{isIt ? 'Azioni' : 'Actions'}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-neutral-100 dark:divide-neutral-800/60">
@@ -523,21 +530,21 @@ export const PersonLedgersPage: React.FC = () => {
                             return (
                               <tr key={tx.id} className="hover:bg-neutral-50/50 dark:hover:bg-neutral-800/30 transition-colors">
                                 <td className="py-2.5 px-3 font-mono text-neutral-600 dark:text-neutral-300">
-                                  {formatPersianDate(tx.transaction_date)}
+                                  {formatDate(tx.transaction_date)}
                                 </td>
                                 <td className="py-2.5 px-3">
                                   <div className="font-semibold text-neutral-900 dark:text-neutral-100">
-                                    {(tx.transaction_type === 'order_invoice' || tx.transaction_type === 'sale_invoice') && 'فاکتور فروش کالا'}
+                                    {(tx.transaction_type === 'order_invoice' || tx.transaction_type === 'sale_invoice') && (isIt ? 'Fattura di vendita' : 'Sales Invoice')}
                                     {tx.transaction_type === 'sale_return' && (
-                                      <span className="text-amber-700 dark:text-amber-400">برگشت از فروش (مرجوعی)</span>
+                                      <span className="text-amber-700 dark:text-amber-400">{isIt ? 'Reso di vendita' : 'Sales Return'}</span>
                                     )}
                                     {tx.transaction_type === 'cash_refund' && (
-                                      <span className="text-rose-700 dark:text-rose-400">استرداد وجه مرجوعی</span>
+                                      <span className="text-rose-700 dark:text-rose-400">{isIt ? 'Rimborso reso' : 'Return Refund'}</span>
                                     )}
-                                    {tx.transaction_type === 'purchase_invoice' && 'فاکتور خرید کالا'}
-                                    {(tx.transaction_type === 'receive_money' || tx.transaction_type === 'cash_receipt' || tx.transaction_type === 'receipt') && 'دریافت وجه'}
-                                    {(tx.transaction_type === 'pay_money' || tx.transaction_type === 'cash_payment') && 'پرداخت وجه'}
-                                    {tx.transaction_type === 'adjustment' && 'اصلاحیه حساب'}
+                                    {tx.transaction_type === 'purchase_invoice' && (isIt ? 'Fattura di acquisto' : 'Purchase Invoice')}
+                                    {(tx.transaction_type === 'receive_money' || tx.transaction_type === 'cash_receipt' || tx.transaction_type === 'receipt') && (isIt ? 'Incasso' : 'Payment Received')}
+                                    {(tx.transaction_type === 'pay_money' || tx.transaction_type === 'cash_payment') && (isIt ? 'Pagamento' : 'Payment Sent')}
+                                    {tx.transaction_type === 'adjustment' && (isIt ? 'Rettifica conto' : 'Account Adjustment')}
                                   </div>
                                   {tx.description && (
                                     <div className="text-[10px] text-neutral-400 mt-0.5 line-clamp-1">
@@ -549,13 +556,13 @@ export const PersonLedgersPage: React.FC = () => {
                                   {tx.order_number || tx.purchase_number || tx.reference_code || '-'}
                                 </td>
                                 <td className="py-2.5 px-3 font-mono font-bold text-rose-600 dark:text-rose-400">
-                                  {tx.debit_amount ? formatCurrency(tx.debit_amount) : '-'}
+                                  {tx.debit_amount ? formatCurrency(tx.debit_amount, activeCurrency) : '-'}
                                 </td>
                                 <td className="py-2.5 px-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                  {tx.credit_amount ? formatCurrency(tx.credit_amount) : '-'}
+                                  {tx.credit_amount ? formatCurrency(tx.credit_amount, activeCurrency) : '-'}
                                 </td>
                                 <td className="py-2.5 px-3 font-mono font-bold text-neutral-900 dark:text-white">
-                                  {tx.running_balance !== undefined ? formatCurrency(Math.abs(tx.running_balance)) : '-'}
+                                  {tx.running_balance !== undefined ? formatCurrency(Math.abs(tx.running_balance), activeCurrency) : '-'}
                                 </td>
                                 <td className="py-2.5 px-3 text-center">
                                   {isManual && tx.id && (
@@ -564,7 +571,7 @@ export const PersonLedgersPage: React.FC = () => {
                                       size="sm"
                                       onClick={() => tx.id && handleDeleteTransaction(tx.id)}
                                       className="text-rose-500 hover:text-rose-700"
-                                      title="حذف سند"
+                                      title={isIt ? 'Elimina movimento' : 'Delete entry'}
                                       icon={<Trash2 className="w-3 h-3" />}
                                     />
                                   )}
@@ -585,24 +592,24 @@ export const PersonLedgersPage: React.FC = () => {
                             <div className="flex items-start justify-between gap-2">
                               <div>
                                 <span className="font-bold text-xs text-neutral-900 dark:text-white">
-                                  {(tx.transaction_type === 'order_invoice' || tx.transaction_type === 'sale_invoice') && 'فاکتور فروش کالا'}
+                                  {(tx.transaction_type === 'order_invoice' || tx.transaction_type === 'sale_invoice') && (isIt ? 'Fattura di vendita' : 'Sales Invoice')}
                                   {tx.transaction_type === 'sale_return' && (
-                                    <span className="text-amber-700 dark:text-amber-400">برگشت از فروش (مرجوعی)</span>
+                                    <span className="text-amber-700 dark:text-amber-400">{isIt ? 'Reso di vendita' : 'Sales Return'}</span>
                                   )}
                                   {tx.transaction_type === 'cash_refund' && (
-                                    <span className="text-rose-700 dark:text-rose-400">استرداد وجه مرجوعی</span>
+                                    <span className="text-rose-700 dark:text-rose-400">{isIt ? 'Rimborso reso' : 'Return Refund'}</span>
                                   )}
-                                  {tx.transaction_type === 'purchase_invoice' && 'فاکتور خرید کالا'}
-                                  {(tx.transaction_type === 'receive_money' || tx.transaction_type === 'cash_receipt' || tx.transaction_type === 'receipt') && 'دریافت وجه'}
-                                  {(tx.transaction_type === 'pay_money' || tx.transaction_type === 'cash_payment') && 'پرداخت وجه'}
-                                  {tx.transaction_type === 'adjustment' && 'اصلاحیه حساب'}
+                                  {tx.transaction_type === 'purchase_invoice' && (isIt ? 'Fattura di acquisto' : 'Purchase Invoice')}
+                                  {(tx.transaction_type === 'receive_money' || tx.transaction_type === 'cash_receipt' || tx.transaction_type === 'receipt') && (isIt ? 'Incasso' : 'Payment Received')}
+                                  {(tx.transaction_type === 'pay_money' || tx.transaction_type === 'cash_payment') && (isIt ? 'Pagamento' : 'Payment Sent')}
+                                  {tx.transaction_type === 'adjustment' && (isIt ? 'Rettifica conto' : 'Account Adjustment')}
                                 </span>
                                 {tx.description && (
                                   <p className="text-[11px] text-neutral-500 mt-0.5 line-clamp-1">{tx.description}</p>
                                 )}
                               </div>
                               <span className="font-mono text-[11px] text-neutral-400">
-                                {formatPersianDate(tx.transaction_date)}
+                                {formatDate(tx.transaction_date)}
                               </span>
                             </div>
 
@@ -610,20 +617,20 @@ export const PersonLedgersPage: React.FC = () => {
                               <div>
                                 {tx.debit_amount ? (
                                   <span className="font-mono font-bold text-rose-600 dark:text-rose-400 block">
-                                    بدهکار: {formatCurrency(tx.debit_amount)}
+                                    {isIt ? 'Dare' : 'Debit'}: {formatCurrency(tx.debit_amount, activeCurrency)}
                                   </span>
                                 ) : null}
                                 {tx.credit_amount ? (
                                   <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 block">
-                                    بستانکار: {formatCurrency(tx.credit_amount)}
+                                    {isIt ? 'Avere' : 'Credit'}: {formatCurrency(tx.credit_amount, activeCurrency)}
                                   </span>
                                 ) : null}
                               </div>
                               <div className="text-end flex items-center justify-end gap-1.5">
                                 <div>
-                                  <span className="text-[10px] text-neutral-400 block">مانده:</span>
+                                  <span className="text-[10px] text-neutral-400 block">{isIt ? 'Saldo:' : 'Balance:'}</span>
                                   <span className="font-mono font-bold text-neutral-900 dark:text-white">
-                                    {tx.running_balance !== undefined ? formatCurrency(Math.abs(tx.running_balance)) : '-'}
+                                    {tx.running_balance !== undefined ? formatCurrency(Math.abs(tx.running_balance), activeCurrency) : '-'}
                                   </span>
                                 </div>
                                 {isManual && tx.id && (
@@ -632,7 +639,7 @@ export const PersonLedgersPage: React.FC = () => {
                                     size="sm"
                                     onClick={() => tx.id && handleDeleteTransaction(tx.id)}
                                     className="text-rose-500 hover:text-rose-700 p-1 h-auto"
-                                    title="حذف سند"
+                                    title={isIt ? 'Elimina movimento' : 'Delete entry'}
                                     icon={<Trash2 className="w-3 h-3" />}
                                   />
                                 )}
@@ -658,13 +665,13 @@ export const PersonLedgersPage: React.FC = () => {
       <Modal
         isOpen={isTxModalOpen}
         onClose={() => setIsTxModalOpen(false)}
-        title="ثبت دریافت / پرداخت وجه"
+        title={isIt ? 'Registra Incasso / Pagamento' : 'Record Receipt / Payment'}
       >
         <form onSubmit={handleSaveTransaction} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                نوع شخص *
+                {isIt ? 'Tipo di contatto *' : 'Contact Type *'}
               </label>
               <select
                 value={txForm.party_type || 'customer'}
@@ -680,31 +687,31 @@ export const PersonLedgersPage: React.FC = () => {
                 }}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
               >
-                <option value="customer">مشتری</option>
-                <option value="supplier">تامین‌کننده</option>
-                <option value="other">سایر طرف‌حساب‌ها</option>
+                <option value="customer">{isIt ? 'Cliente' : 'Customer'}</option>
+                <option value="supplier">{isIt ? 'Fornitore' : 'Supplier'}</option>
+                <option value="other">{isIt ? 'Altra controparte' : 'Other Contact'}</option>
               </select>
             </div>
 
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                نوع عملیات مالی *
+                {isIt ? 'Tipo di transazione *' : 'Transaction Type *'}
               </label>
               <select
                 value={txForm.transaction_type || 'receive_money'}
                 onChange={(e) => setTxForm({ ...txForm, transaction_type: e.target.value as any })}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
               >
-                <option value="receive_money">دریافت وجه از طرف‌حساب (بستانکار شدن شخص)</option>
-                <option value="pay_money">پرداخت وجه به طرف‌حساب (بدهکار شدن شخص)</option>
-                <option value="adjustment">اصلاحیه حساب</option>
+                <option value="receive_money">{isIt ? 'Incasso da contatto (Avere)' : 'Receive Money from Contact (Credit)'}</option>
+                <option value="pay_money">{isIt ? 'Pagamento a contatto (Dare)' : 'Pay Money to Contact (Debit)'}</option>
+                <option value="adjustment">{isIt ? 'Rettifica conto' : 'Account Adjustment'}</option>
               </select>
             </div>
           </div>
 
           <div>
             <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-              انتخاب طرف‌حساب *
+              {isIt ? 'Seleziona contatto *' : 'Select Contact *'}
             </label>
             {txForm.party_type === 'customer' ? (
               <select
@@ -720,7 +727,7 @@ export const PersonLedgersPage: React.FC = () => {
                 className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
                 required
               >
-                <option value="">-- انتخاب مشتری --</option>
+                <option value="">{isIt ? '-- Seleziona cliente --' : '-- Select Customer --'}</option>
                 {parties
                   .filter((p) => p.type === 'customer')
                   .map((p) => (
@@ -743,7 +750,7 @@ export const PersonLedgersPage: React.FC = () => {
                 className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
                 required
               >
-                <option value="">-- انتخاب تامین‌کننده --</option>
+                <option value="">{isIt ? '-- Seleziona fornitore --' : '-- Select Supplier --'}</option>
                 {parties
                   .filter((p) => p.type === 'supplier')
                   .map((p) => (
@@ -754,8 +761,8 @@ export const PersonLedgersPage: React.FC = () => {
               </select>
             ) : (
               <Input
-                label="نام شخص / سازمان *"
-                placeholder="نام کامل طرف‌حساب..."
+                label={isIt ? 'Nome persona / azienda *' : 'Contact / Company Name *'}
+                placeholder={isIt ? 'Nome completo...' : 'Full contact name...'}
                 value={txForm.party_name || ''}
                 onChange={(e) => setTxForm({ ...txForm, party_name: e.target.value })}
                 required
@@ -765,17 +772,18 @@ export const PersonLedgersPage: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label="مبلغ تراکنش (تومان) *"
+              label={`${isIt ? 'Importo' : 'Amount'} (${activeCurrency}) *`}
               type="number"
               min="0"
-              placeholder="0"
+              step="0.01"
+              placeholder="0.00"
               value={txForm.amount ? String(txForm.amount) : ''}
               onChange={(e) => setTxForm({ ...txForm, amount: Number(e.target.value) })}
               required
             />
 
             <DateInput
-              label="تاریخ تراکنش *"
+              label={isIt ? 'Data transazione *' : 'Transaction Date *'}
               value={txForm.transaction_date || ''}
               onChange={(iso) => setTxForm({ ...txForm, transaction_date: iso })}
               required
@@ -785,23 +793,23 @@ export const PersonLedgersPage: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-                روش پرداخت
+                {isIt ? 'Metodo di pagamento' : 'Payment Method'}
               </label>
               <select
                 value={txForm.payment_method || 'card_transfer'}
                 onChange={(e) => setTxForm({ ...txForm, payment_method: e.target.value as any })}
                 className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
               >
-                <option value="card_transfer">کارت به کارت / پایا</option>
-                <option value="cash">نقدی / صندوق</option>
-                <option value="bank_account">حساب بانکی مستقیم</option>
-                <option value="cheque">چک صیادی</option>
+                <option value="card_transfer">{isIt ? 'Carta / Bonifico' : 'Card / Bank Transfer'}</option>
+                <option value="cash">{isIt ? 'Contanti / Cassa' : 'Cash / Register'}</option>
+                <option value="bank_account">{isIt ? 'Conto bancario' : 'Bank Account'}</option>
+                <option value="cheque">{isIt ? 'Assegno' : 'Cheque'}</option>
               </select>
             </div>
 
             <Input
-              label="شماره پیگیری / سند بانکی"
-              placeholder="مثال: REF-54321"
+              label={isIt ? 'Codice riferimento / ricevuta' : 'Reference / Receipt No.'}
+              placeholder="e.g. REF-54321"
               value={txForm.reference_code || ''}
               onChange={(e) => setTxForm({ ...txForm, reference_code: e.target.value })}
             />
@@ -809,11 +817,11 @@ export const PersonLedgersPage: React.FC = () => {
 
           <div>
             <label className="block text-xs font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
-              شرح و توضیحات سند
+              {isIt ? 'Note e descrizione' : 'Description & Notes'}
             </label>
             <textarea
               rows={2}
-              placeholder="بابت تسویه فاکتور، بیعانه، پیش‌پرداخت..."
+              placeholder={isIt ? 'Saldo fattura, acconto, anticipo...' : 'Invoice settlement, deposit, advance payment...'}
               value={txForm.description || ''}
               onChange={(e) => setTxForm({ ...txForm, description: e.target.value })}
               className="w-full px-3 py-2 text-xs rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100"
@@ -822,10 +830,10 @@ export const PersonLedgersPage: React.FC = () => {
 
           <div className="flex justify-end gap-2 pt-4 border-t border-neutral-100 dark:border-neutral-800">
             <Button variant="outline" size="sm" type="button" onClick={() => setIsTxModalOpen(false)}>
-              انصراف
+              {t('common.cancel', isIt ? 'Annulla' : 'Cancel')}
             </Button>
             <Button variant="primary" size="sm" type="submit">
-              ثبت نهایی سند
+              {isIt ? 'Salva transazione' : 'Save Transaction'}
             </Button>
           </div>
         </form>

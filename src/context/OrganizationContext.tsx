@@ -10,6 +10,7 @@ import {
   safeSaveCachedUserProfile,
   safeSetLocalStorageItem,
 } from '../utils/profileCache';
+import { isPaidCloudPlan } from '../config/plans';
 
 function syncCachedOrganizationState(orgsList: Organization[], activeOrg: Organization | null) {
   if (typeof window !== 'undefined') {
@@ -215,7 +216,7 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       const now = Date.now();
       list = list.map((o) => {
         let plan = o.plan || 'free';
-        if (plan === 'pro') {
+        if (isPaidCloudPlan(plan)) {
           const isTrialExpired = o.trial_ends_at && new Date(o.trial_ends_at).getTime() <= now;
           if (isTrialExpired && !(o as any).has_active_subscription) {
             plan = 'free';
@@ -227,9 +228,9 @@ export const OrganizationProvider: React.FC<{ children: React.ReactNode }> = ({ 
         };
       });
 
-      // Filter out placeholder dummy "سازمان اصلی" if real organizations exist
+      // Filter out placeholder dummy main-org if real organizations exist
       if (list.length > 1) {
-        const nonPlaceholder = list.filter((o) => o.slug !== 'main-org' && o.name !== 'سازمان اصلی');
+        const nonPlaceholder = list.filter((o) => o.slug !== 'main-org');
         if (nonPlaceholder.length > 0) {
           list = nonPlaceholder;
         }

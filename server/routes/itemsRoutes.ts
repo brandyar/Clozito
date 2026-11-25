@@ -91,7 +91,7 @@ itemsRouter.get(
       }
 
       if (!orgIdNum || isNaN(orgIdNum) || orgIdNum <= 0) {
-        return res.status(403).json({ error: 'دسترسی غیرمجاز: سازمان فعال یافت نشد.' });
+        return res.status(403).json({ error: 'Unauthorized: active organization not found.' });
       }
 
       // Check Plan Gate for Web Clients (exempt subscriptions, organization_modules, and project_settings)
@@ -106,7 +106,7 @@ itemsRouter.get(
         if (activeOrganization && activeOrganization.plan === 'free') {
           return res.status(403).json({
             error:
-              'دسترسی تحت وب برای این سازمان نیازمند پلن Pro است. لطفاً پلن خود را ارتقا دهید یا از نسخه دسکتاپ رایگان تن‌خور استفاده کنید.',
+              'Web access for this organization requires a Pro plan. Please upgrade your plan or use the free Clozito desktop app.',
             code: 'WEB_FREE_PLAN_LOCKED',
           });
         }
@@ -339,7 +339,7 @@ itemsRouter.get(
         if (itemOrgId && Number(itemOrgId) !== orgIdNum) {
           return res
             .status(403)
-            .json({ error: 'دسترسی غیرمجاز: این داده متعلق به سازمان دیگری است.' });
+            .json({ error: 'Unauthorized: this record belongs to another organization.' });
         }
       }
 
@@ -379,14 +379,14 @@ itemsRouter.post(
     }
 
     if (!orgIdNum || isNaN(orgIdNum) || orgIdNum <= 0) {
-      return res.status(403).json({ error: 'سازمان فعال مشخص نشده است.' });
+      return res.status(403).json({ error: 'Active organization is not specified.' });
     }
 
     const permCheck = checkRolePermission(role, 'create', collection);
     if (!permCheck.allowed) {
       return res
         .status(403)
-        .json({ error: permCheck.message || 'شما دسترسی لازم برای این عملیات را ندارید.' });
+        .json({ error: permCheck.message || 'You do not have permission for this action.' });
     }
 
     const payload = { ...req.body };
@@ -608,10 +608,11 @@ itemsRouter.post(
         }
       }
 
-      // Special handling for treasury_transactions: Validate account FKs and sanitize amount
+      // Special handling for treasury_transactions: Validate account FKs and sanitize amount (2-decimal cents)
       if (collection === 'treasury_transactions') {
         if (cleanPayload.amount !== undefined) {
-          cleanPayload.amount = Math.max(0, Math.round(Number(cleanPayload.amount) || 0));
+          const parsedAmt = Number(cleanPayload.amount) || 0;
+          cleanPayload.amount = Math.max(0, Math.round((parsedAmt + Number.EPSILON) * 100) / 100);
         }
 
         if (cleanPayload.destination_account_id) {
@@ -682,15 +683,30 @@ itemsRouter.post(
       try {
         created = await DirectusAdminClient.createItem(collection, cleanPayload);
       } catch (createErr: any) {
-        if (
-          collection === 'treasury_transactions' &&
-          (createErr.message?.includes('out of range') || createErr.message?.includes('syntax for type bigint'))
-        ) {
-          console.warn('[API Proxy] Retrying treasury_transactions create with string amount format...');
-          const retryPayload = {
-            ...cleanPayload,
-            amount: String(Math.max(0, Math.round(Number(cleanPayload.amount) || 0))),
-          };
+        const errMsg = String(createErr?.message || '');
+        if (errMsg.includes('out of range') || errMsg.includes('syntax for type bigint')) {
+          console.warn(
+            `[API Proxy] Directus column in ${collection} is still bigint; retrying with integer fallback until schema is migrated to decimal(18,2).`
+          );
+          const retryPayload: Record<string, any> = { ...cleanPayload };
+          const bigintCandidateFields = [
+            'amount',
+            'balance_after',
+            'unit_cost',
+            'current_balance',
+            'estimated_unit_cost',
+            'actual_unit_cost',
+            'unit_fee',
+            'total_fee',
+          ];
+          for (const field of bigintCandidateFields) {
+            if (retryPayload[field] !== undefined && retryPayload[field] !== null && retryPayload[field] !== '') {
+              const numVal = Number(retryPayload[field]);
+              if (Number.isFinite(numVal)) {
+                retryPayload[field] = Math.round(numVal);
+              }
+            }
+          }
           created = await DirectusAdminClient.createItem(collection, retryPayload);
         } else {
           throw createErr;
@@ -786,7 +802,7 @@ itemsRouter.patch(
     if (!permCheck.allowed) {
       return res
         .status(403)
-        .json({ error: permCheck.message || 'شما دسترسی لازم برای ویرایش این بخش را ندارید.' });
+        .json({ error: permCheck.message || 'You do not have permission to edit this section.' });
     }
 
     try {
@@ -806,7 +822,7 @@ itemsRouter.patch(
         if (memberships.length === 0 || memberships[0].role !== 'owner') {
           return res
             .status(403)
-            .json({ error: 'فقط مالک سازمان (Owner) مجاز به ویرایش مشخصات سازمان است.' });
+            .json({ error: 'Only the organization owner is allowed to update organization settings.' });
         }
 
         const payload: any = {};
@@ -815,6 +831,7 @@ itemsRouter.patch(
           'slug',
           'currency',
           'timezone',
+          'default_tax_rate',
           'phone',
           'mobile',
           'address',
@@ -822,7 +839,14 @@ itemsRouter.patch(
         ];
         for (const f of allowedFields) {
           if (req.body[f] !== undefined) {
-            payload[f] = req.body[f];
+            if (f === 'default_tax_rate') {
+              const rateNum = Number(req.body[f]);
+              if (Number.isFinite(rateNum) && rateNum >= 0 && rateNum <= 100) {
+                payload[f] = Math.round((rateNum + Number.EPSILON) * 100) / 100;
+              }
+            } else {
+              payload[f] = req.body[f];
+            }
           }
         }
 
@@ -861,7 +885,22 @@ itemsRouter.patch(
           }
         }
 
-        const updated = await DirectusAdminClient.updateItem('organizations', orgId, payload);
+        let updated: any;
+        try {
+          updated = await DirectusAdminClient.updateItem('organizations', orgId, payload);
+        } catch (orgUpdateErr: any) {
+          if (payload.default_tax_rate !== undefined) {
+            console.warn(
+              '[API Proxy] organizations.default_tax_rate not yet present in Directus; retrying without it:',
+              orgUpdateErr?.message
+            );
+            const { default_tax_rate: _omit, ...fallbackPayload } = payload;
+            updated = await DirectusAdminClient.updateItem('organizations', orgId, fallbackPayload);
+            updated = { ...updated, default_tax_rate: payload.default_tax_rate };
+          } else {
+            throw orgUpdateErr;
+          }
+        }
         invalidateUserCaches(userId);
         invalidateOrgCaches(orgId, 'organizations');
         return res.json({ data: updated });
@@ -875,7 +914,7 @@ itemsRouter.patch(
           id,
           '*,user_id.*'
         );
-        if (!orgUser) return res.status(404).json({ error: 'عضو سازمان یافت نشد.' });
+        if (!orgUser) return res.status(404).json({ error: 'Organization member not found.' });
 
         const existingOrgId =
           typeof orgUser.organization_id === 'object'
@@ -884,7 +923,7 @@ itemsRouter.patch(
         if (existingOrgId && Number(existingOrgId) !== orgIdNum) {
           return res
             .status(403)
-            .json({ error: 'دسترسی غیرمجاز: امکان ویرایش داده‌های سازمان دیگر وجود ندارد.' });
+            .json({ error: 'Unauthorized: cannot edit records of another organization.' });
         }
 
         const directusUserId =
@@ -974,7 +1013,7 @@ itemsRouter.patch(
         if (existingOrgId && Number(existingOrgId) !== orgIdNum) {
           return res
             .status(403)
-            .json({ error: 'دسترسی غیرمجاز: امکان ویرایش داده‌های سازمان دیگر وجود ندارد.' });
+            .json({ error: 'Unauthorized: cannot edit records of another organization.' });
         }
       }
 
@@ -983,7 +1022,26 @@ itemsRouter.patch(
       delete payload.organization_id;
 
       const cleanPayload = sanitizePayloadForDirectus(collection, payload);
-      const updated = await DirectusAdminClient.updateItem(collection, id, cleanPayload);
+      let updated: any;
+      try {
+        updated = await DirectusAdminClient.updateItem(collection, id, cleanPayload);
+      } catch (updateErr: any) {
+        const msg = String(updateErr?.message || '');
+        if (msg.includes('syntax for type bigint') || msg.includes('invalid input syntax for type integer')) {
+          const intFallback: Record<string, any> = { ...cleanPayload };
+          for (const [k, v] of Object.entries(intFallback)) {
+            if (typeof v === 'number' && !Number.isInteger(v)) {
+              intFallback[k] = Math.round(v);
+            }
+          }
+          console.warn(
+            `[API Proxy] Directus column in "${collection}" is still bigint/integer; retrying PATCH #${id} with integer fallback.`
+          );
+          updated = await DirectusAdminClient.updateItem(collection, id, intFallback);
+        } else {
+          throw updateErr;
+        }
+      }
 
       invalidateOrgCaches(orgIdNum, collection);
       DirectusAdminClient.invalidateCollectionCache(collection);
@@ -1038,7 +1096,7 @@ itemsRouter.delete(
     if (!permCheck.allowed) {
       return res
         .status(403)
-        .json({ error: permCheck.message || 'شما دسترسی لازم برای حذف این بخش را ندارید.' });
+        .json({ error: permCheck.message || 'You do not have permission to delete this item.' });
     }
 
     try {
@@ -1054,7 +1112,7 @@ itemsRouter.delete(
         if (existingOrgId && Number(existingOrgId) !== orgIdNum) {
           return res
             .status(403)
-            .json({ error: 'دسترسی غیرمجاز: امکان حذف داده‌های سازمان دیگر وجود ندارد.' });
+            .json({ error: 'Unauthorized: cannot delete data belonging to another organization.' });
         }
       }
 
@@ -1097,7 +1155,7 @@ itemsRouter.post(
       return res.json({ success: true, data: syncedAccounts });
     } catch (error: any) {
       console.error('[API Proxy] Error recalculating balances:', error.message);
-      return res.status(500).json({ error: error.message || 'خطا در محاسبه و ذخیره موجودی حساب‌ها' });
+      return res.status(500).json({ error: error.message || 'Failed to recalculate and save account balances.' });
     }
   }
 );

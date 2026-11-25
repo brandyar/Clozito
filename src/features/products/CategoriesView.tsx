@@ -29,7 +29,7 @@ import {
 
 export const CategoriesView: React.FC = () => {
   const { t, locale } = useTranslation();
-  const isPersian = false;
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
 
   const [categories, setCategories] = useState<Category[]>([]);
@@ -344,8 +344,8 @@ export const CategoriesView: React.FC = () => {
       >
         <form id="category-form" onSubmit={handleSave} className="space-y-4">
           <Input
-            label={`${t('products.categoryName', 'عنوان دسته‌بندی')} *`}
-            placeholder={isPersian ? "مثال: کت و کاپشن مردانه" : "e.g. Men's Jackets"}
+            label={`${t('products.categoryName', 'Category Name')} *`}
+            placeholder={isIt ? 'es. Giacche Uomo' : "e.g. Men's Jackets"}
             value={name}
             onChange={(e) => setName(e.target.value)}
             required
@@ -353,17 +353,17 @@ export const CategoriesView: React.FC = () => {
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label={t('products.slugHeader', 'شناسه یکتا (اسلاگ)')}
+              label={t('products.slugHeader', 'Unique Identifier (Slug)')}
               placeholder="men-jackets"
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
             />
             <Select
-              label={t('products.parentCategory', 'دسته‌بندی والد')}
+              label={t('products.parentCategory', 'Parent Category')}
               value={parentId}
               onChange={(e) => setParentId(e.target.value ? Number(e.target.value) : '')}
               options={[
-                { value: '', label: t('products.rootCategory', 'دسته‌بندی اصلی (سطح اول)') },
+                { value: '', label: t('products.rootCategory', 'Root Category (Top Level)') },
                 ...getParentSelectOptions(),
               ]}
             />

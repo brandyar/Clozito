@@ -12,6 +12,7 @@ import { QuickSearchModal } from '../modals/QuickSearchModal';
 import { FeedbackModal } from '../modals/FeedbackModal';
 import { Building2, Search, Database, RefreshCw, CheckCircle2, Menu, Cloud, ChevronDown, Plus, Sun, Moon, Monitor, MessageSquare, Sparkles } from 'lucide-react';
 import { toPersianDigits } from '../../utils/formatters';
+import { isPaidCloudPlan } from '../../config/plans';
 
 interface HeaderProps {
   onToggleSidebar?: () => void;
@@ -38,8 +39,9 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
   const orgMenuRef = useRef<HTMLDivElement>(null);
   const themeMenuRef = useRef<HTMLDivElement>(null);
 
+  const isCloudPlan = isPaidCloudPlan(activeOrganization?.plan);
   const isTrialActive = Boolean(
-    activeOrganization?.plan === 'pro' &&
+    isCloudPlan &&
     activeOrganization?.trial_ends_at &&
     new Date(activeOrganization.trial_ends_at).getTime() > Date.now()
   );
@@ -115,7 +117,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
   };
 
   const handleSyncNow = async () => {
-    if (activeOrganization?.plan !== 'pro') {
+    if (!isPaidCloudPlan(activeOrganization?.plan)) {
       setIsUpgradeModalOpen(true);
       return;
     }
@@ -270,7 +272,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
                   <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60"></span>
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
                 </span>
-                <span className="font-semibold text-neutral-900 dark:text-neutral-100">{isIt ? 'Prova Pro' : 'Pro Trial'}</span>
+                <span className="font-semibold text-neutral-900 dark:text-neutral-100">{isIt ? 'Prova Cloud' : 'Cloud Trial'}</span>
               </span>
               {trialDaysRemaining !== null && (
                 <span className="text-[11px] font-mono text-neutral-500 dark:text-neutral-400 border-s border-neutral-200 dark:border-neutral-700/80 ps-2 ms-0.5">
@@ -278,7 +280,7 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
                 </span>
               )}
             </button>
-          ) : activeOrganization?.plan !== 'pro' ? (
+          ) : !isCloudPlan ? (
             <button
               type="button"
               onClick={() => setIsUpgradeModalOpen(true)}
@@ -290,8 +292,8 @@ export const Header: React.FC<HeaderProps> = ({ onToggleSidebar, onNavigate }) =
                 {activeOrganization?.has_used_trial
                   ? t('settings.upgradeToPro')
                   : isIt
-                  ? 'Prova Pro Gratis'
-                  : 'Free Pro Trial'}
+                  ? 'Prova Cloud Gratis'
+                  : '14-Day Free Trial'}
               </span>
             </button>
           ) : null}

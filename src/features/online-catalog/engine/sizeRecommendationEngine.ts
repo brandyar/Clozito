@@ -1,5 +1,5 @@
 /**
- * TANKHOR Smart Size Recommendation Engine
+ * Clozito Smart Size Recommendation Engine
  * Dynamic garment-to-body matching algorithms strictly based on
  * the specific measurements of the product's assigned Size Guide Template.
  */
@@ -36,40 +36,40 @@ export interface DimensionComparison {
   idealEaseMin: number;
   idealEaseMax: number;
   status: 'snug' | 'ideal' | 'loose' | 'tight_risk';
-  noteFa: string;
+  note: string;
 }
 
 export interface SizeRecommendationResult {
   recommendedSize: Size | null;
   matchScore: number; // 0 - 100
   fitStatus: 'perfect' | 'comfortable' | 'borderline_tight' | 'borderline_loose';
-  fitDescriptionFa: string;
-  detailedAnalysisFa: string;
+  fitDescription: string;
+  detailedAnalysis: string;
   comparisons: DimensionComparison[];
   allRankedSizes: Array<{
     size: Size;
     score: number;
-    fitFeelFa: string;
+    fitFeel: string;
     isRecommended: boolean;
   }>;
 }
 
 /**
- * Standardize Persian & English measurement keys to canonical dimensions
+ * Standardize English & Italian measurement keys to canonical dimensions
  */
 export function normalizeMeasurementCode(name: string, code?: string): string {
   const text = `${name || ''} ${code || ''}`.toLowerCase();
 
-  if (text.includes('سینه') || text.includes('chest') || text.includes('bust')) return 'chest';
-  if (text.includes('کمر') || text.includes('waist')) return 'waist';
-  if (text.includes('باسن') || text.includes('hip')) return 'hip';
-  if (text.includes('سرشانه') || text.includes('shoulder')) return 'shoulder';
-  if (text.includes('قد لباس') || text.includes('قد تیشرت') || text.includes('قد مانتو') || text.includes('length')) return 'length';
-  if (text.includes('آستین') || text.includes('sleeve')) return 'arm_length';
-  if (text.includes('ران') || text.includes('thigh')) return 'thigh';
-  if (text.includes('دمپا') || text.includes('leg_opening')) return 'leg_opening';
-  if (text.includes('شلوار') || text.includes('فاق') || text.includes('inseam')) return 'pants_length';
-  if (text.includes('طول پا') || text.includes('کف پا') || text.includes('foot')) return 'foot_length';
+  if (text.includes('chest') || text.includes('bust') || text.includes('petto') || text.includes('torace') || text.includes('seno')) return 'chest';
+  if (text.includes('waist') || text.includes('vita')) return 'waist';
+  if (text.includes('hip') || text.includes('fianch') || text.includes('bacino')) return 'hip';
+  if (text.includes('shoulder') || text.includes('spall')) return 'shoulder';
+  if (text.includes('length') || text.includes('lunghezza')) return 'length';
+  if (text.includes('sleeve') || text.includes('manic')) return 'arm_length';
+  if (text.includes('thigh') || text.includes('cosci')) return 'thigh';
+  if (text.includes('leg_opening') || text.includes('hem') || text.includes('fondo')) return 'leg_opening';
+  if (text.includes('inseam') || text.includes('cavallo') || text.includes('pants')) return 'pants_length';
+  if (text.includes('foot') || text.includes('pied')) return 'foot_length';
 
   return code || 'general';
 }
@@ -161,8 +161,11 @@ export function recommendSize(
   template: SizeGuideTemplate,
   measurements: SizeGuideMeasurement[],
   values: SizeGuideValue[],
-  availableSizes: Size[]
+  availableSizes: Size[],
+  locale: 'en' | 'it' = 'en'
 ): SizeRecommendationResult {
+  const isIt = locale === 'it';
+
   // If height/weight provided, calculate estimations as fallback
   const estimations =
     user.height && user.weight
@@ -188,13 +191,17 @@ export function recommendSize(
       recommendedSize: fallbackSize,
       matchScore: 65,
       fitStatus: 'comfortable',
-      fitDescriptionFa: 'جدول ابعاد این کالا در حال تکمیل است؛ نزدیک‌ترین سایز پیش‌فرض پیشنهاد شد.',
-      detailedAnalysisFa: 'لطفاً جدول اندازه را بررسی کنید.',
+      fitDescription: isIt
+        ? 'La tabella delle misure per questo prodotto è in fase di completamento; è stata suggerita la taglia predefinita più vicina.'
+        : 'Size chart measurements for this product are being completed; the closest default size is suggested.',
+      detailedAnalysis: isIt
+        ? 'Consulta la tabella delle taglie.'
+        : 'Please review the size guide table.',
       comparisons: [],
       allRankedSizes: availableSizes.map((s, idx) => ({
         size: s,
         score: idx === 0 ? 65 : 55,
-        fitFeelFa: s.name,
+        fitFeel: s.name,
         isRecommended: idx === 0,
       })),
     };
@@ -236,6 +243,7 @@ export function recommendSize(
       const easeConfig = EASE_MAP[canonicalKey] || EASE_MAP.general;
       const [idealMin, idealMax] = easeConfig[user.fitPreference || 'regular'];
       const actualEase = garmentVal - userVal;
+      const unit = meas.unit || 'cm';
 
       // Weight multiplier based on measurement importance
       const weight =
@@ -248,25 +256,33 @@ export function recommendSize(
 
       let dimPenalty = 0;
       let status: DimensionComparison['status'] = 'ideal';
-      let noteFa = '';
+      let note = '';
 
       if (actualEase < idealMin) {
         if (actualEase < 0) {
           dimPenalty = Math.abs(actualEase) * 14;
           status = 'tight_risk';
-          noteFa = `کوچک‌تر از اندازه بدن (${Math.abs(actualEase)} سانتی‌متر تنگ)`;
+          note = isIt
+            ? `Più stretto del corpo (${Math.abs(actualEase)} ${unit} stretto)`
+            : `Smaller than body (${Math.abs(actualEase)} ${unit} tight)`;
         } else {
           dimPenalty = (idealMin - actualEase) * 5;
           status = 'snug';
-          noteFa = `تن‌خور کاملاً جذب (${actualEase} سانتی‌متر آزادی)`;
+          note = isIt
+            ? `Vestibilità aderente (${actualEase} ${unit} di agio)`
+            : `Snug fit (${actualEase} ${unit} ease)`;
         }
       } else if (actualEase > idealMax) {
         dimPenalty = (actualEase - idealMax) * 4.5;
         status = 'loose';
-        noteFa = `آزادتر از حد استاندارد (${actualEase} سانتی‌متر آزادی)`;
+        note = isIt
+          ? `Più ampio dello standard (${actualEase} ${unit} di agio)`
+          : `Looser than standard (${actualEase} ${unit} ease)`;
       } else {
         status = 'ideal';
-        noteFa = `انطباق ایده‌آل با تن‌خور مورد نظر (${actualEase} سانتی‌متر آزادی)`;
+        note = isIt
+          ? `Vestibilità ideale (${actualEase} ${unit} di agio)`
+          : `Ideal match for desired fit (${actualEase} ${unit} ease)`;
       }
 
       sizePenalty += dimPenalty * weight;
@@ -274,33 +290,33 @@ export function recommendSize(
       comparisons.push({
         measurementId: meas.id,
         measurementName: meas.name,
-        measurementUnit: meas.unit || 'cm',
+        measurementUnit: unit,
         userBodyValue: userVal,
         garmentValue: garmentVal,
         easeAmount: actualEase,
         idealEaseMin: idealMin,
         idealEaseMax: idealMax,
         status,
-        noteFa,
+        note,
       });
     });
 
     const normalizedPenalty = totalWeight > 0 ? sizePenalty / totalWeight : 50;
     const score = Math.max(10, Math.min(99, Math.round(100 - normalizedPenalty)));
 
-    let fitFeelFa = 'متناسب';
+    let fitFeel = isIt ? 'Bilanciata' : 'Balanced';
     if (comparisons.some((c) => c.status === 'tight_risk')) {
-      fitFeelFa = 'احتمال تنگی';
+      fitFeel = isIt ? 'Rischio stretto' : 'Tight risk';
     } else if (comparisons.every((c) => c.status === 'loose')) {
-      fitFeelFa = 'آزاد و اورسایز';
+      fitFeel = isIt ? 'Ampia / Oversize' : 'Relaxed / Oversize';
     } else if (comparisons.every((c) => c.status === 'snug')) {
-      fitFeelFa = 'کاملاً جذب (اسلیم)';
+      fitFeel = isIt ? 'Aderente (Slim)' : 'Snug (Slim)';
     }
 
     return {
       size,
       score,
-      fitFeelFa,
+      fitFeel,
       comparisons,
     };
   });
@@ -312,33 +328,43 @@ export function recommendSize(
   const matchScore = best?.score || 70;
 
   let fitStatus: SizeRecommendationResult['fitStatus'] = 'comfortable';
-  let fitDescriptionFa = '';
+  let fitDescription = '';
 
   if (best?.comparisons.some((c) => c.status === 'tight_risk')) {
     fitStatus = 'borderline_tight';
-    fitDescriptionFa = 'این سایز در برخی اندازه‌ها جذب خواهد بود؛ در صورت تمایل به راحتی بیشتر سایز بزرگ‌تر را مد نظر قرار دهید.';
+    fitDescription = isIt
+      ? 'Questa taglia può risultare aderente in alcuni punti; considera una taglia più grande per maggiore comfort.'
+      : 'This size may fit snugly in some areas; consider sizing up for extra comfort.';
   } else if (matchScore >= 88) {
     fitStatus = 'perfect';
-    fitDescriptionFa = 'تطابق بسیار بالا با ابعاد و استایل انتخابی شما.';
+    fitDescription = isIt
+      ? 'Ottima corrispondenza con le tue misure e lo stile scelto.'
+      : 'Very high match with your measurements and chosen fit style.';
   } else if (matchScore >= 72) {
     fitStatus = 'comfortable';
-    fitDescriptionFa = 'تن‌خور استاندارد و راحت مطابق با جدول راهنمای سایز کالا.';
+    fitDescription = isIt
+      ? 'Vestibilità standard e confortevole in base alla guida alle taglie del capo.'
+      : 'Standard comfortable fit according to the garment size guide.';
   } else {
     fitStatus = 'borderline_loose';
-    fitDescriptionFa = 'نزدیک‌ترین سایز متناسب با الگوی این کالا.';
+    fitDescription = isIt
+      ? 'La taglia più vicina al modello di questo capo.'
+      : 'Closest matching size for this garment pattern.';
   }
 
   return {
     recommendedSize,
     matchScore,
     fitStatus,
-    fitDescriptionFa,
-    detailedAnalysisFa: `سایز پیشنهادی بر اساس ${best?.comparisons.length || 0} اندازه تخصصی این الگو محاسبه شد.`,
+    fitDescription,
+    detailedAnalysis: isIt
+      ? `Taglia consigliata calcolata su ${best?.comparisons.length || 0} misure specifiche di questo modello.`
+      : `Recommended size calculated from ${best?.comparisons.length || 0} specific measurements for this pattern.`,
     comparisons: best?.comparisons || [],
     allRankedSizes: scoredSizes.map((s, idx) => ({
       size: s.size,
       score: s.score,
-      fitFeelFa: s.fitFeelFa,
+      fitFeel: s.fitFeel,
       isRecommended: idx === 0,
     })),
   };

@@ -17,6 +17,7 @@ import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { Card } from '../../components/ui/Card';
 import { Save, ArrowRight, RefreshCw } from 'lucide-react';
+import { generateRandomBarcode } from '../../utils/barcode';
 
 // Sub-components
 import { ProductGeneralSpecsCard, ProductStatus } from './components/ProductGeneralSpecsCard';
@@ -45,7 +46,7 @@ export const ProductEditView: React.FC<ProductEditViewProps> = ({
 }) => {
   const { t, locale } = useTranslation();
   const { activeOrganization } = useOrganization();
-  const isPersian = false;
+  const isIt = locale === 'it';
 
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
@@ -332,12 +333,12 @@ export const ProductEditView: React.FC<ProductEditViewProps> = ({
         const timestamp = Date.now();
         const randomSuffix = Math.random().toString(36).slice(2, 6);
 
-        const skuParts = ['TNK', slugClean];
+        const skuParts = ['CLZ', slugClean];
         if (cCode) skuParts.push(cCode);
         if (sCode) skuParts.push(sCode);
         const generatedSku = skuParts.join('-');
 
-        const barcode = `626${Math.floor(100000000 + Math.random() * 900000000)}`;
+        const barcode = generateRandomBarcode();
 
         nextVariantsList.push({
           _tempId: `temp_${timestamp}_${randomSuffix}`,
@@ -675,7 +676,7 @@ export const ProductEditView: React.FC<ProductEditViewProps> = ({
       onBack();
     } catch (err: any) {
       console.error('[ProductEditView] Error saving product & variants:', err);
-      const errMsg = err?.message || (isPersian ? 'خطای ناشناخته در ذخیره‌سازی' : 'Unknown error');
+      const errMsg = err?.message || (isIt ? 'Errore sconosciuto' : 'Unknown error');
       alert(`${t('products.errorSavingProductAndVariants')}: ${errMsg}`);
     } finally {
       setIsSaving(false);
@@ -727,7 +728,7 @@ export const ProductEditView: React.FC<ProductEditViewProps> = ({
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-xl font-extrabold text-slate-900 dark:text-neutral-100">
-                {productId ? `${t('products.editProductTitle')} ${title || (isPersian ? 'بدون نام' : 'Untitled')}` : t('products.newProductTitle')}
+                {productId ? `${t('products.editProductTitle')} ${title || (isIt ? 'Senza titolo' : 'Untitled')}` : t('products.newProductTitle')}
               </h1>
               <Badge variant={status === 'published' ? 'success' : status === 'archived' ? 'neutral' : 'warning'}>
                 {status === 'published' ? t('products.statusPublished') : status === 'archived' ? t('products.statusArchived') : t('products.statusDraft')}
@@ -754,7 +755,7 @@ export const ProductEditView: React.FC<ProductEditViewProps> = ({
       </div>
 
       <form onSubmit={handleSaveProductAndVariants} className="space-y-6">
-        {/* Section 1: مشخصات عمومی کالا */}
+        {/* Section 1: General Product Specifications */}
         <ProductGeneralSpecsCard
           productId={productId}
           title={title}
@@ -792,7 +793,7 @@ export const ProductEditView: React.FC<ProductEditViewProps> = ({
           setMainImage={setMainImage}
         />
 
-        {/* Section 2: جدول تنوع‌ها و موجودی انبار */}
+        {/* Section 2: Variants Table and Warehouse Inventory */}
         <Card>
           <ProductVariantMatrixSelector
             colors={colors}

@@ -18,6 +18,7 @@ import {
   Zap,
   Scissors,
   Boxes,
+  Cloud,
 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -27,6 +28,11 @@ import { useModuleAccess } from '../../hooks/useModuleAccess';
 import { useTranslation } from '../../i18n';
 import { formatModulePrice } from '../../utils/license';
 import { PurchaseModuleModal } from '../modals/PurchaseModuleModal';
+import { UpgradeToProModal } from '../modals/UpgradeToProModal';
+import {
+  getRequiredTierForModule,
+  isModuleOfflinePurchasable,
+} from '../../config/plans';
 
 interface ModuleLockedCardProps {
   moduleSlug: string;
@@ -45,24 +51,29 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
 }) => {
   const { t, locale } = useTranslation();
   const { systemModules, orgModules, hardwareId, activateLicense, refreshModules } = useModuleAccess();
-  const isRtl = false;
+  const isItalian = locale === 'it';
 
   const [licenseKey, setLicenseKey] = useState('');
   const [isActivating, setIsActivating] = useState(false);
   const [message, setMessage] = useState<{ text: string; isError: boolean } | null>(null);
   const [copiedHwId, setCopiedHwId] = useState(false);
   const [isPurchaseModalOpen, setIsPurchaseModalOpen] = useState(false);
+  const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
 
   const matchedModule = systemModules.find((m) => m.slug === moduleSlug);
   const matchedOrgModule = orgModules.find((m) => m.slug === moduleSlug);
 
-  // Read whether this module is included in Pro plan from the database item
-  const isIncludedInPro = matchedOrgModule?.included_in_pro !== undefined
-    ? Boolean(matchedOrgModule.included_in_pro)
-    : Boolean(matchedModule?.included_in_pro);
+  const requiredTier = getRequiredTierForModule(moduleSlug);
+  const canBuyOffline = isModuleOfflinePurchasable(moduleSlug);
+  const formattedPrice = canBuyOffline ? formatModulePrice(matchedModule || matchedOrgModule || { slug: moduleSlug }, locale) : '';
 
-  // Formatted price according to active locale (Tomans in Persian, USD in English)
-  const formattedPrice = formatModulePrice(matchedModule || matchedOrgModule, locale);
+  const tierName =
+    requiredTier === 'boutique'
+      ? 'Boutique Cloud'
+      : isItalian
+        ? 'Atelier & Produzione Cloud'
+        : 'Atelier & Production Cloud';
+  const tierPriceLabel = requiredTier === 'boutique' ? '€29' : '€49';
 
   const handleCopyHardwareId = () => {
     navigator.clipboard.writeText(hardwareId);
@@ -72,7 +83,7 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
 
   const handleActivate = async () => {
     if (!licenseKey.trim()) {
-      setMessage({ text: t('modules.enterLicenseKeyAlert', 'لطفاً کلید لایسنس را وارد کنید.'), isError: true });
+      setMessage({ text: t('modules.enterLicenseKeyAlert', 'Please enter your license key.'), isError: true });
       return;
     }
 
@@ -91,60 +102,59 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
         setMessage({ text: res.message, isError: true });
       }
     } catch (err: any) {
-      setMessage({ text: err?.message || t('modules.licenseVerifyError', 'خطا در اعتبارسنجی لایسنس'), isError: true });
+      setMessage({ text: err?.message || t('modules.licenseVerifyError', 'Failed to verify license key.'), isError: true });
     } finally {
       setIsActivating(false);
     }
   };
 
-  // Concise module highlights applicable to both Web and Desktop
   const getFeatureHighlights = () => {
     switch (moduleSlug) {
       case 'barcode':
         return [
           {
             icon: Printer,
-            title: isRtl ? 'چاپ انواع لیبل و بارکد' : 'Thermal & Label Printing',
-            description: isRtl
-              ? 'طراحی و چاپ سریع روی انواع پرینترهای حرارتی و لیبل‌زن استاندارد.'
+            title: isItalian ? 'Stampa Termica ed Etichette' : 'Thermal & Label Printing',
+            description: isItalian
+              ? 'Stampa rapida su stampanti termiche e per etichette standard.'
               : 'Fast printing on thermal and standard barcode label printers.',
           },
           {
             icon: ScanLine,
-            title: isRtl ? 'اسکن و انبارگردانی سریع' : 'Fast Barcode Scanning',
-            description: isRtl
-              ? 'اسکن مستقیم بارکد در فاکتور و انبارگردانی برای حذف خطای کاربری.'
+            title: isItalian ? 'Scansione Rapida Codici' : 'Fast Barcode Scanning',
+            description: isItalian
+              ? 'Scansione diretta dei codici a barre in cassa, ordini e movimenti di magazzino.'
               : 'Direct barcode scanning in POS, orders, and stock movements.',
           },
           {
             icon: ShieldCheck,
-            title: isRtl ? 'کارکرد یکپارچه وب و دسکتاپ' : 'Web & Desktop Support',
-            description: isRtl
-              ? 'لایسنس دائمی برای سازمان با عملکرد همگام در مرورگر و دسکتاپ.'
-              : 'Permanent organization license supporting both web and desktop.',
+            title: isItalian ? 'Incluso in Boutique Cloud' : 'Included in Boutique Cloud',
+            description: isItalian
+              ? 'Sbloccato con Boutique Cloud o acquistabile una tantum per Desktop offline.'
+              : 'Included with Boutique Cloud or available one-time for Desktop offline use.',
           },
         ];
       case 'online_catalog':
         return [
           {
             icon: Globe,
-            title: isRtl ? 'ویترین آنلاین برند شما' : 'Digital Brand Showcase',
-            description: isRtl
-              ? 'صفحه اینترنتی اختصاصی برای نمایش کالاها با لینک مستقیم و QR کد.'
+            title: isItalian ? 'Vetrina Digitale del Brand' : 'Digital Brand Showcase',
+            description: isItalian
+              ? 'Pagina web dedicata ai tuoi prodotti con link diretto e codice QR.'
               : 'Dedicated web showcase for products with direct links and QR codes.',
           },
           {
             icon: Sparkles,
-            title: isRtl ? 'شبیه‌ساز هوشمند سایز' : 'Smart Size Finder',
-            description: isRtl
-              ? 'محاسبه خودکار و دقیق سایز مناسب خریدار بر اساس ابعاد و مشخصات لباس.'
+            title: isItalian ? 'Trova Taglia Intelligente' : 'Smart Size Finder',
+            description: isItalian
+              ? 'Suggerimenti automatici della taglia basati sulle misure del capo.'
               : 'Automated size recommendations based on garment measurements.',
           },
           {
             icon: ShoppingBag,
-            title: isRtl ? 'ثبت و ارسال آسان سفارش' : 'Seamless Order Intake',
-            description: isRtl
-              ? 'امکان ارسال مستقیم سبد خرید خریداران به واتس‌اپ و سیستم فروش.'
+            title: isItalian ? 'Raccolta Ordini Rapida' : 'Seamless Order Intake',
+            description: isItalian
+              ? 'Invio diretto del carrello su WhatsApp e sistema vendite del negozio.'
               : 'Direct shopping cart dispatch to WhatsApp and store sales.',
           },
         ];
@@ -152,48 +162,48 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
         return [
           {
             icon: BarChart3,
-            title: isRtl ? 'سود و زیان و خزانه‌داری' : 'P&L & Financial Control',
-            description: isRtl
-              ? 'کنترل خودکار درآمدها، هزینه‌ها، بهای تمام‌شده و مانده حساب‌ها.'
+            title: isItalian ? 'Conto Economico e Tesoreria' : 'P&L & Financial Control',
+            description: isItalian
+              ? 'Monitoraggio automatico di ricavi, COGS, spese e conti finanziari.'
               : 'Automated tracking of revenues, COGS, expenses, and treasury.',
           },
           {
             icon: Users,
-            title: isRtl ? 'معین اشخاص و چک‌ها' : 'Ledgers & Sayad Cheques',
-            description: isRtl
-              ? 'گردش حساب دقیق خریداران، تأمین‌کنندگان و رهگیری چک‌های صیادی.'
-              : 'Customer/supplier debtor-creditor statements and cheques tracking.',
+            title: isItalian ? 'Partitari Clienti e Fornitori' : 'Customer & Supplier Ledgers',
+            description: isItalian
+              ? 'Estratti conto dare/avere per clienti e fornitori e riconciliazione pagamenti.'
+              : 'Customer and supplier debtor-creditor statements and payment reconciliation.',
           },
           {
             icon: FileSpreadsheet,
-            title: isRtl ? 'انطباق مالیاتی و خروجی اسناد' : 'Tax & Journal Exports',
-            description: isRtl
-              ? 'گزارش ارزش افزوده و خروجی استاندارد برای نرم‌افزارهای مالی سپیدار و هلو.'
-              : 'VAT reports and double-entry export files for Sepidar and Holoo.',
+            title: isItalian ? 'Report IVA ed Esportazioni' : 'VAT Reports & Journal Exports',
+            description: isItalian
+              ? 'Riepiloghi IVA europei ed esportazioni CSV/contabili pronte per il commercialista.'
+              : 'European VAT summaries and standard double-entry CSV exports for accountants.',
           },
         ];
       case 'woocommerce':
         return [
           {
             icon: Zap,
-            title: isRtl ? 'همگام‌سازی انبار و سایت' : 'Real-time Stock & Price Sync',
-            description: isRtl
-              ? 'بروزرسانی بلادرنگ موجودی و قیمت انواع پوشاک در فروشگاه آنلاین وردپرس.'
+            title: isItalian ? 'Sincronizzazione Giacenze e Prezzi' : 'Real-time Stock & Price Sync',
+            description: isItalian
+              ? 'Aggiornamento in tempo reale di stock e prezzi sul tuo store WooCommerce.'
               : 'Real-time synchronization of stock and prices in WooCommerce.',
           },
           {
             icon: ShoppingBag,
-            title: isRtl ? 'دریافت آنی سفارشات اینترنتی' : 'Automated Order Import',
-            description: isRtl
-              ? 'صدور خودکار فاکتور فروش در تن‌خور و کسر هوشمند کالاها از انبار.'
-              : 'Instant Tankhor order generation and stock deduction upon sale.',
+            title: isItalian ? 'Importazione Automatica Ordini' : 'Automated Order Import',
+            description: isItalian
+              ? 'Creazione istantanea degli ordini e scarico automatico del magazzino.'
+              : 'Instant order generation and automatic stock deduction upon sale.',
           },
           {
             icon: Globe,
-            title: isRtl ? 'ارتباط مستقیم REST API' : 'Direct REST API Connection',
-            description: isRtl
-              ? 'اتصال امن و دوطرفه وب‌سرویس سازگار با وب و دسکتاپ بدون افزونه واسط.'
-              : 'Secure two-way integration supporting both web and desktop.',
+            title: isItalian ? 'Connessione Diretta REST API' : 'Direct REST API Connection',
+            description: isItalian
+              ? 'Integrazione sicura bidirezionale inclusa nel piano Boutique Cloud.'
+              : 'Secure two-way integration included with Boutique Cloud.',
           },
         ];
       case 'production':
@@ -201,70 +211,65 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
         return [
           {
             icon: Boxes,
-            title: isRtl ? 'انبار متریال و فرمول ساخت (BOM)' : 'Raw Materials & BOM Catalog',
-            description: isRtl
-              ? 'تعریف انبار مواد اولیه و خرج‌کار (پارچه، زیپ، نخ) و فرمول ساخت با محاسبه ضایعات.'
+            title: isItalian ? 'Materie Prime e Distinta Base (BOM)' : 'Raw Materials & BOM Catalog',
+            description: isItalian
+              ? 'Gestione magazzino tessuti/accessori e distinte base con calcolo degli sfridi.'
               : 'Raw materials inventory management and Bill of Materials with waste factors.',
           },
           {
             icon: Scissors,
-            title: isRtl ? 'دستور کار و حواله برش' : 'Production & Cut Work Orders',
-            description: isRtl
-              ? 'صدور دستور تولید، حواله برش، سنجش کسری متریال و ردیابی وضعیت در خط تولید.'
+            title: isItalian ? 'Ordini di Produzione e Taglio' : 'Production & Cut Work Orders',
+            description: isItalian
+              ? 'Creazione ordini di lavoro, schede taglio, controllo carenze e avanzamento.'
               : 'Work order generation, cut slips, shortage detection, and routing.',
           },
           {
             icon: Users,
-            title: isRtl ? 'حساب پیمانکاران و بهای تمام‌شده' : 'Contractor Ledgers & COGS',
-            description: isRtl
-              ? 'ثبت خودکار کارمزد برون‌سپاری در معین اشخاص، ورود کالا به انبار و محاسبه دقیق قیمت تمام‌شده.'
+            title: isItalian ? 'Contabilità Terzisti e Costo Unitario' : 'Contractor Ledgers & COGS',
+            description: isItalian
+              ? 'Registrazione compensi laboratori, carico capi finiti e calcolo del costo reale.'
               : 'Automated contractor fees logging, inventory receipts, and true unit costing.',
           },
         ];
       default:
         return [
           {
-            icon: ShieldCheck,
-            title: isRtl ? 'دسترسی همیشگی و دائمی' : 'Permanent Ownership',
-            description: isRtl
-              ? 'یک‌بار فعال‌سازی برای دسترسی همیشگی تمام کاربران بدون شارژ دوره‌ای.'
-              : 'One-time license activation for all organization members.',
+            icon: Cloud,
+            title: isItalian ? 'Incluso nei Piani Cloud' : 'Included in Cloud Plans',
+            description: isItalian
+              ? 'Sblocco istantaneo con sincronizzazione multi-utente.'
+              : 'Instant activation with multi-user cloud synchronization.',
           },
           {
             icon: Globe,
-            title: isRtl ? 'کارکرد یکپارچه وب و دسکتاپ' : 'Web & Desktop Hybrid',
-            description: isRtl
-              ? 'عملکرد هماهنگ در محیط مرورگر و نرم‌افزار نصبی دسکتاپ.'
+            title: isItalian ? 'Ibrido Web e Desktop' : 'Web & Desktop Hybrid',
+            description: isItalian
+              ? 'Funzionamento sincronizzato su browser web e applicazione desktop nativa.'
               : 'Seamless operation in both web browser and native desktop.',
           },
           {
             icon: Zap,
-            title: isRtl ? 'فعال‌سازی فوری و خودکار' : 'Instant Activation',
-            description: isRtl
-              ? 'تحویل و فعال‌سازی آنی بلافاصله پس از پرداخت یا ثبت کد لایسنس.'
-              : 'Immediate activation via payment gateway or license code.',
+            title: isItalian ? 'Attivazione Istantanea' : 'Instant Activation',
+            description: isItalian
+              ? 'Accesso immediato dopo il checkout sicuro con Stripe.'
+              : 'Immediate access after secure Stripe Checkout.',
           },
         ];
     }
   };
 
   const featureHighlights = getFeatureHighlights();
-  const effectiveTitle = isRtl ? (matchedModule?.name || moduleName) : (moduleName || matchedModule?.name);
-  const effectiveSubtitle = isRtl
-    ? (description || matchedModule?.description || t('modules.moduleLockedDesc', 'این بخش به عنوان ماژول تکمیلی و تخصصی ارائه شده است.'))
-    : (description || t('modules.moduleLockedDesc', 'This section is offered as a specialized addon module.'));
+  const effectiveTitle = moduleName || matchedModule?.name || moduleSlug;
+  const effectiveSubtitle =
+    description || t('modules.moduleLockedDesc', 'This section is unlocked with a Clozito Cloud plan.');
 
   return (
     <div id={id} className="space-y-6 max-w-4xl mx-auto">
-      {/* Unified Page Header across all modules */}
-      <PageHeader
-        title={effectiveTitle}
-        subtitle={effectiveSubtitle}
-      />
+      <PageHeader title={effectiveTitle} subtitle={effectiveSubtitle} />
 
       <Card className="border-amber-200/70 dark:border-amber-900/40 bg-gradient-to-b from-amber-50/20 to-white dark:from-amber-950/10 dark:to-[#13151a]">
         <div className="p-4 sm:p-6 md:p-8 space-y-6 text-neutral-900 dark:text-neutral-100">
-          {/* Header Row: Lock Icon, Name, Pro/Standalone Badges & Price + CTA */}
+          {/* Header Row: Lock Icon, Name, Required Tier Badge & Subscription CTA */}
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div className="flex items-start sm:items-center gap-3.5 min-w-0">
               <div className="w-11 h-11 sm:w-12 sm:h-12 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center border border-amber-500/20 shrink-0">
@@ -273,12 +278,11 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
                   <h2 className="text-lg sm:text-xl font-bold truncate">{effectiveTitle}</h2>
-                  {isIncludedInPro ? (
-                    <Badge variant="info">{t('modules.badgeIncludedInPro', 'شامل در Pro')}</Badge>
-                  ) : (
-                    <Badge variant="warning">{t('modules.badgeStandalone', 'خرید مجزا')}</Badge>
-                  )}
-                  <Badge variant="neutral">{t('modules.addonShort', 'ماژول تخصصی')}</Badge>
+                  <Badge variant={requiredTier === 'atelier' ? 'warning' : 'info'}>
+                    {requiredTier === 'boutique'
+                      ? isItalian ? 'Incluso in Boutique (€29/mese)' : 'Included in Boutique (€29/mo)'
+                      : isItalian ? 'Incluso in Atelier (€49/mese)' : 'Included in Atelier (€49/mo)'}
+                  </Badge>
                 </div>
                 <p className="text-xs sm:text-sm text-neutral-500 dark:text-neutral-400 mt-1 line-clamp-2">
                   {effectiveSubtitle}
@@ -286,24 +290,34 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
               </div>
             </div>
 
-            {/* Price & CTA Button (Stacked cleanly on mobile with full-width button) */}
-            {formattedPrice && (
-              <div className="flex flex-col sm:flex-row md:flex-col lg:flex-row items-stretch sm:items-center md:items-stretch lg:items-center gap-2.5 sm:gap-3 shrink-0 pt-2 sm:pt-0">
-                <div className="text-start sm:text-end md:text-start lg:text-end bg-amber-50 dark:bg-amber-950/30 px-3.5 py-2 rounded-xl border border-amber-200/50 dark:border-amber-900/40">
-                  <span className="text-[11px] text-neutral-500 dark:text-neutral-400 block">{t('modules.priceLabel', 'قیمت خرید دائمی')}</span>
-                  <span className="text-sm sm:text-base font-bold text-amber-700 dark:text-amber-400">{formattedPrice}</span>
-                </div>
+            {/* Primary Subscription CTA + Optional Offline One-Time CTA */}
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 shrink-0 pt-2 sm:pt-0">
+              <Button
+                variant="primary"
+                size="md"
+                onClick={() => setIsUpgradeModalOpen(true)}
+                className="shadow-md font-bold text-xs shrink-0 cursor-pointer w-full sm:w-auto justify-center"
+                icon={<Sparkles className="w-4 h-4" />}
+              >
+                {isItalian
+                  ? `Sblocca con ${tierName} (${tierPriceLabel}/mese)`
+                  : `Unlock with ${tierName} (${tierPriceLabel}/mo)`}
+              </Button>
+
+              {canBuyOffline && formattedPrice && (
                 <Button
-                  variant="primary"
+                  variant="outline"
                   size="md"
                   onClick={() => setIsPurchaseModalOpen(true)}
-                  className="bg-amber-600 hover:bg-amber-700 text-white shadow-md font-bold text-xs shrink-0 cursor-pointer w-full sm:w-auto justify-center"
+                  className="font-semibold text-xs shrink-0 cursor-pointer w-full sm:w-auto justify-center"
                   icon={<CreditCard className="w-4 h-4" />}
                 >
-                  {t('modules.payWithZibal', 'خرید آنلاین و فعال‌سازی فوری')}
+                  {isItalian
+                    ? `Licenza Desktop Offline (${formattedPrice})`
+                    : `Desktop Offline (${formattedPrice})`}
                 </Button>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* 3 Summary Feature Highlights */}
@@ -329,84 +343,125 @@ export const ModuleLockedCard: React.FC<ModuleLockedCardProps> = ({
             })}
           </div>
 
-          {/* License Activation Form & Hardware Fingerprint */}
-          <div className="p-4 sm:p-5 rounded-xl bg-neutral-100/70 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 space-y-3">
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-neutral-800 dark:text-neutral-200">
-                <KeyRound className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-                <span>{t('modules.enterLicenseTokenLabel', 'کد فعال‌سازی یا توکن لایسنس:')}</span>
+          {/* Cloud-only notice OR Offline License Key activation form */}
+          {!canBuyOffline ? (
+            <div className="p-4 rounded-xl bg-indigo-50/70 dark:bg-indigo-950/25 border border-indigo-200/70 dark:border-indigo-900/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-start gap-3">
+                <Cloud className="w-5 h-5 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+                <div>
+                  <h4 className="text-xs sm:text-sm font-bold text-indigo-950 dark:text-indigo-200">
+                    {isItalian
+                      ? 'Modulo ospitato su Cloud — Incluso in Boutique e Atelier'
+                      : 'Cloud-Hosted Module — Included in Boutique & Atelier'}
+                  </h4>
+                  <p className="text-xs text-indigo-800/80 dark:text-indigo-300/90 mt-0.5 leading-relaxed">
+                    {isItalian
+                      ? 'Questa funzionalità utilizza server cloud e API online continue. È inclusa automaticamente negli abbonamenti Boutique Cloud (€29/mese) e Atelier Cloud (€49/mese) senza costi extra.'
+                      : 'This feature runs on continuous cloud hosting and real-time APIs. It is automatically included with Boutique Cloud (€29/mo) and Atelier Cloud (€49/mo) at no extra add-on fee.'}
+                  </p>
+                </div>
               </div>
             </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch gap-2">
-              <input
-                type="text"
-                value={licenseKey}
-                onChange={(e) => setLicenseKey(e.target.value)}
-                placeholder={t('modules.licenseTokenPlaceholder', 'کد لایسنس دریافتی را اینجا قرار دهید...')}
-                className="flex-1 px-3 py-2 text-xs font-mono bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-neutral-900 dark:text-neutral-100"
-              />
-              <Button
-                variant="primary"
-                onClick={handleActivate}
-                disabled={isActivating}
-                className="w-full sm:w-auto justify-center"
-                icon={<KeyRound className="w-4 h-4" />}
-              >
-                {isActivating ? t('common.loading', 'در حال بررسی...') : t('modules.activateButton', 'فعال‌سازی لایسنس')}
-              </Button>
-            </div>
-
-            {/* Helper row: Hardware ID for offline/manual issuance */}
-            <div className="pt-2 border-t border-neutral-200/60 dark:border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span>{t('modules.hardwareIdLabel', 'شناسه دستگاه (جهت صدور لایسنس دستی):')}</span>
-                <code className="px-1.5 py-0.5 rounded bg-neutral-200/70 dark:bg-neutral-800 font-mono text-[11px] font-bold text-neutral-800 dark:text-neutral-200 select-all dir-ltr">
-                  {hardwareId}
-                </code>
+          ) : (
+            <div className="p-4 sm:p-5 rounded-xl bg-neutral-100/70 dark:bg-neutral-900/80 border border-neutral-200/80 dark:border-neutral-800 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <div className="flex items-center gap-2 text-xs sm:text-sm font-bold text-neutral-800 dark:text-neutral-200">
+                  <KeyRound className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                  <span>
+                    {isItalian
+                      ? 'Hai una chiave di licenza Desktop Offline?'
+                      : 'Have a Desktop Offline License Token?'}
+                  </span>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={handleCopyHardwareId}
-                className="text-[11px] text-neutral-600 dark:text-neutral-300 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
-              >
-                {copiedHwId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedHwId ? t('common.copied', 'کپی شد') : t('modules.copyHwId', 'کپی شناسه')}</span>
-              </button>
-            </div>
 
-            {/* Status Message Banner */}
-            {message && (
-              <div
-                className={`p-3 rounded-lg text-xs font-medium flex items-center gap-2 ${
-                  message.isError
-                    ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/50'
-                    : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50'
-                }`}
-              >
-                {message.isError ? (
-                  <Lock className="w-4 h-4 shrink-0" />
-                ) : (
-                  <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
-                )}
-                <span>{message.text}</span>
+              <div className="flex flex-col sm:flex-row items-stretch gap-2">
+                <input
+                  type="text"
+                  value={licenseKey}
+                  onChange={(e) => setLicenseKey(e.target.value)}
+                  placeholder={t('modules.licenseTokenPlaceholder', 'Paste your license key here...')}
+                  className="flex-1 px-3 py-2 text-xs font-mono bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-500 text-neutral-900 dark:text-neutral-100"
+                />
+                <Button
+                  variant="primary"
+                  onClick={handleActivate}
+                  disabled={isActivating}
+                  className="w-full sm:w-auto justify-center"
+                  icon={<KeyRound className="w-4 h-4" />}
+                >
+                  {isActivating ? t('common.loading', 'Verifying...') : t('modules.activateButton', 'Activate License')}
+                </Button>
               </div>
-            )}
-          </div>
+
+              <div className="pt-2 border-t border-neutral-200/60 dark:border-neutral-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span>{t('modules.hardwareIdLabel', 'Device ID (for offline licensing):')}</span>
+                  <code className="px-1.5 py-0.5 rounded bg-neutral-200/70 dark:bg-neutral-800 font-mono text-[11px] font-bold text-neutral-800 dark:text-neutral-200 select-all dir-ltr">
+                    {hardwareId}
+                  </code>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyHardwareId}
+                  className="text-[11px] text-neutral-600 dark:text-neutral-300 hover:text-amber-600 dark:hover:text-amber-400 flex items-center gap-1 cursor-pointer transition-colors"
+                >
+                  {copiedHwId ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedHwId ? t('common.copied', 'Copied') : t('modules.copyHwId', 'Copy ID')}</span>
+                </button>
+              </div>
+
+              {message && (
+                <div
+                  className={`p-3 rounded-lg text-xs font-medium flex items-center gap-2 ${
+                    message.isError
+                      ? 'bg-red-50 text-red-700 border border-red-200 dark:bg-red-950/30 dark:text-red-400 dark:border-red-900/50'
+                      : 'bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-emerald-950/30 dark:text-emerald-400 dark:border-emerald-900/50'
+                  }`}
+                >
+                  {message.isError ? (
+                    <Lock className="w-4 h-4 shrink-0" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  )}
+                  <span>{message.text}</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </Card>
 
-      <PurchaseModuleModal
-        isOpen={isPurchaseModalOpen}
-        onClose={() => setIsPurchaseModalOpen(false)}
-        moduleSlug={moduleSlug}
-        moduleName={effectiveTitle}
+      {/* Cloud Plan Upgrade Modal */}
+      <UpgradeToProModal
+        isOpen={isUpgradeModalOpen}
+        defaultTier={requiredTier}
+        onClose={() => setIsUpgradeModalOpen(false)}
         onSuccess={() => {
-          setIsPurchaseModalOpen(false);
+          setIsUpgradeModalOpen(false);
           refreshModules();
           if (onUnlocked) onUnlocked();
         }}
       />
+
+      {/* Offline Desktop Purchase Modal (only mounted for offline-capable modules) */}
+      {canBuyOffline && (
+        <PurchaseModuleModal
+          isOpen={isPurchaseModalOpen}
+          onClose={() => setIsPurchaseModalOpen(false)}
+          moduleSlug={moduleSlug}
+          moduleName={effectiveTitle}
+          onOpenProModal={() => {
+            setIsPurchaseModalOpen(false);
+            setIsUpgradeModalOpen(true);
+          }}
+          onSuccess={() => {
+            setIsPurchaseModalOpen(false);
+            refreshModules();
+            if (onUnlocked) onUnlocked();
+          }}
+        />
+      )}
     </div>
   );
 };

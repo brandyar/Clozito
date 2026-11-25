@@ -38,6 +38,7 @@ import {
 export const CustomersView: React.FC = () => {
   const { t, locale } = useTranslation();
   const { activeOrganization } = useOrganization();
+  const isIt = locale === 'it';
   const isPersian = false;
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -58,6 +59,8 @@ export const CustomersView: React.FC = () => {
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
+  const [vatNumber, setVatNumber] = useState('');
+  const [taxCode, setTaxCode] = useState('');
   const [address, setAddress] = useState('');
   const [notes, setNotes] = useState('');
   const [isSaving, setIsSaving] = useState(false);
@@ -98,6 +101,8 @@ export const CustomersView: React.FC = () => {
       setName(cust.name);
       setPhone(cust.phone || '');
       setEmail(cust.email || '');
+      setVatNumber(cust.vat_number || '');
+      setTaxCode(cust.tax_code || '');
       setAddress(cust.address || '');
       setNotes(cust.notes || '');
     } else {
@@ -105,6 +110,8 @@ export const CustomersView: React.FC = () => {
       setName('');
       setPhone('');
       setEmail('');
+      setVatNumber('');
+      setTaxCode('');
       setAddress('');
       setNotes('');
     }
@@ -123,11 +130,13 @@ export const CustomersView: React.FC = () => {
       await adapter.saveCustomer({
         id: editingCustomer?.id,
         organization_id: orgId,
-        name,
-        phone,
-        email,
-        address,
-        notes,
+        name: name.trim(),
+        phone: phone.trim(),
+        email: email.trim(),
+        vat_number: vatNumber.trim().toUpperCase() || null,
+        tax_code: taxCode.trim().toUpperCase() || null,
+        address: address.trim(),
+        notes: notes.trim(),
         status: 'active',
       });
 
@@ -160,10 +169,13 @@ export const CustomersView: React.FC = () => {
   };
 
   const filteredCustomers = customers.filter((c) => {
+    const q = search.toLowerCase();
     return (
-      (c.name || '').toLowerCase().includes(search.toLowerCase()) ||
+      (c.name || '').toLowerCase().includes(q) ||
       (c.phone && c.phone.includes(search)) ||
-      (c.email && c.email.toLowerCase().includes(search.toLowerCase()))
+      (c.email && c.email.toLowerCase().includes(q)) ||
+      (c.vat_number && c.vat_number.toLowerCase().includes(q)) ||
+      (c.tax_code && c.tax_code.toLowerCase().includes(q))
     );
   });
 
@@ -182,14 +194,16 @@ export const CustomersView: React.FC = () => {
     if (listToExport.length === 0) {
       setExcelFeedback({
         type: 'info',
-        message: 'مشتری‌ای جهت خروجی اکسل وجود ندارد.',
+        message: isIt ? 'Nessun cliente disponibile per l’esportazione Excel.' : 'No customers available to export to Excel.',
       });
       return;
     }
     const exportedCount = exportCustomersToExcel(listToExport);
     setExcelFeedback({
       type: 'success',
-      message: `فایل اکسل مشتریان (${isPersian ? toPersianDigits(exportedCount) : exportedCount} مشتری) با موفقیت دانلود شد.`,
+      message: isIt
+        ? `File Excel clienti (${exportedCount} clienti) scaricato con successo.`
+        : `Customers Excel file (${exportedCount} customers) downloaded successfully.`,
     });
   };
 
@@ -262,7 +276,7 @@ export const CustomersView: React.FC = () => {
             createdCount++;
           }
         } catch (rowErr: any) {
-          runtimeErrors.push(`${cust.name}: ${rowErr?.message || 'خطا در ذخیره‌سازی'}`);
+          runtimeErrors.push(`${cust.name}: ${rowErr?.message || 'Save failed'}`);
         }
       }
 
@@ -270,7 +284,9 @@ export const CustomersView: React.FC = () => {
       const totalSaved = createdCount + updatedCount;
       setExcelFeedback({
         type: totalSaved > 0 ? 'success' : 'error',
-        message: `ورود اکسل مشتریان با موفقیت انجام شد (${isPersian ? toPersianDigits(createdCount) : createdCount} جدید، ${isPersian ? toPersianDigits(updatedCount) : updatedCount} به‌روزرسانی).`,
+        message: isIt
+          ? `Importazione clienti completata (${createdCount} nuovi, ${updatedCount} aggiornati).`
+          : `Customers Excel import completed (${createdCount} created, ${updatedCount} updated).`,
         details: runtimeErrors.slice(0, 10),
       });
     } catch (err: any) {
@@ -307,7 +323,7 @@ export const CustomersView: React.FC = () => {
               icon={<Download className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-emerald-600 dark:text-emerald-400" />}
             >
               <span className="hidden sm:inline">{t('customers.exportExcel')}</span>
-              <span className="sm:hidden">خروجی</span>
+              <span className="sm:hidden">{isIt ? 'Esporta' : 'Export'}</span>
             </Button>
             <Button
               variant="outline"
@@ -316,8 +332,8 @@ export const CustomersView: React.FC = () => {
               disabled={isImporting}
               icon={<Upload className={`w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 dark:text-indigo-400 ${isImporting ? 'animate-bounce' : ''}`} />}
             >
-              <span className="hidden sm:inline">{isImporting ? 'در حال ورود...' : t('customers.importExcel')}</span>
-              <span className="sm:hidden">{isImporting ? '...' : 'ورود'}</span>
+              <span className="hidden sm:inline">{isImporting ? (isIt ? 'Importazione...' : 'Importing...') : t('customers.importExcel')}</span>
+              <span className="sm:hidden">{isImporting ? '...' : (isIt ? 'Importa' : 'Import')}</span>
             </Button>
             <Button
               size="sm"
@@ -395,8 +411,22 @@ export const CustomersView: React.FC = () => {
                 render: (c) => (
                   <div>
                     <span className="font-bold text-slate-900 dark:text-neutral-100 text-xs sm:text-sm">{c.name}</span>
+                    {(c.vat_number || c.tax_code) && (
+                      <div className="flex flex-wrap items-center gap-1.5 mt-0.5">
+                        {c.vat_number && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-semibold">
+                            {isIt ? 'P.IVA' : 'VAT'}: {c.vat_number}
+                          </span>
+                        )}
+                        {c.tax_code && (
+                          <span className="inline-flex items-center px-1.5 py-0.5 rounded bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 font-mono text-[10px]">
+                            {isIt ? 'C.F.' : 'Tax'}: {c.tax_code}
+                          </span>
+                        )}
+                      </div>
+                    )}
                     {c.date_created && (
-                      <div className="text-[10px] text-slate-400 dark:text-neutral-500">
+                      <div className="text-[10px] text-slate-400 dark:text-neutral-500 mt-0.5">
                         {t('customers.membership')}: {formatDate(c.date_created, isPersian)}
                       </div>
                     )}
@@ -505,11 +535,27 @@ export const CustomersView: React.FC = () => {
                 >
                   {/* Top: Customer Name + Membership Date */}
                   <div className="flex items-start justify-between gap-2">
-                    <h3 className="font-bold text-slate-900 dark:text-neutral-100 text-sm">
-                      {c.name}
-                    </h3>
+                    <div>
+                      <h3 className="font-bold text-slate-900 dark:text-neutral-100 text-sm">
+                        {c.name}
+                      </h3>
+                      {(c.vat_number || c.tax_code) && (
+                        <div className="flex flex-wrap items-center gap-1.5 mt-1">
+                          {c.vat_number && (
+                            <span className="px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] font-semibold">
+                              {isIt ? 'P.IVA' : 'VAT'}: {c.vat_number}
+                            </span>
+                          )}
+                          {c.tax_code && (
+                            <span className="px-1.5 py-0.5 rounded bg-slate-100 dark:bg-neutral-800 text-slate-600 dark:text-neutral-300 font-mono text-[10px]">
+                              {isIt ? 'C.F.' : 'Tax'}: {c.tax_code}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
                     {c.date_created && (
-                      <span className="text-[10px] text-slate-400 dark:text-neutral-500 font-mono">
+                      <span className="text-[10px] text-slate-400 dark:text-neutral-500 font-mono shrink-0">
                         {t('customers.membership')}: {formatDate(c.date_created, isPersian)}
                       </span>
                     )}
@@ -610,7 +656,7 @@ export const CustomersView: React.FC = () => {
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
               label={t('customers.phoneLabel')}
-              placeholder="09123456789"
+              placeholder="+39 340 123 4567"
               value={phone}
               onChange={(e) => setPhone(e.target.value)}
             />
@@ -620,6 +666,21 @@ export const CustomersView: React.FC = () => {
               placeholder="customer@example.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
+            />
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Input
+              label={t('customers.vatNumber', 'VAT Number / Partita IVA')}
+              placeholder={t('customers.vatNumberPlaceholder', 'e.g. IT01234567890')}
+              value={vatNumber}
+              onChange={(e) => setVatNumber(e.target.value)}
+            />
+            <Input
+              label={t('customers.taxCode', 'Tax Code / Codice Fiscale')}
+              placeholder={t('customers.taxCodePlaceholder', 'e.g. RSSMRA85M01H501Z')}
+              value={taxCode}
+              onChange={(e) => setTaxCode(e.target.value)}
             />
           </div>
 

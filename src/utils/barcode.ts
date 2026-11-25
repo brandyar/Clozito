@@ -110,11 +110,11 @@ export function generateBarcodeSvg(text: string, options: BarcodeSvgOptions = {}
 }
 
 /**
- * Generates a random valid 12-13 digit apparel EAN/Barcode number
+ * Generates a random valid 13-digit GS1 in-store internal EAN-13 barcode (200-299 range).
  */
 export function generateRandomBarcode(): string {
-  // Iran EAN prefix 626 + 9 random digits + check digit
-  const prefix = '626';
+  // GS1 restricted/in-store circulation prefix (200-299) + 9 random digits + EAN-13 check digit
+  const prefix = '200';
   let digits = prefix;
   for (let i = 0; i < 9; i++) {
     digits += Math.floor(Math.random() * 10);

@@ -210,7 +210,7 @@ export const ApparelReportPage: React.FC = () => {
 
   const handlePrint = () => {
     printElement('apparel-report-container', {
-      title: isPersian ? 'گزارش_تحلیل_اقلام_و_مد' : 'Tankhor_Fashion_Analytics_Report',
+      title: 'Clozito_Fashion_Analytics_Report',
     });
   };
 
@@ -219,8 +219,8 @@ export const ApparelReportPage: React.FC = () => {
       {/* Page Header */}
       <div className="no-print">
         <PageHeader
-          title={t('reports.tabApparel', 'تحلیل اقلام و کاتالوگ')}
-          subtitle={t('reports.bestSellersSubtitle', 'تحلیل تقاضای مشتریان و توزیع رنگ‌ها و سایزهای محبوب')}
+          title={t('reports.tabApparel', 'Apparel & Catalog Analytics')}
+          subtitle={t('reports.bestSellersSubtitle', 'Customer demand analysis and popular color/size distribution')}
           actions={
             <Button
               variant="outline"

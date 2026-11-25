@@ -123,10 +123,10 @@ export class StorageSyncManager {
         const cached = JSON.parse(cachedUserRaw);
         const activeOrg = cached.activeOrganization || cached.active_organization;
         if (activeOrg && activeOrg.plan === 'free') {
-          throw new Error('همگام‌سازی ابری منحصراً برای سازمان‌های دارای اشتراک Pro در دسترس است.');
+          throw new Error('Cloud Sync is exclusively available for organizations with a Pro plan.');
         }
       } catch (err: any) {
-        if (err.message?.includes('اشتراک Pro')) throw err;
+        if (err.message?.includes('Pro plan')) throw err;
       }
     }
 

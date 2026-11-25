@@ -6,7 +6,7 @@ import { Card } from '../../components/ui/Card';
 import { Button } from '../../components/ui/Button';
 import { Badge } from '../../components/ui/Badge';
 import { DataTable, Column } from '../../components/ui/DataTable';
-import { formatCurrency, formatDate, toPersianDigits } from '../../utils/formatters';
+import { formatCurrency, formatDate, toPersianDigits, roundCurrency } from '../../utils/formatters';
 import {
   ShoppingBag, Shirt, DollarSign, AlertTriangle,
   Plus, ArrowUpRight, ArrowDownLeft, RefreshCw, CheckCircle2,
@@ -174,7 +174,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
   const totalOrdersCount = summary?.totalOrdersCount ?? orders.length;
   const totalSalesRevenue = summary?.totalSalesRevenue ?? orders.reduce((acc, o) => acc + Number(o.total || 0), 0);
 
-  const averageOrderValue = summary?.averageOrderValue ?? (totalOrdersCount > 0 ? Math.round(totalSalesRevenue / totalOrdersCount) : 0);
+  const averageOrderValue = summary?.averageOrderValue ?? (totalOrdersCount > 0 ? roundCurrency(totalSalesRevenue / totalOrdersCount) : 0);
 
   // Analytical Computed Data for Charts
   const salesData = useMemo(
@@ -216,7 +216,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
     {
       key: 'sku',
       header: t('common.sku'),
-      render: (m) => <span className="font-bold text-slate-800 dark:text-neutral-200 font-mono text-xs">{m.sku || 'TNK-SKU'}</span>,
+      render: (m) => <span className="font-bold text-slate-800 dark:text-neutral-200 font-mono text-xs">{m.sku || 'CLZ-SKU'}</span>,
     },
     {
       key: 'type',
@@ -263,7 +263,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-lg sm:text-xl font-extrabold text-neutral-900 dark:text-neutral-100 tracking-tight">
-            {t('navigation.dashboard', 'پیشخوان')}
+            {t('navigation.dashboard', 'Dashboard')}
           </h1>
           <p className="text-xs text-neutral-500 dark:text-neutral-400 mt-0.5 font-medium">
             {activeOrganization?.name ? `${activeOrganization.name} · ${t('common.appSubtitle')}` : t('common.appSubtitle')}
@@ -273,8 +273,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           <button
             type="button"
             onClick={() => startTour('dashboard', { force: true })}
-            title={t('onboarding.startTour', 'تور راهنمای داشبورد')}
-            aria-label={t('onboarding.startTour', 'تور راهنمای داشبورد')}
+            title={t('onboarding.startTour', 'Dashboard Tour')}
+            aria-label={t('onboarding.startTour', 'Dashboard Tour')}
             className="w-9 h-9 rounded-xl border border-neutral-200/90 dark:border-neutral-800 bg-white dark:bg-[#13151a] hover:bg-neutral-50 dark:hover:bg-neutral-800/80 text-neutral-500 hover:text-blue-600 dark:text-neutral-400 dark:hover:text-blue-400 flex items-center justify-center transition-all shadow-2xs cursor-pointer group"
           >
             <HelpCircle className="w-4 h-4 transition-transform group-hover:scale-110" />
@@ -303,7 +303,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
       {/* 2. Four Operational Quick Access Blocks */}
       <div id="tour-quick-actions" className="grid grid-cols-2 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 lg:gap-5">
-        {/* Quick Action 1: Create Order (ثبت سفارش) */}
+        {/* Quick Action 1: Create Order */}
         <button
           type="button"
           onClick={() => onNavigate('orders/create')}
@@ -332,7 +332,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </button>
 
-        {/* Quick Action 2: Create Product (ایجاد محصول) */}
+        {/* Quick Action 2: Create Product */}
         <button
           type="button"
           onClick={() => onNavigate('products/create')}
@@ -361,7 +361,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </button>
 
-        {/* Quick Action 3: Orders List (لیست سفارشات) */}
+        {/* Quick Action 3: Orders List */}
         <button
           type="button"
           onClick={() => onNavigate('orders/all')}
@@ -390,7 +390,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           </div>
         </button>
 
-        {/* Quick Action 4: Purchase Order (ثبت سفارش خرید) */}
+        {/* Quick Action 4: Purchase Order */}
         <button
           type="button"
           onClick={() => onNavigate('purchasing/orders/create')}
@@ -555,7 +555,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <span className="font-mono font-bold text-neutral-900 dark:text-neutral-100 text-xs">
-                          {m.sku || 'TNK-SKU'}
+                          {m.sku || 'CLZ-SKU'}
                         </span>
                         <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
                           {formatDate(m.created_at, isPersian)}

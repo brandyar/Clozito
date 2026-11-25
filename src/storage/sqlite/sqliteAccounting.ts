@@ -89,7 +89,7 @@ export class SqliteAccountingStorage {
     const saved: ExpenseCategory = {
       id: validId,
       organization_id: orgId,
-      title: cat.title || 'سرفصل جدید',
+      title: cat.title || 'New Category',
       code: cat.code || `EXP-${Math.floor(100 + Math.random() * 900)}`,
       icon: cat.icon || 'Tag',
       status: cat.status || 'active',
@@ -115,7 +115,7 @@ export class SqliteAccountingStorage {
       const cat = categories.find((c) => c.id === catId);
       return {
         ...exp,
-        category_title: cat?.title || exp.category_title || 'سایر هزینه‌ها',
+        category_title: cat?.title || exp.category_title || 'Other Expenses',
         category_code: cat?.code || exp.category_code,
         category_icon: cat?.icon || exp.category_icon || 'Receipt',
       };
@@ -149,7 +149,7 @@ export class SqliteAccountingStorage {
       id: validId,
       organization_id: orgId,
       category_id: exp.category_id || 1,
-      title: exp.title || 'هزینه جدید',
+      title: exp.title || 'New Expense',
       amount: Math.max(0, Number(exp.amount) || 0),
       expense_date: exp.expense_date || new Date().toISOString(),
       payment_method: exp.payment_method || 'cash',
@@ -169,7 +169,7 @@ export class SqliteAccountingStorage {
           source_account_id: saved.account_id,
           amount: saved.amount,
           expense_id: saved.id,
-          description: `پرداخت هزینه: ${saved.title}`,
+          description: `Expense payment: ${saved.title}`,
           transaction_date: saved.expense_date,
         });
       } catch (tErr) {
@@ -202,11 +202,11 @@ export class SqliteAccountingStorage {
         if (tx.party_type === 'customer' && tx.customer_id) {
           const cId = typeof tx.customer_id === 'number' ? tx.customer_id : (tx.customer_id as any)?.id;
           const cust = customers.find((c) => c.id === cId);
-          partyName = cust?.name || `مشتری #${cId}`;
+          partyName = cust?.name || `Customer #${cId}`;
         } else if (tx.party_type === 'supplier' && tx.supplier_id) {
           const sId = typeof tx.supplier_id === 'number' ? tx.supplier_id : (tx.supplier_id as any)?.id;
           const sup = suppliers.find((s) => s.id === sId);
-          partyName = sup?.name || `تامین‌کننده #${sId}`;
+          partyName = sup?.name || `Supplier #${sId}`;
         }
       }
 
@@ -438,7 +438,7 @@ export class SqliteAccountingStorage {
     });
     filteredExpenses.forEach((e) => {
       const cId = typeof e.category_id === 'number' ? e.category_id : (e.category_id as any)?.id || 1;
-      const existing = catMap.get(cId) || { title: e.category_title || 'سایر', amount: 0 };
+      const existing = catMap.get(cId) || { title: e.category_title || 'Other', amount: 0 };
       existing.amount += Number(e.amount) || 0;
       catMap.set(cId, existing);
     });
@@ -665,7 +665,7 @@ export class SqliteAccountingStorage {
     const saved: FinancialAccount = {
       id: validId,
       organization_id: orgId,
-      name: account.name || 'حساب جدید',
+      name: account.name || 'New Account',
       type: account.type || 'cashbox',
       warehouse_id: rawWhId ? Number(rawWhId) : null,
       bank_name: account.bank_name || null,
@@ -866,7 +866,7 @@ export class SqliteAccountingStorage {
       type: cheque.type || 'received',
       sayad_id: cheque.sayad_id || '',
       cheque_number: cheque.cheque_number || '',
-      bank_name: cheque.bank_name || 'بانک ملت',
+      bank_name: cheque.bank_name || '',
       branch_name: cheque.branch_name || null,
       account_number: cheque.account_number || null,
       drawer_name: cheque.drawer_name || '',
@@ -1101,7 +1101,7 @@ export class SqliteAccountingStorage {
       if (alloc.variant_id && alloc.effective_unit_cost > 0) {
         const variant = await this.base.getItemById<ProductVariant>('product_variants', alloc.variant_id);
         if (variant) {
-          variant.buy_price = Math.round(Number(alloc.effective_unit_cost));
+          variant.buy_price = Math.round(((Number(alloc.effective_unit_cost) || 0) + Number.EPSILON) * 100) / 100;
           await this.base.saveItem('product_variants', variant);
           updatedCount++;
         }
@@ -1116,7 +1116,7 @@ export class SqliteAccountingStorage {
   // ==========================================
   async getVatReport(params?: { organizationId?: number; year?: number; quarter?: 1 | 2 | 3 | 4 }): Promise<VatReportSummary> {
     const orgId = params?.organizationId || 1;
-    const year = params?.year || 1403;
+    const year = params?.year || new Date().getFullYear();
     const quarter = params?.quarter || 1;
 
     let orders = await this.base.getItems<Order>('orders', orgId);
@@ -1136,10 +1136,10 @@ export class SqliteAccountingStorage {
     const netVatPayable = salesVat - purchasesVat;
 
     const quarterLabels: Record<number, string> = {
-      1: `بهار ${year}`,
-      2: `تابستان ${year}`,
-      3: `پاییز ${year}`,
-      4: `زمستان ${year}`,
+      1: `Q1 ${year}`,
+      2: `Q2 ${year}`,
+      3: `Q3 ${year}`,
+      4: `Q4 ${year}`,
     };
 
     const salesInvoices = orders.map((o) => {
@@ -1148,7 +1148,7 @@ export class SqliteAccountingStorage {
       return {
         id: o.id,
         orderNumber: o.order_number,
-        customerName: cust?.name || o.customer_name || 'مشتری متفرقه',
+        customerName: cust?.name || o.customer_name || 'Walk-in Customer',
         nationalId: cust?.phone || '',
         date: o.date_created || '',
         subtotal: Number(o.subtotal) || Number(o.total) || 0,
@@ -1163,7 +1163,7 @@ export class SqliteAccountingStorage {
       return {
         id: p.id,
         purchaseNumber: p.purchase_number,
-        supplierName: sup?.name || p.supplier_name || 'تامین‌کننده',
+        supplierName: sup?.name || p.supplier_name || 'Supplier',
         economicCode: sup?.phone || '',
         date: p.date_created || '',
         subtotal: Number(p.subtotal) || Number(p.total) || 0,
@@ -1175,13 +1175,13 @@ export class SqliteAccountingStorage {
     return {
       year,
       quarter,
-      periodLabel: quarterLabels[quarter] || `فصل ${quarter} سال ${year}`,
+      periodLabel: quarterLabels[quarter] || `Q${quarter} ${year}`,
       salesTaxableAmount: salesTaxable,
       salesVatAmount: salesVat,
       purchasesTaxableAmount: purchasesTaxable,
       purchasesVatAmount: purchasesVat,
       netVatPayable,
-      vatRate: 10,
+      vatRate: 22,
       ordersCount: orders.length,
       purchasesCount: purchaseOrders.length,
       salesInvoices,
@@ -1190,7 +1190,7 @@ export class SqliteAccountingStorage {
   }
 
   // ==========================================
-  // POS Shifts (شیفت‌های صندوق)
+  // POS Shifts
   // ==========================================
   async getPosShifts(params?: QueryParams & { user_id?: string; status?: PosShiftStatus; warehouse_id?: number }): Promise<PosShift[]> {
     const orgId = this.base.getActiveOrgId(params) || 1;
@@ -1236,9 +1236,9 @@ export class SqliteAccountingStorage {
             return true;
           }
 
-          // 2. Check notes for explicit shift reference [شیفت #X] or [Shift #X]
+          // 2. Check notes for explicit shift reference [Shift #X]
           const notesStr = String((o as any).notes || '');
-          if (notesStr.includes(`شیفت #${shift.id}`) || notesStr.includes(`Shift #${shift.id}`)) {
+          if (notesStr.includes(`Shift #${shift.id}`)) {
             return true;
           }
 
@@ -1298,14 +1298,14 @@ export class SqliteAccountingStorage {
           const ordTotal = Number(ord.total) || 0;
           totalSales += ordTotal;
           const pMethod = String((ord as any).payment_method || (ord as any).payment_type || (ord as any).notes || '').toLowerCase();
-          if (pMethod.includes('cash') || pMethod.includes('نقدی') || pMethod.includes('نقد')) {
+          if (pMethod.includes('cash') || pMethod.includes('contanti')) {
             cashSales += ordTotal;
-          } else if (pMethod.includes('pos') || pMethod.includes('پوز') || pMethod.includes('کارتخوان')) {
+          } else if (pMethod.includes('pos') || pMethod.includes('terminal')) {
             posSales += ordTotal;
-          } else if (pMethod.includes('card') || pMethod.includes('کارت')) {
+          } else if (pMethod.includes('card') || pMethod.includes('carta')) {
             cardSales += ordTotal;
-            posSales += ordTotal; // Electronic card-to-card also counted in electronic card sales
-          } else if (pMethod.includes('credit') || pMethod.includes('نسیه')) {
+            posSales += ordTotal;
+          } else if (pMethod.includes('credit') || pMethod.includes('credito')) {
             creditSales += ordTotal;
           } else {
             posSales += ordTotal;
@@ -1351,8 +1351,8 @@ export class SqliteAccountingStorage {
 
         return {
           ...shift,
-          warehouse_name: wh?.name || (whId ? `انبار #${whId}` : undefined),
-          account_name: acc?.name || (accId ? `حساب #${accId}` : undefined),
+          warehouse_name: wh?.name || (whId ? `Warehouse #${whId}` : undefined),
+          account_name: acc?.name || (accId ? `Account #${accId}` : undefined),
           user_name: usr ? `${usr.first_name || ''} ${usr.last_name || ''}`.trim() || usr.email : undefined,
           user_email: usr?.email,
           total_sales_amount: totalSales,

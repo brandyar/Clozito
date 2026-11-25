@@ -56,6 +56,7 @@ import {
   TrendingUp,
   Scissors,
   RotateCcw,
+  ShieldCheck,
 } from 'lucide-react';
 import { UserProfileModal } from '../modals/UserProfileModal';
 import { FeedbackModal } from '../modals/FeedbackModal';
@@ -179,7 +180,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const sections: NavSection[] = [
     {
       key: 'dashboard',
-      label: t('navigation.dashboard', 'پیشخوان'),
+      label: t('navigation.dashboard', 'Dashboard'),
       icon: LayoutDashboard,
       route: 'dashboard',
       isSingle: true,
@@ -187,125 +188,125 @@ export const Sidebar: React.FC<SidebarProps> = ({
     },
     {
       key: 'orders',
-      label: t('navigation.ordersGroup', 'فروش و سفارشات'),
+      label: t('navigation.ordersGroup', 'Orders & Sales'),
       icon: ShoppingCart,
       visible: permissions.canViewOrders || permissions.canCreateOrders || permissions.canViewCustomers,
       items: [
-        { route: 'orders/create', label: t('navigation.createOrder', 'ثبت سفارش جدید'), icon: PackagePlus, visible: permissions.canCreateOrders },
-        { route: 'orders/all', label: t('navigation.allOrders', 'همه سفارشات'), icon: ShoppingCart, visible: permissions.canViewOrders },
-        { route: 'orders/returns', label: t('navigation.orderReturns', 'مرجوعی و تعویض'), icon: RotateCcw, visible: permissions.canViewOrders },
-        { route: 'customers/all', label: t('navigation.allCustomers', 'مشتریان'), icon: Users, visible: permissions.canViewCustomers },
+        { route: 'orders/create', label: t('navigation.createOrder', 'New Order'), icon: PackagePlus, visible: permissions.canCreateOrders },
+        { route: 'orders/all', label: t('navigation.allOrders', 'All Orders'), icon: ShoppingCart, visible: permissions.canViewOrders },
+        { route: 'orders/returns', label: t('navigation.orderReturns', 'Returns & Exchanges'), icon: RotateCcw, visible: permissions.canViewOrders },
+        { route: 'customers/all', label: t('navigation.allCustomers', 'Customers'), icon: Users, visible: permissions.canViewCustomers },
       ].filter((i) => i.visible !== false),
     },
     {
       key: 'inventory',
-      label: t('navigation.inventoryGroup', 'انبار و موجودی'),
+      label: t('navigation.inventoryGroup', 'Inventory & Warehouses'),
       icon: WarehouseIcon,
       visible: permissions.canViewInventory || permissions.canManageInventory,
       items: [
-        { route: 'inventory/overview', label: t('navigation.inventoryOverview', 'نمای کلی موجودی'), icon: ClipboardList, visible: permissions.canViewInventory },
+        { route: 'inventory/overview', label: t('navigation.inventoryOverview', 'Inventory Overview'), icon: ClipboardList, visible: permissions.canViewInventory },
         ...(hasBarcodeAccess
           ? [
               {
                 route: 'inventory/barcodes',
-                label: t('navigation.barcodePrint', 'چاپ بارکد'),
+                label: t('navigation.barcodePrint', 'Barcode Print'),
                 icon: Barcode,
                 visible: permissions.canViewInventory,
               },
             ]
           : []),
-        { route: 'inventory/movements', label: t('navigation.stockMovements', 'گردش کالا و اسناد'), icon: ClipboardList, visible: permissions.canViewInventory },
-        { route: 'inventory/transfers', label: t('navigation.stockTransfers', 'حواله و انتقال بین انبارها'), icon: ArrowLeftRight, visible: permissions.canManageInventory },
-        { route: 'inventory/warehouses', label: t('navigation.warehouses', 'انبارها'), icon: WarehouseIcon, visible: permissions.canManageInventory },
-        { route: 'inventory/locations', label: t('navigation.warehouseLocations', 'موقعیت‌های انبار'), icon: MapPin, visible: permissions.canManageInventory },
+        { route: 'inventory/movements', label: t('navigation.stockMovements', 'Stock Movements'), icon: ClipboardList, visible: permissions.canViewInventory },
+        { route: 'inventory/transfers', label: t('navigation.stockTransfers', 'Stock Transfers'), icon: ArrowLeftRight, visible: permissions.canManageInventory },
+        { route: 'inventory/warehouses', label: t('navigation.warehouses', 'Warehouses'), icon: WarehouseIcon, visible: permissions.canManageInventory },
+        { route: 'inventory/locations', label: t('navigation.warehouseLocations', 'Warehouse Locations'), icon: MapPin, visible: permissions.canManageInventory },
       ].filter((i) => i.visible !== false),
     },
     {
       key: 'products',
-      label: t('navigation.productsGroup', 'محصولات و کاتالوگ'),
+      label: t('navigation.productsGroup', 'Products & Catalog'),
       icon: Shirt,
       visible: permissions.canViewProducts,
       items: [
-        { route: 'products/all', label: t('navigation.allProducts', 'همه محصولات'), icon: ShoppingBag, visible: permissions.canViewProducts },
-        { route: 'products/variants', label: t('navigation.variants', 'تنوع‌ها و ویژگی‌ها'), icon: Shirt, visible: permissions.canViewProducts },
-        { route: 'products/size-guides', label: t('navigation.sizeGuides', 'راهنمای سایز'), icon: Ruler, visible: permissions.canViewProducts },
-        { route: 'products/categories', label: t('navigation.categories', 'دسته‌بندی‌ها'), icon: Layers, visible: permissions.canViewProducts },
-        { route: 'products/collections', label: t('navigation.collections', 'مجموعه‌ها'), icon: Bookmark, visible: permissions.canViewProducts },
-        { route: 'products/brands', label: t('navigation.brands', 'برندها'), icon: Award, visible: permissions.canViewProducts },
-        { route: 'products/seasons', label: t('navigation.seasons', 'فصل‌ها'), icon: Sun, visible: permissions.canViewProducts },
-        { route: 'products/colors', label: t('navigation.colors', 'رنگ‌ها'), icon: Palette, visible: permissions.canViewProducts },
-        { route: 'products/size-groups', label: t('navigation.sizeGroups', 'گروه‌های سایز'), icon: FolderTree, visible: permissions.canViewProducts },
-        { route: 'products/sizes', label: t('navigation.sizes', 'سایزها'), icon: Tag, visible: permissions.canViewProducts },
+        { route: 'products/all', label: t('navigation.allProducts', 'All Products'), icon: ShoppingBag, visible: permissions.canViewProducts },
+        { route: 'products/variants', label: t('navigation.variants', 'Variants'), icon: Shirt, visible: permissions.canViewProducts },
+        { route: 'products/size-guides', label: t('navigation.sizeGuides', 'Size Guides'), icon: Ruler, visible: permissions.canViewProducts },
+        { route: 'products/categories', label: t('navigation.categories', 'Categories'), icon: Layers, visible: permissions.canViewProducts },
+        { route: 'products/collections', label: t('navigation.collections', 'Collections'), icon: Bookmark, visible: permissions.canViewProducts },
+        { route: 'products/brands', label: t('navigation.brands', 'Brands'), icon: Award, visible: permissions.canViewProducts },
+        { route: 'products/seasons', label: t('navigation.seasons', 'Seasons'), icon: Sun, visible: permissions.canViewProducts },
+        { route: 'products/colors', label: t('navigation.colors', 'Colors'), icon: Palette, visible: permissions.canViewProducts },
+        { route: 'products/size-groups', label: t('navigation.sizeGroups', 'Size Groups'), icon: FolderTree, visible: permissions.canViewProducts },
+        { route: 'products/sizes', label: t('navigation.sizes', 'Sizes'), icon: Tag, visible: permissions.canViewProducts },
       ].filter((i) => i.visible !== false),
     },
     ...(hasProductionAccess
       ? [
           {
             key: 'production',
-            label: t('navigation.productionGroup', 'مدیریت تولید'),
+            label: t('navigation.productionGroup', 'Production'),
             icon: Scissors,
             visible: true,
             items: [
-              { route: 'production/overview', label: t('navigation.productionOverview', 'پیشخوان و آمار تولید'), icon: BarChart3, visible: true },
-              { route: 'production/materials', label: t('navigation.rawMaterials', 'انبار متریال و مواد اولیه'), icon: Boxes, visible: true },
-              { route: 'production/boms', label: t('navigation.boms', 'فرمول ساخت (BOM)'), icon: FileText, visible: true },
-              { route: 'production/orders', label: t('navigation.productionOrders', 'دستور کار و حواله برش'), icon: Shirt, visible: true },
-              { route: 'production/contractors', label: t('navigation.contractors', 'معین و حساب پیمانکاران'), icon: Users, visible: true },
+              { route: 'production/overview', label: t('navigation.productionOverview', 'Production Overview'), icon: BarChart3, visible: true },
+              { route: 'production/materials', label: t('navigation.rawMaterials', 'Raw Materials'), icon: Boxes, visible: true },
+              { route: 'production/boms', label: t('navigation.boms', 'Bill of Materials (BOM)'), icon: FileText, visible: true },
+              { route: 'production/orders', label: t('navigation.productionOrders', 'Production Orders'), icon: Shirt, visible: true },
+              { route: 'production/contractors', label: t('navigation.contractors', 'Contractors'), icon: Users, visible: true },
             ].filter((i) => i.visible !== false),
           },
         ]
       : []),
     {
       key: 'purchasing',
-      label: t('navigation.purchasingGroup', 'تدارکات و خرید'),
+      label: t('navigation.purchasingGroup', 'Purchasing'),
       icon: Truck,
       visible: permissions.canViewPurchasing,
       items: [
-        { route: 'purchasing/orders', label: t('navigation.purchaseOrders', 'سفارش‌های خرید'), icon: Truck, visible: permissions.canViewPurchasing },
-        { route: 'purchasing/suppliers', label: t('navigation.suppliers', 'تامین‌کنندگان'), icon: Boxes, visible: permissions.canViewPurchasing },
+        { route: 'purchasing/orders', label: t('navigation.purchaseOrders', 'Purchase Orders'), icon: Truck, visible: permissions.canViewPurchasing },
+        { route: 'purchasing/suppliers', label: t('navigation.suppliers', 'Suppliers'), icon: Boxes, visible: permissions.canViewPurchasing },
       ].filter((i) => i.visible !== false),
     },
     ...(hasAccountingAccess
       ? [
           {
             key: 'accounting',
-            label: t('navigation.accountingGroup', 'حسابداری و مالی'),
+            label: t('navigation.accountingGroup', 'Accounting & Finance'),
             icon: Calculator,
             visible: permissions.canViewFinancials,
             items: [
-              { route: 'accounting/dashboard', label: t('navigation.accountingDashboard', 'سود و زیان و عملکرد'), icon: BarChart3, visible: permissions.canViewFinancials },
-              { route: 'accounting/expenses', label: t('navigation.expenses', 'هزینه‌ها و سرفصل‌ها'), icon: Receipt, visible: permissions.canViewFinancials },
-              { route: 'accounting/persons', label: t('navigation.personAccounts', 'معین اشخاص و طرف‌حساب‌ها'), icon: Users, visible: permissions.canViewFinancials },
-              { route: 'accounting/accounts', label: t('navigation.financialAccounts', 'صندوق‌ها و بانک‌ها'), icon: Wallet, visible: permissions.canViewFinancials },
-              { route: 'accounting/cheques', label: t('navigation.cheques', 'مدیریت چک‌های صیادی'), icon: CheckSquare, visible: permissions.canViewFinancials },
-              { route: 'accounting/landed-costs', label: t('navigation.landedCosts', 'بهای تمام‌شده و سربار'), icon: Scale, visible: permissions.canViewFinancials },
-              { route: 'accounting/tax', label: t('navigation.taxReports', 'مالیات و ارزش افزوده'), icon: FileText, visible: permissions.canViewFinancials },
-              { route: 'accounting/export', label: t('navigation.accountingExport', 'خروجی اسناد و مؤدیان'), icon: FileSpreadsheet, visible: permissions.canViewFinancials },
+              { route: 'accounting/dashboard', label: t('navigation.accountingDashboard', 'Profit & Loss'), icon: BarChart3, visible: permissions.canViewFinancials },
+              { route: 'accounting/expenses', label: t('navigation.expenses', 'Expenses'), icon: Receipt, visible: permissions.canViewFinancials },
+              { route: 'accounting/persons', label: t('navigation.personAccounts', 'Person Ledgers'), icon: Users, visible: permissions.canViewFinancials },
+              { route: 'accounting/accounts', label: t('navigation.financialAccounts', 'Accounts & Cashboxes'), icon: Wallet, visible: permissions.canViewFinancials },
+              { route: 'accounting/cheques', label: t('navigation.cheques', 'Commercial Cheques'), icon: CheckSquare, visible: permissions.canViewFinancials },
+              { route: 'accounting/landed-costs', label: t('navigation.landedCosts', 'Landed Costs'), icon: Scale, visible: permissions.canViewFinancials },
+              { route: 'accounting/tax', label: t('navigation.taxReports', 'VAT & Tax Reports'), icon: FileText, visible: permissions.canViewFinancials },
+              { route: 'accounting/export', label: t('navigation.accountingExport', 'Accounting Export'), icon: FileSpreadsheet, visible: permissions.canViewFinancials },
             ].filter((i) => i.visible !== false),
           },
         ]
       : []),
     {
       key: 'reports',
-      label: t('navigation.reportsGroup', 'گزارش‌ها و تحلیل‌ها'),
+      label: t('navigation.reportsGroup', 'Reports & Analytics'),
       icon: BarChart3,
       visible: permissions.canViewOrders || permissions.canViewFinancials || permissions.canViewProducts || permissions.canViewInventory,
       items: [
         {
           route: 'reports/sales',
-          label: t('navigation.salesProfitReport', 'فروش و سودآوری'),
+          label: t('navigation.salesProfitReport', 'Sales & Profitability'),
           icon: TrendingUp,
           visible: permissions.canViewOrders || permissions.canViewFinancials,
         },
         {
           route: 'reports/apparel',
-          label: t('navigation.apparelReport', 'تحلیل اقلام و مد'),
+          label: t('navigation.apparelReport', 'Apparel & Demand'),
           icon: Shirt,
           visible: permissions.canViewOrders || permissions.canViewProducts,
         },
         {
           route: 'reports/inventory',
-          label: t('navigation.inventoryPerformanceReport', 'عملکرد انبار و راکدی'),
+          label: t('navigation.inventoryPerformanceReport', 'Inventory & Dead Stock'),
           icon: PackageX,
           visible: permissions.canViewInventory,
         },
@@ -315,13 +316,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ? [
           {
             key: 'online_catalog',
-            label: t('navigation.onlineCatalog', 'کاتالوگ دیجیتال'),
+            label: t('navigation.onlineCatalog', 'Digital Catalog'),
             icon: Store,
             visible: permissions.canViewProducts || permissions.canViewOrders,
             items: [
-              { route: 'sales/catalog', label: t('navigation.catalogOverview', 'تنظیمات کاتالوگ'), icon: Store, visible: permissions.canViewProducts },
-              { route: 'sales/catalog/products', label: t('navigation.catalogProducts', 'کالاهای ویترین'), icon: Layers, visible: permissions.canViewProducts },
-              { route: 'sales/catalog/size-engine', label: t('navigation.catalogSizeEngine', 'شبیه‌ساز راهنمای سایز'), icon: Sparkles, visible: permissions.canViewProducts },
+              { route: 'sales/catalog', label: t('navigation.catalogOverview', 'Catalog Settings'), icon: Store, visible: permissions.canViewProducts },
+              { route: 'sales/catalog/products', label: t('navigation.catalogProducts', 'Showcase Products'), icon: Layers, visible: permissions.canViewProducts },
+              { route: 'sales/catalog/size-engine', label: t('navigation.catalogSizeEngine', 'Size Finder Simulator'), icon: Sparkles, visible: permissions.canViewProducts },
             ].filter((i) => i.visible !== false),
           },
         ]
@@ -330,34 +331,35 @@ export const Sidebar: React.FC<SidebarProps> = ({
       ? [
           {
             key: 'woocommerce',
-            label: t('navigation.woocommerce', 'فروشگاه آنلاین ووکامرس'),
+            label: t('navigation.woocommerce', 'WooCommerce Store'),
             icon: Globe,
             visible: permissions.canViewOrders,
             items: [
-              { route: 'sales/woocommerce', label: t('navigation.wcOverview', 'پیشخوان همگام‌سازی'), icon: Boxes, visible: permissions.canViewOrders },
-              { route: 'sales/woocommerce/mappings', label: t('navigation.wcMappings', 'تطبیق کالاها و تنوع‌ها'), icon: Layers, visible: permissions.canViewOrders },
-              { route: 'sales/woocommerce/logs', label: t('navigation.wcLogs', 'گزارش و لاگ‌های رویداد'), icon: Clock, visible: permissions.canViewOrders },
-              { route: 'sales/woocommerce/settings', label: t('navigation.wcSettings', 'تنظیمات اتصال'), icon: Settings, visible: permissions.canViewOrders },
+              { route: 'sales/woocommerce', label: t('navigation.wcOverview', 'Sync Overview'), icon: Boxes, visible: permissions.canViewOrders },
+              { route: 'sales/woocommerce/mappings', label: t('navigation.wcMappings', 'SKU Mappings'), icon: Layers, visible: permissions.canViewOrders },
+              { route: 'sales/woocommerce/logs', label: t('navigation.wcLogs', 'Sync Logs'), icon: Clock, visible: permissions.canViewOrders },
+              { route: 'sales/woocommerce/settings', label: t('navigation.wcSettings', 'Connection Settings'), icon: Settings, visible: permissions.canViewOrders },
             ].filter((i) => i.visible !== false),
           },
         ]
       : []),
     {
       key: 'settings',
-      label: t('navigation.settingsGroup', 'تنظیمات'),
+      label: t('navigation.settingsGroup', 'Settings'),
       icon: Settings,
       visible: true,
       items: [
-        { route: 'settings/org', label: t('navigation.settingsGeneral', 'پروفایل و اطلاعات سازمان'), icon: Building2, visible: permissions.canManageOrgSettings || isOwner },
-        { route: 'settings/members', label: t('navigation.settingsMembers', 'اعضا و سطوح دسترسی'), icon: Users, visible: permissions.canManageUsers || isOwner },
-        { route: 'settings/modules', label: t('navigation.settingsModules', 'مدیریت ماژول‌ها و لایسنس‌ها'), icon: Boxes, visible: permissions.canManageOrgSettings || isOwner },
-        { route: 'settings/sync', label: t('navigation.settingsSync', 'پایگاه‌داده و پشتیبان‌گیری'), icon: HardDrive, visible: permissions.canManageOrgSettings || isOwner },
-        { route: 'settings/appearance', label: t('navigation.settingsAppearance', 'ظاهر و تم سامانه'), icon: Palette, visible: true },
+        { route: 'settings/org', label: t('navigation.settingsGeneral', 'Organization Profile'), icon: Building2, visible: permissions.canManageOrgSettings || isOwner },
+        { route: 'settings/members', label: t('navigation.settingsMembers', 'Members & Roles'), icon: Users, visible: permissions.canManageUsers || isOwner },
+        { route: 'settings/modules', label: t('navigation.settingsModules', 'Modules & Licensing'), icon: Boxes, visible: permissions.canManageOrgSettings || isOwner },
+        { route: 'settings/sync', label: t('navigation.settingsSync', 'Database & Backup'), icon: HardDrive, visible: permissions.canManageOrgSettings || isOwner },
+        { route: 'settings/appearance', label: t('navigation.settingsAppearance', 'Appearance'), icon: Palette, visible: true },
+        { route: 'settings/privacy', label: t('navigation.settingsPrivacy', 'Privacy & GDPR'), icon: ShieldCheck, visible: true },
         ...(isDesktop
           ? [
               {
                 route: 'settings/updater',
-                label: t('navigation.settingsUpdater', 'بروزرسانی نرم‌افزار'),
+                label: t('navigation.settingsUpdater', 'Software Updates'),
                 icon: ArrowUpCircle,
                 visible: true,
               },
@@ -372,10 +374,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!hasBarcodeAccess && permissions.canViewInventory) {
     lockedSections.push({
       key: 'locked-barcode',
-      label: t('navigation.barcodePrint', 'چاپ بارکد'),
+      label: t('navigation.barcodePrint', 'Barcode Print'),
       icon: Barcode,
       route: 'inventory/barcodes',
-      badge: t('navigation.moduleBadge', 'ماژول'),
+      badge: t('navigation.moduleBadge', 'Add-on'),
       isLocked: true,
       isSingle: true,
       visible: true,
@@ -384,10 +386,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!hasAccountingAccess && permissions.canViewFinancials) {
     lockedSections.push({
       key: 'locked-accounting',
-      label: t('navigation.accountingGroup', 'حسابداری و مالی'),
+      label: t('navigation.accountingGroup', 'Accounting & Finance'),
       icon: Calculator,
       route: 'accounting/dashboard',
-      badge: t('navigation.moduleBadge', 'ماژول'),
+      badge: t('navigation.moduleBadge', 'Add-on'),
       isLocked: true,
       isSingle: true,
       visible: true,
@@ -396,10 +398,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!hasWooCommerceAccess && permissions.canViewOrders) {
     lockedSections.push({
       key: 'locked-woocommerce',
-      label: t('navigation.woocommerce', 'همگام‌سازی ووکامرس'),
+      label: t('navigation.woocommerce', 'WooCommerce Sync'),
       icon: Globe,
       route: 'sales/woocommerce',
-      badge: t('navigation.moduleBadge', 'ماژول'),
+      badge: t('navigation.moduleBadge', 'Add-on'),
       isLocked: true,
       isSingle: true,
       visible: true,
@@ -408,10 +410,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!hasOnlineCatalogAccess && (permissions.canViewProducts || permissions.canViewOrders)) {
     lockedSections.push({
       key: 'locked-online_catalog',
-      label: t('navigation.onlineCatalog', 'کاتالوگ دیجیتال'),
+      label: t('navigation.onlineCatalog', 'Digital Catalog'),
       icon: Store,
       route: 'sales/catalog',
-      badge: t('navigation.moduleBadge', 'ماژول'),
+      badge: t('navigation.moduleBadge', 'Add-on'),
       isLocked: true,
       isSingle: true,
       visible: true,
@@ -420,10 +422,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   if (!hasProductionAccess) {
     lockedSections.push({
       key: 'locked-production',
-      label: t('navigation.productionGroup', 'مدیریت تولید'),
+      label: t('navigation.productionGroup', 'Production'),
       icon: Scissors,
       route: 'production/overview',
-      badge: t('navigation.moduleBadge', 'ماژول'),
+      badge: t('navigation.moduleBadge', 'Add-on'),
       isLocked: true,
       isSingle: true,
       visible: true,
@@ -843,7 +845,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div className="pt-3">
               {!isCollapsed ? (
                 <h4 className="px-3.5 text-[10px] font-mono font-semibold uppercase tracking-wider text-neutral-500 mb-1.5 truncate">
-                  {t('navigation.lockedModulesGroup', 'ماژول‌ها و افزونه‌ها')}
+                  {t('navigation.lockedModulesGroup', 'Modules & Add-ons')}
                 </h4>
               ) : (
                 <div className="my-2 border-t border-neutral-800 mx-2" />
@@ -971,7 +973,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   className="flex items-center gap-2 text-xs font-medium text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 px-2.5 py-1.5 rounded-xl transition-colors cursor-pointer w-full"
                 >
                   <LogOut className="w-4 h-4 shrink-0" />
-                  <span>{t('auth.logout', 'خروج از حساب')}</span>
+                  <span>{t('auth.logout', 'Sign Out')}</span>
                 </button>
               )}
 
@@ -986,21 +988,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div
                   onClick={() => setIsProfileModalOpen(true)}
                   className="w-8 h-8 rounded-lg bg-neutral-800 border border-neutral-700 text-white font-bold text-xs flex items-center justify-center shrink-0 cursor-pointer hover:border-blue-500 transition-colors overflow-hidden"
-                  title={`${user?.first_name || ''} ${user?.last_name || ''} - ${t('auth.editProfile', 'ویرایش مشخصات')}`}
+                  title={`${user?.first_name || ''} ${user?.last_name || ''} - ${t('auth.editProfile', 'Edit Profile')}`}
                 >
                   {user?.avatar ? (
                     <img src={user.avatar} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
-                    user?.first_name ? user.first_name[0] : 'T'
+                    user?.first_name ? user.first_name[0] : 'C'
                   )}
                 </div>
               )}
               <button
                 onClick={handleLogout}
-                onMouseEnter={(e) => handleMouseEnter('signout', t('auth.logout', 'خروج از حساب'), e, undefined, true)}
+                onMouseEnter={(e) => handleMouseEnter('signout', t('auth.logout', 'Sign Out'), e, undefined, true)}
                 onMouseLeave={handleMouseLeave}
                 className="w-8 h-8 rounded-xl flex items-center justify-center text-neutral-400 hover:text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                title={t('auth.logout', 'خروج از حساب')}
+                title={t('auth.logout', 'Sign Out')}
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -1039,13 +1041,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
               <div className="flex-1 min-w-0">
                 <h3 className="text-base font-bold text-neutral-900 dark:text-neutral-100">
-                  {t('auth.logout', 'خروج از حساب کاربری')}
+                  {t('auth.logout', 'Sign Out')}
                 </h3>
                 <p className="mt-1.5 text-xs text-neutral-600 dark:text-neutral-400 leading-relaxed">
-                  {t('auth.logoutConfirm', 'آیا مطمئن هستید که می‌خواهید از حساب کاربری خود خارج شوید؟')}
+                  {t('auth.logoutConfirm', 'Are you sure you want to sign out of your account?')}
                 </p>
                 <p className="mt-1 text-[11px] text-neutral-400 dark:text-neutral-500">
-                  {t('auth.logoutNote', 'برای ورود مجدد به ایمیل و کلمه عبور خود نیاز خواهید داشت.')}
+                  {t('auth.logoutNote', 'You will need your email and password to sign back in.')}
                 </p>
               </div>
             </div>
@@ -1057,7 +1059,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 disabled={isLoggingOut}
                 className="rounded-xl border border-neutral-300 dark:border-neutral-700 px-4 py-2 text-xs font-semibold text-neutral-700 dark:text-neutral-300 hover:bg-neutral-100 dark:hover:bg-neutral-800 transition-colors cursor-pointer disabled:opacity-50"
               >
-                {t('common.cancel', 'انصراف')}
+                {t('common.cancel', 'Cancel')}
               </button>
               <button
                 type="button"
@@ -1070,7 +1072,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 ) : (
                   <LogOut className="h-4 w-4" />
                 )}
-                <span>{isLoggingOut ? t('auth.loggingOut', 'در حال خروج...') : t('auth.logout', 'خروج از حساب')}</span>
+                <span>{isLoggingOut ? t('auth.loggingOut', 'Signing out...') : t('auth.logout', 'Sign Out')}</span>
               </button>
             </div>
           </div>

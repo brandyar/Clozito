@@ -89,7 +89,7 @@ export class LocalProcurementStorage {
       savedSupplier = {
         id: newId,
         organization_id: this.base.getActiveOrgId() || 1,
-        name: supplier.name || 'تامین‌کننده جدید',
+        name: supplier.name || 'New Supplier',
         status: supplier.status || 'active',
         balance: Number(supplier.balance) || 0,
         date_created: new Date().toISOString(),
@@ -207,7 +207,7 @@ export class LocalProcurementStorage {
         warehouse_id: po.warehouse_id || 1,
         purchase_number: po.purchase_number || `PO-${Date.now().toString().slice(-6)}`,
         status: po.status || 'draft',
-        currency: po.currency || 'IRR',
+        currency: po.currency || 'EUR',
         subtotal,
         discount: totalDiscount,
         tax: totalTax,
@@ -282,7 +282,7 @@ export class LocalProcurementStorage {
           quantity: qty,
           reference_type: 'purchase_order',
           reference_id: String(savedPo.id),
-          note: `دریافت فاکتور خرید ${savedPo.purchase_number}`,
+          note: `Purchase order received ${savedPo.purchase_number}`,
           created_at: new Date().toISOString(),
         });
 
@@ -337,7 +337,7 @@ export class LocalProcurementStorage {
           purchase_order_id: savedPo.id,
           reference_code: savedPo.purchase_number,
           transaction_date: savedPo.date_created || new Date().toISOString(),
-          description: `فاکتور خرید ${savedPo.purchase_number}`,
+          description: `Purchase invoice ${savedPo.purchase_number}`,
           date_created: new Date().toISOString(),
         });
         this.base.setItem('person_transactions', personTxs);
@@ -367,7 +367,7 @@ export class LocalProcurementStorage {
           quantity: -qty,
           reference_type: 'purchase_order',
           reference_id: String(savedPo.id),
-          note: `لغو سفارش خرید ${savedPo.purchase_number}`,
+          note: `Cancelled purchase order ${savedPo.purchase_number}`,
           created_at: new Date().toISOString(),
         });
 

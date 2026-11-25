@@ -5,6 +5,8 @@ import { BRAND } from '../../config/brand';
 import { Button } from '../../components/ui/Button';
 import { Lock, Mail, ShieldCheck, Eye, EyeOff, AlertCircle, Shirt, User as UserIcon, Phone, Building2 } from 'lucide-react';
 import { AuthLanguageDropdown } from './AuthLanguageDropdown';
+import { LegalModal } from '../legal/LegalDocumentView';
+import { LegalDocType } from '../legal/legalContent';
 
 interface LoginViewProps {
   onSuccess?: () => void;
@@ -32,6 +34,8 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [legalModalDoc, setLegalModalDoc] = useState<LegalDocType | null>(null);
   const [formValidationError, setFormValidationError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -65,6 +69,10 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
         setFormValidationError(t('auth.passwordMismatchError'));
         return;
       }
+      if (!acceptedTerms) {
+        setFormValidationError(t('auth.acceptTermsRequiredError'));
+        return;
+      }
       const ok = await register({
         firstName: cleanFirst,
         lastName: cleanLast,
@@ -77,6 +85,7 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
         locale,
         initialCategoryName: t('auth.initialCategoryDefault'),
         initialWarehouseName: t('auth.initialWarehouseDefault'),
+        acceptedTerms: true,
       });
       if (ok && onSuccess) {
         onSuccess();
@@ -320,26 +329,68 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
                   </div>
                 </div>
 
-                {/* Confirm Password Field for Register */}
+                {/* Confirm Password Field & Mandatory GDPR Consent for Register */}
                 {activeTab === 'register' && (
-                  <div>
-                    <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
-                      {t('auth.confirmPassword')} <span className="text-red-500">*</span>
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none text-neutral-400">
-                        <Lock className="w-4 h-4" />
+                  <>
+                    <div>
+                      <label className="block text-xs font-bold text-neutral-700 dark:text-neutral-300 mb-1">
+                        {t('auth.confirmPassword')} <span className="text-red-500">*</span>
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 start-0 ps-3 flex items-center pointer-events-none text-neutral-400">
+                          <Lock className="w-4 h-4" />
+                        </div>
+                        <input
+                          type={showPassword ? 'text' : 'password'}
+                          required
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          placeholder={t('auth.confirmPasswordPlaceholder')}
+                          className="w-full ps-9 pe-3 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-mono text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-400"
+                        />
                       </div>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        required
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        placeholder={t('auth.confirmPasswordPlaceholder')}
-                        className="w-full ps-9 pe-3 py-2.5 bg-white dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-lg text-xs font-mono text-neutral-900 dark:text-neutral-100 focus:outline-none focus:ring-2 focus:ring-neutral-900 dark:focus:ring-neutral-400"
-                      />
                     </div>
-                  </div>
+
+                    {/* Mandatory GDPR Consent Checkbox */}
+                    <label className="flex items-start gap-2.5 p-3 rounded-xl bg-neutral-50 dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700/80 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={acceptedTerms}
+                        onChange={(e) => {
+                          setAcceptedTerms(e.target.checked);
+                          if (e.target.checked && formValidationError === t('auth.acceptTermsRequiredError')) {
+                            setFormValidationError(null);
+                          }
+                        }}
+                        className="mt-0.5 rounded border-neutral-300 dark:border-neutral-600 text-neutral-900 dark:text-white focus:ring-neutral-900 cursor-pointer shrink-0"
+                      />
+                      <span className="text-[11px] text-neutral-600 dark:text-neutral-300 leading-relaxed">
+                        {t('auth.acceptTermsPrefix')}{' '}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setLegalModalDoc('terms');
+                          }}
+                          className="font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          {t('auth.termsOfService')}
+                        </button>{' '}
+                        {t('auth.andLabel')}{' '}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            setLegalModalDoc('privacy');
+                          }}
+                          className="font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          {t('auth.privacyPolicy')}
+                        </button>
+                        . <span className="text-red-500">*</span>
+                      </span>
+                    </label>
+                  </>
                 )}
 
                 <div className="pt-2 space-y-2">
@@ -366,11 +417,44 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
           <AuthLanguageDropdown placement="down" />
         </div>
 
-        {/* Footer */}
-        <p className="text-center text-[11px] font-mono text-neutral-400">
-          {BRAND.name} Platform · {t('auth.allRightsReserved')}
-        </p>
+        {/* Legal Links & Footer */}
+        <div className="text-center space-y-1.5">
+          <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <button
+              type="button"
+              onClick={() => setLegalModalDoc('terms')}
+              className="hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer"
+            >
+              {t('auth.termsOfService')}
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setLegalModalDoc('privacy')}
+              className="hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer"
+            >
+              {t('auth.privacyPolicy')}
+            </button>
+            <span>·</span>
+            <button
+              type="button"
+              onClick={() => setLegalModalDoc('cookies')}
+              className="hover:text-neutral-900 dark:hover:text-white hover:underline cursor-pointer"
+            >
+              {t('auth.cookiePolicy')}
+            </button>
+          </div>
+          <p className="text-[11px] font-mono text-neutral-400">
+            {BRAND.name} Platform · {t('auth.allRightsReserved')}
+          </p>
+        </div>
       </div>
+
+      <LegalModal
+        isOpen={legalModalDoc !== null}
+        initialDoc={legalModalDoc || 'privacy'}
+        onClose={() => setLegalModalDoc(null)}
+      />
     </div>
   );
 };

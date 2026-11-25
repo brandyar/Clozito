@@ -337,7 +337,7 @@ export class CloudCatalogStorage {
           product_id: prodId,
           color_id: colorId || undefined,
           size_id: sizeId || undefined,
-          product_title: prod?.title || v.product_title || 'محصول',
+          product_title: prod?.title || v.product_title || 'Product',
           color_name: color?.name || v.color_name || '-',
           size_name: size?.name || v.size_name || '-',
           stock_quantity: totalStock,
@@ -420,7 +420,7 @@ export class CloudCatalogStorage {
         }).catch(() => []),
       ]);
 
-      const productTitle = products[0]?.title || 'محصول';
+      const productTitle = products[0]?.title || 'Product';
 
       return variants.map((v) => {
         const vNormId = this.base.normalizeId(v.id) || Number(v.id);
@@ -564,7 +564,7 @@ export class CloudCatalogStorage {
               quantity: Math.abs(qtyNum - oldQty),
               reference_type: 'manual',
               reference_id: `ADJ-${savedNormId}`,
-              note: qtyNum > oldQty ? 'افزایش موجودی در ویرایش متغیر' : 'کاهش موجودی در ویرایش متغیر',
+              note: qtyNum > oldQty ? 'Stock increase on variant edit' : 'Stock decrease on variant edit',
             }).catch((movErr) => console.warn('[CloudCatalogStorage] Movement log error:', movErr));
           }
         } else {
@@ -623,7 +623,7 @@ export class CloudCatalogStorage {
             quantity: qtyNum,
             reference_type: 'manual',
             reference_id: `INIT-${savedNormId}`,
-            note: 'موجودی اولیه هنگام ایجاد متغیر کالا',
+            note: 'Initial stock on variant creation',
           }).catch((movErr) => console.warn('[CloudCatalogStorage] Movement log error:', movErr));
         }
       }

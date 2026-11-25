@@ -12,11 +12,11 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { DataTable, Column } from '../../components/ui/DataTable';
 import { Tag, Plus, Search, Edit, Trash2 } from 'lucide-react';
-import { toPersianDigits } from '../../utils/formatters';
 import { confirmAction } from '../../utils/confirm';
 
 export const SizesView: React.FC = () => {
-  const { t, isPersian } = useTranslation();
+  const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const { activeOrganization } = useOrganization();
 
   const [sizes, setSizes] = useState<Size[]>([]);
@@ -157,7 +157,7 @@ export const SizesView: React.FC = () => {
       header: t('products.sizeOrder'),
       render: (size) => (
         <span className="font-mono text-xs font-bold text-slate-600 dark:text-neutral-300">
-          {isPersian ? toPersianDigits(size.sort || 0) : size.sort || 0}
+          {size.sort || 0}
         </span>
       ),
     },
@@ -318,8 +318,8 @@ export const SizesView: React.FC = () => {
         <form id="size-form" onSubmit={handleSave} className="space-y-4">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Input
-              label={`${t('products.sizeName', 'عنوان سایز')} *`}
-              placeholder={isPersian ? "مثال: مدیوم، XL یا ۴۲" : "Medium, 42, XL..."}
+              label={`${t('products.sizeName', 'Size Name')} *`}
+              placeholder={isIt ? 'es. Media, 42, XL...' : 'e.g. Medium, 42, XL...'}
               value={name}
               onChange={(e) => setName(e.target.value)}
               required

@@ -40,8 +40,10 @@ interface OrderPaymentSectionProps {
   subtotal: number;
   totalDiscount: number;
   hasTax: boolean;
+  taxPercent?: number;
   taxAmount: number;
   grandTotal: number;
+  currency?: string;
   isSaving: boolean;
   cartLength: number;
   onPreviewPrint: () => void;
@@ -71,8 +73,10 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
   subtotal,
   totalDiscount,
   hasTax,
+  taxPercent,
   taxAmount,
   grandTotal,
+  currency = 'EUR',
   isSaving,
   cartLength,
   onPreviewPrint,
@@ -80,6 +84,7 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
   userId,
 }) => {
   const { t, locale } = useTranslation();
+  const isIt = locale === 'it';
   const isPersian = false;
 
   return (
@@ -117,7 +122,7 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
             {isWarehouseLocked && (
               <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
                 <Lock className="w-2.5 h-2.5" />
-                <span>{isPersian ? 'انبار اختصاصی شما' : 'Locked Branch'}</span>
+                <span>{isIt ? 'Filiale bloccata' : 'Locked Branch'}</span>
               </span>
             )}
           </div>
@@ -194,13 +199,13 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
           <div className="flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 font-bold text-neutral-800 dark:text-neutral-200">
               <Wallet className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-              <span>{t('orders.settlementAccount') || 'واریز به حساب / صندوق تسویه:'}</span>
+              <span>{t('orders.settlementAccount') || (isIt ? 'Conto / Cassa di regolamento:' : 'Settlement Account / Cashbox:')}</span>
             </div>
             <div className="flex items-center gap-2">
               {isAccountLocked && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
                   <Lock className="w-2.5 h-2.5" />
-                  <span>{isPersian ? 'صندوق اختصاصی شما' : 'Locked Cashbox'}</span>
+                  <span>{isIt ? 'Cassa bloccata' : 'Locked Cashbox'}</span>
                 </span>
               )}
               {selectedAccountId && (
@@ -208,7 +213,7 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
                   {(() => {
                     const acc = financialAccounts.find((a) => a.id === selectedAccountId);
                     return acc && acc.current_balance !== undefined
-                      ? `موجودی: ${formatCurrency(acc.current_balance, 'TOMAN', isPersian)}`
+                      ? `${t('accounting.currentBalance')}: ${formatCurrency(acc.current_balance, currency, isPersian)}`
                       : '';
                   })()}
                 </span>
@@ -218,13 +223,13 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
 
           {financialAccounts.length === 0 ? (
             <div className="p-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-lg text-xs text-amber-800 dark:text-amber-200 flex items-center justify-between">
-              <span>هنوز حساب مالی یا صندوق نقدی در ماژول حسابداری تعریف نشده است.</span>
+              <span>{isIt ? 'Nessun conto finanziario o cassa definito nella contabilità.' : 'No financial account or cashbox defined in accounting yet.'}</span>
               <button
                 type="button"
                 onClick={onRefreshAccounts}
                 className="px-2 py-1 bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 rounded text-[10px] font-bold hover:bg-amber-300"
               >
-                بروزرسانی
+                {isIt ? 'Aggiorna' : 'Refresh'}
               </button>
             </div>
           ) : (
@@ -263,22 +268,22 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
                   return (
                     <>
                       {linkedAccs.length > 0 && (
-                        <optgroup label={`⭐ متصل به انبار انتخابی (${selectedWhObj?.name || 'این انبار'})`}>
+                        <optgroup label={isIt ? `Collegati al magazzino (${selectedWhObj?.name || 'Selezionato'})` : `Linked to selected warehouse (${selectedWhObj?.name || 'Selected'})`}>
                           {linkedAccs.map((acc) => (
                             <option key={acc.id} value={String(acc.id)}>
-                              {acc.type === 'cashbox' ? '💵' : '💳'} {acc.name} {acc.bank_name ? `(${acc.bank_name})` : ''} - پیش‌فرض انبار
+                              {acc.name} {acc.bank_name ? `(${acc.bank_name})` : ''} - {isIt ? 'Predefinito magazzino' : 'Warehouse Default'}
                             </option>
                           ))}
                         </optgroup>
                       )}
 
                       {otherAccs.length > 0 && (
-                        <optgroup label={linkedAccs.length > 0 ? 'سایر صندوق‌ها و حساب‌های مالی' : 'تمامی صندوق‌ها و حساب‌های بانکی'}>
+                        <optgroup label={linkedAccs.length > 0 ? (isIt ? 'Altre casse e conti' : 'Other Cashboxes & Accounts') : (isIt ? 'Tutte le casse e conti bancari' : 'All Cashboxes & Bank Accounts')}>
                           {otherAccs.map((acc) => {
                             const accWh = acc.warehouse_name || (typeof acc.warehouse_id === 'object' && acc.warehouse_id ? (acc.warehouse_id as any).name : null);
                             return (
                               <option key={acc.id} value={String(acc.id)}>
-                                {acc.type === 'cashbox' ? '💵' : '💳'} {acc.name} {acc.bank_name ? `(${acc.bank_name})` : ''} {accWh ? `[انبار: ${accWh}]` : ''} {acc.is_default ? '(پیش‌فرض عمومی)' : ''}
+                                {acc.name} {acc.bank_name ? `(${acc.bank_name})` : ''} {accWh ? `[${isIt ? 'Magazzino' : 'Warehouse'}: ${accWh}]` : ''} {acc.is_default ? (isIt ? '(Predefinito)' : '(Default)') : ''}
                               </option>
                             );
                           })}
@@ -299,15 +304,22 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
                 return (
                   <div className="flex items-center justify-between text-[11px] pt-0.5">
                     <span className="text-neutral-500 dark:text-neutral-400">
-                      نوع حساب: <strong className="text-neutral-700 dark:text-neutral-300">{selAcc.type === 'cashbox' ? 'صندوق نقدی' : selAcc.type === 'pos' ? 'کارتخوان (POS)' : 'حساب بانکی'}</strong>
+                      {isIt ? 'Tipo conto:' : 'Account type:'}{' '}
+                      <strong className="text-neutral-700 dark:text-neutral-300">
+                        {selAcc.type === 'cashbox'
+                          ? (isIt ? 'Cassa contanti' : 'Cashbox')
+                          : selAcc.type === 'pos'
+                          ? 'POS Terminal'
+                          : (isIt ? 'Conto bancario' : 'Bank Account')}
+                      </strong>
                     </span>
                     {isLinkedToCurrentWh ? (
                       <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full font-bold">
-                        ✓ متصل به انبار انتخابی
+                        ✓ {isIt ? 'Collegato al magazzino' : 'Linked to selected warehouse'}
                       </span>
                     ) : aWhId ? (
                       <span className="text-[10px] text-neutral-400">
-                        (متصل به انبار دیگر)
+                        ({isIt ? 'Collegato ad altro magazzino' : 'Linked to another warehouse'})
                       </span>
                     ) : null}
                   </div>
@@ -325,6 +337,8 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
             <span className="font-bold text-emerald-900">{t('orders.cashReceived')}</span>
             <input
               type="number"
+              min="0"
+              step="0.01"
               value={cashReceived || ''}
               onChange={(e) => setCashReceived(Number(e.target.value))}
               placeholder={t('orders.cashReceivedPlaceholder')}
@@ -335,7 +349,7 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
           <div className="flex justify-between items-center text-xs border-t border-emerald-200/60 pt-2 font-bold">
             <span className="text-emerald-800">{t('orders.cashChange')}</span>
             <span className="font-mono text-emerald-900 text-sm">
-              {formatCurrency(cashChange, 'TOMAN', isPersian)}
+              {formatCurrency(cashChange, currency, isPersian)}
             </span>
           </div>
         </div>
@@ -345,27 +359,29 @@ export const OrderPaymentSection: React.FC<OrderPaymentSectionProps> = ({
       <div className="p-4 bg-[#171717] text-white rounded-xl space-y-2 text-xs shadow-md">
         <div className="flex justify-between text-neutral-400">
           <span>{t('orders.subtotal')}:</span>
-          <span className="font-mono">{formatCurrency(subtotal, 'TOMAN', isPersian)}</span>
+          <span className="font-mono">{formatCurrency(subtotal, currency, isPersian)}</span>
         </div>
 
         {totalDiscount > 0 && (
           <div className="flex justify-between text-emerald-400">
             <span>{t('orders.totalDiscount')}</span>
-            <span className="font-mono">- {formatCurrency(totalDiscount, 'TOMAN', isPersian)}</span>
+            <span className="font-mono">- {formatCurrency(totalDiscount, currency, isPersian)}</span>
           </div>
         )}
 
         {hasTax && (
           <div className="flex justify-between text-neutral-300">
-            <span>{t('orders.vatIncluded')}:</span>
-            <span className="font-mono">+ {formatCurrency(taxAmount, 'TOMAN', isPersian)}</span>
+            <span>
+              {t('orders.vatIncluded')}{taxPercent !== undefined ? ` (${taxPercent}%)` : ''}:
+            </span>
+            <span className="font-mono">+ {formatCurrency(taxAmount, currency, isPersian)}</span>
           </div>
         )}
 
         <div className="flex justify-between items-center text-white font-bold text-base pt-2 border-t border-neutral-800">
           <span>{t('orders.payableAmount')}</span>
           <span className="font-mono text-emerald-400 text-lg">
-            {formatCurrency(grandTotal, 'TOMAN', isPersian)}
+            {formatCurrency(grandTotal, currency, isPersian)}
           </span>
         </div>
       </div>

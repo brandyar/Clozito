@@ -160,22 +160,22 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
   const mapCameraError = useCallback(
     (err: unknown): string => {
       if (typeof window !== 'undefined' && !window.isSecureContext && window.location.hostname !== 'localhost') {
-        return t('common.webcamErrorInsecure', 'دسترسی به وب‌کم در مرورگر نیازمند بستر امن (HTTPS) است.');
+        return t('common.webcamErrorInsecure', 'Camera access in the browser requires a secure (HTTPS) connection.');
       }
       const name = (err as { name?: string })?.name || '';
       if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
         return t(
           'common.webcamErrorPermission',
-          'دسترسی به دوربین توسط کاربر یا مرورگر مسدود شده است. لطفاً مجوز دوربین را در تنظیمات مرورگر تایید کنید.'
+          'Camera access was denied. Please allow camera permission in your browser settings.'
         );
       }
       if (name === 'NotFoundError' || name === 'DevicesNotFoundError' || name === 'OverconstrainedError') {
-        return t('common.webcamErrorNotFound', 'هیچ وب‌کم یا دوربینی روی این سیستم شناسایی نشد.');
+        return t('common.webcamErrorNotFound', 'No webcam or camera device was detected on this system.');
       }
       if (name === 'NotReadableError' || name === 'TrackStartError') {
-        return t('common.webcamErrorInUse', 'دوربین در حال حاضر توسط برنامه دیگری در حال استفاده است.');
+        return t('common.webcamErrorInUse', 'The camera is currently in use by another application.');
       }
-      return t('common.webcamErrorGeneric', 'خطا در راه‌اندازی دوربین. لطفاً اتصال وب‌کم را بررسی کنید.');
+      return t('common.webcamErrorGeneric', 'Failed to initialize camera. Please check your webcam connection.');
     },
     [t]
   );
@@ -245,7 +245,7 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
           .filter((d) => d.kind === 'videoinput')
           .map((d, idx) => ({
             deviceId: d.deviceId,
-            label: d.label || `${t('common.webcamCameraDefault', 'دوربین')} ${idx + 1}`,
+            label: d.label || `${t('common.webcamCameraDefault', 'Camera')} ${idx + 1}`,
           }));
         setCameras(videoInputs);
 
@@ -405,10 +405,10 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
           </div>
           <div>
             <span className="block text-sm font-bold text-neutral-900 dark:text-neutral-100">
-              {title || t('common.webcamScannerTitle', 'اسکنر بارکد با دوربین')}
+              {title || t('common.webcamScannerTitle', 'Camera Barcode Scanner')}
             </span>
             <span className="block text-[11px] font-normal text-neutral-500 dark:text-neutral-400">
-              {t('common.webcamScannerSubtitle', 'بارکد محصول یا کد QR را مقابل کادر دوربین قرار دهید')}
+              {t('common.webcamScannerSubtitle', 'Align the product barcode or QR code inside the frame')}
             </span>
           </div>
         </div>
@@ -417,15 +417,15 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
         <div className="w-full flex items-center justify-between gap-2 flex-wrap">
           <span className="text-[11px] text-neutral-500 dark:text-neutral-400 flex items-center gap-1.5">
             <Barcode className="w-3.5 h-3.5 text-neutral-400" />
-            <span>{t('common.webcamFormatsHint', 'پشتیبانی از Code 128، EAN-13، EAN-8، Code 39 و QR')}</span>
+            <span>{t('common.webcamFormatsHint', 'Supports Code 128, EAN-13, EAN-8, Code 39 & QR')}</span>
           </span>
           <Button type="button" variant="outline" size="sm" onClick={handleClose}>
-            {t('common.close', 'بستن')}
+            {t('common.close', 'Close')}
           </Button>
         </div>
       }
     >
-      <div className="space-y-3.5" dir={isPersian ? 'rtl' : 'ltr'}>
+      <div className="space-y-3.5" dir="ltr">
         {/* Top Controls Bar */}
         <div className="flex flex-wrap items-center justify-between gap-2">
           {/* Camera Selector */}
@@ -433,7 +433,7 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
             <select
               value={selectedDeviceId}
               onChange={(e) => handleCameraChange(e.target.value)}
-              aria-label={t('common.webcamSelectCamera', 'انتخاب دوربین')}
+              aria-label={t('common.webcamSelectCamera', 'Select Camera')}
               className="flex-1 min-w-[160px] max-w-xs bg-[#fafafa] dark:bg-[#181a20] border border-neutral-200 dark:border-neutral-700 rounded-lg px-2.5 py-1.5 text-xs font-medium text-neutral-800 dark:text-neutral-200 focus:outline-none focus:border-neutral-900 dark:focus:border-neutral-400"
             >
               {cameras.map((cam) => (
@@ -444,7 +444,7 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
             </select>
           ) : (
             <div className="text-xs text-neutral-500 dark:text-neutral-400 font-medium">
-              {cameras[0]?.label || t('common.webcamCameraDefault', 'دوربین')}
+              {cameras[0]?.label || t('common.webcamCameraDefault', 'Camera')}
             </div>
           )}
 
@@ -463,8 +463,8 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
                 <Repeat className="w-3.5 h-3.5" />
                 <span>
                   {continuousMode
-                    ? t('common.webcamContinuousMode', 'اسکن پیوسته (صندوق)')
-                    : t('common.webcamSingleMode', 'اسکن تکی')}
+                    ? t('common.webcamContinuousMode', 'Continuous Scan (POS)')
+                    : t('common.webcamSingleMode', 'Single Scan')}
                 </span>
               </button>
             )}
@@ -473,7 +473,7 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
               <button
                 type="button"
                 onClick={handleToggleTorch}
-                title={t('common.webcamTorch', 'فلاش')}
+                title={t('common.webcamTorch', 'Flashlight')}
                 className={`p-1.5 rounded-lg border transition-colors cursor-pointer ${
                   torchOn
                     ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-300 dark:border-amber-700 text-amber-600 dark:text-amber-300'
@@ -489,8 +489,8 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
               onClick={handleToggleSound}
               title={
                 soundEnabled
-                  ? t('common.webcamSoundOn', 'صدای بوق فعال')
-                  : t('common.webcamSoundOff', 'صدای بوق خاموش')
+                  ? t('common.webcamSoundOn', 'Beep sound on')
+                  : t('common.webcamSoundOff', 'Beep sound off')
               }
               className="p-1.5 rounded-lg border border-neutral-200 dark:border-neutral-700 bg-white dark:bg-[#181a20] text-neutral-600 dark:text-neutral-300 hover:bg-neutral-50 dark:hover:bg-neutral-800 transition-colors cursor-pointer"
             >
@@ -535,7 +535,7 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
             <div className="absolute inset-0 bg-neutral-950/85 flex flex-col items-center justify-center gap-2.5 text-white p-4">
               <div className="w-7 h-7 border-2 border-emerald-400 border-t-transparent rounded-full animate-spin" />
               <span className="text-xs font-medium text-neutral-300">
-                {t('common.webcamStarting', 'در حال فعال‌سازی دوربین...')}
+                {t('common.webcamStarting', 'Starting camera...')}
               </span>
             </div>
           )}
@@ -555,7 +555,7 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
                 icon={<RefreshCw className="w-3.5 h-3.5" />}
                 className="bg-neutral-900 border-neutral-700 text-white hover:bg-neutral-800"
               >
-                {t('common.webcamRetry', 'تلاش مجدد')}
+                {t('common.webcamRetry', 'Retry')}
               </Button>
             </div>
           )}
@@ -577,7 +577,7 @@ export const WebcamBarcodeScannerModal: React.FC<WebcamBarcodeScannerModalProps>
                 <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 shrink-0" />
               )}
               <span className="truncate">
-                {lastFeedback.message || `${t('common.webcamLastScanned', 'آخرین اسکن')}: ${lastFeedback.code}`}
+                {lastFeedback.message || `${t('common.webcamLastScanned', 'Last scan')}: ${lastFeedback.code}`}
               </span>
             </div>
             <span className="font-mono text-[11px] opacity-80 shrink-0">{lastFeedback.code}</span>

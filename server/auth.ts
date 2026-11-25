@@ -1,6 +1,8 @@
 import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
+import Stripe from 'stripe';
 import { DirectusAdminClient } from './directusAdmin';
+import { isPaidCloudPlan, normalizePlanTier } from '../src/config/plans';
 
 const JWT_SECRET = process.env.JWT_SECRET || 'tankhor_jwt_secret_dev_key_2026';
 
@@ -89,7 +91,7 @@ export async function sanitizeAndEnforceOrgPlan(org: any): Promise<any> {
   const now = new Date();
   const currentPlan = org.plan || 'free';
 
-  if (currentPlan === 'pro') {
+  if (isPaidCloudPlan(currentPlan)) {
     let isTrialActive = false;
     let trialExpired = false;
 
@@ -114,6 +116,16 @@ export async function sanitizeAndEnforceOrgPlan(org: any): Promise<any> {
       };
     }
 
+    // Check Stripe recurring subscription status first (handles active, trialing, and past_due grace period)
+    const stripeStatus = String(org.stripe_subscription_status || '').toLowerCase();
+    if (org.stripe_subscription_id && ['active', 'trialing', 'past_due'].includes(stripeStatus)) {
+      return {
+        ...org,
+        plan: currentPlan,
+        has_active_subscription: true,
+      };
+    }
+
     // Check for active paid subscription
     try {
       const subs: any[] = await DirectusAdminClient.getItems('subscriptions', {
@@ -129,17 +141,17 @@ export async function sanitizeAndEnforceOrgPlan(org: any): Promise<any> {
         return notTrial && !isNaN(endDate.getTime()) && endDate > now;
       });
 
-      if (activePaidSub) {
+      if (activePaidSub && stripeStatus !== 'canceled') {
         return {
           ...org,
-          plan: 'pro',
+          plan: currentPlan,
           has_active_subscription: true,
           subscription_end_date: activePaidSub.end_date,
         };
       }
 
       // Neither active trial nor active paid sub -> Auto downgrade to free
-      console.log(`[enforceOrganizationPlan] Org #${org.id} (${org.name}) Pro trial/subscription expired. Downgrading to 'free'`);
+      console.log(`[enforceOrganizationPlan] Org #${org.id} (${org.name}) cloud trial/subscription expired. Downgrading to 'free'`);
       org.plan = 'free';
 
       DirectusAdminClient.updateItem('organizations', Number(org.id), {
@@ -360,11 +372,24 @@ authRouter.post('/register', async (req: Request, res: Response) => {
     const locale = String(body.locale || 'en').toLowerCase() === 'it' ? 'it' : 'en';
     const initial_category_name = (body.initial_category_name || body.initialCategoryName || '').toString().trim();
     const initial_warehouse_name = (body.initial_warehouse_name || body.initialWarehouseName || '').toString().trim();
+    const accepted_terms = body.accepted_terms === true || body.acceptedTerms === true;
 
     if (!email || !password) {
       console.warn('[Auth Register Warning] Missing email or password:', { hasEmail: !!email, hasPassword: !!password, bodyKeys: Object.keys(body) });
       return res.status(400).json({ error: locale === 'it' ? 'Email e password sono obbligatori.' : 'Email address and password are required.' });
     }
+
+    if (!accepted_terms) {
+      return res.status(400).json({
+        error:
+          locale === 'it'
+            ? 'Devi accettare i Termini di Servizio e l\'Informativa sulla Privacy per registrarti.'
+            : 'You must accept the Terms of Service and Privacy Policy to create an account.',
+      });
+    }
+
+    // Authoritative server-generated GDPR consent timestamp
+    const consentTimestamp = new Date().toISOString();
 
     // 1. Check if user already exists
     const existingUsers = await DirectusAdminClient.getItems('directus_users', {
@@ -468,14 +493,35 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 
     const resolvedCurrency = !currency || currency.toUpperCase() === 'TOMAN' ? 'EUR' : currency;
 
-    const newOrg = await DirectusAdminClient.createItem('organizations', {
+    const baseOrgPayload = {
       name: finalOrgName,
       slug: generatedSlug,
       currency: resolvedCurrency,
       timezone: timezone || 'Europe/Rome',
       plan: 'free',
       status: 'active',
-    });
+    };
+
+    let newOrg: any;
+    try {
+      newOrg = await DirectusAdminClient.createItem('organizations', {
+        ...baseOrgPayload,
+        terms_accepted_at: consentTimestamp,
+        privacy_accepted_at: consentTimestamp,
+      });
+    } catch (consentColErr: any) {
+      // Graceful fallback if optional GDPR timestamp columns have not yet been added in Directus schema
+      console.warn('[Auth Register] Consent timestamp columns not yet present on organizations, retrying base payload:', consentColErr?.message);
+      newOrg = await DirectusAdminClient.createItem('organizations', baseOrgPayload);
+    }
+
+    if (newOrg && typeof newOrg === 'object') {
+      newOrg = {
+        ...newOrg,
+        terms_accepted_at: newOrg.terms_accepted_at || consentTimestamp,
+        privacy_accepted_at: newOrg.privacy_accepted_at || consentTimestamp,
+      };
+    }
 
     // 4. Create membership in organization_users (role: owner)
     await DirectusAdminClient.createItem('organization_users', {
@@ -709,7 +755,7 @@ authRouter.post('/refresh', async (req: Request, res: Response) => {
     });
   } catch (error: any) {
     console.error('[Auth /refresh Error]:', error);
-    return res.status(500).json({ error: error.message || 'خطا در تمدید نشست کاربر' });
+    return res.status(500).json({ error: error.message || 'Failed to refresh user session.' });
   }
 });
 
@@ -726,7 +772,7 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
     // Fetch user details
     const user = await DirectusAdminClient.request(`/users/${userId}`).catch(() => null);
     if (!user) {
-      return res.status(404).json({ error: 'کاربر یافت نشد.' });
+      return res.status(404).json({ error: 'User not found.' });
     }
 
     // Fetch full organization details and all memberships
@@ -753,7 +799,7 @@ authRouter.get('/me', requireAuth, async (req: AuthenticatedRequest, res: Respon
     return res.json(responseData);
   } catch (error: any) {
     console.error('[Auth /me Error]:', error);
-    return res.status(500).json({ error: error.message || 'خطا در دریافت مشخصات کاربر' });
+    return res.status(500).json({ error: error.message || 'Failed to fetch user profile.' });
   }
 });
 
@@ -766,7 +812,7 @@ authRouter.patch('/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
     // 1. Fetch current user from Directus
     const currentUser = await DirectusAdminClient.request(`/users/${userId}`).catch(() => null);
     if (!currentUser) {
-      return res.status(404).json({ error: 'کاربر در دایرکتوس یافت نشد.' });
+      return res.status(404).json({ error: 'User not found.' });
     }
 
     const updatePayload: Record<string, any> = {};
@@ -779,7 +825,7 @@ authRouter.patch('/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
     if (password && typeof password === 'string' && password.trim().length > 0) {
       const cleanPass = password.trim();
       if (cleanPass.length < 6) {
-        return res.status(400).json({ error: 'رمز عبور جدید باید حداقل ۶ کاراکتر باشد.' });
+        return res.status(400).json({ error: 'New password must be at least 6 characters.' });
       }
 
       // If current password provided, verify against Directus login
@@ -796,7 +842,7 @@ authRouter.patch('/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
             }),
           });
           if (!verifyRes.ok) {
-            return res.status(400).json({ error: 'رمز عبور فعلی وارد شده نادرست است.' });
+            return res.status(400).json({ error: 'Current password is incorrect.' });
           }
         } catch (authErr: any) {
           console.warn('[Auth PATCH /me] Password check warning:', authErr?.message);
@@ -816,7 +862,7 @@ authRouter.patch('/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
 
     return res.json({
       success: true,
-      message: 'مشخصات کاربر با موفقیت در دایرکتوس بروزرسانی شد.',
+      message: 'User profile updated successfully.',
       user: {
         id: finalUser.id || userId,
         email: finalUser.email || currentUser.email,
@@ -828,7 +874,7 @@ authRouter.patch('/me', requireAuth, async (req: AuthenticatedRequest, res: Resp
     });
   } catch (error: any) {
     console.error('[Auth PATCH /me Error]:', error);
-    return res.status(500).json({ error: error.message || 'خطا در بروزرسانی مشخصات کاربر' });
+    return res.status(500).json({ error: error.message || 'Failed to update user profile.' });
   }
 });
 
@@ -845,7 +891,7 @@ authRouter.post('/switch-org', requireAuth, async (req: AuthenticatedRequest, re
     const { activeOrganization, organizations } = await getUserOrganizations(userId, Number(targetOrganizationId), email);
 
     if (!activeOrganization || Number(activeOrganization.id) !== Number(targetOrganizationId)) {
-      return res.status(403).json({ error: 'شما به این سازمان دسترسی ندارید.' });
+      return res.status(403).json({ error: 'You do not have access to this organization.' });
     }
 
     const role = activeOrganization.user_role || 'viewer';
@@ -869,7 +915,7 @@ authRouter.post('/switch-org', requireAuth, async (req: AuthenticatedRequest, re
       role,
     });
   } catch (error: any) {
-    return res.status(500).json({ error: error.message || 'خطا در تغییر سازمان' });
+    return res.status(500).json({ error: error.message || 'Failed to switch organization.' });
   }
 });
 
@@ -879,13 +925,13 @@ authRouter.get('/check-plan', requireAuth, async (req: AuthenticatedRequest, res
     const { userId, organizationId, email } = req.user!;
     const orgIdNum = Number(req.query.organization_id || organizationId);
     if (!orgIdNum || isNaN(orgIdNum) || orgIdNum <= 0) {
-      return res.status(400).json({ error: 'سازمان فعالی مشخص نشده است.' });
+      return res.status(400).json({ error: 'No active organization specified.' });
     }
 
     // Always fetch fresh organization directly from Directus Admin
     const org: any = await DirectusAdminClient.getItemById('organizations', orgIdNum);
     if (!org) {
-      return res.status(404).json({ error: 'سازمان یافت نشد.' });
+      return res.status(404).json({ error: 'Organization not found.' });
     }
 
     const now = new Date();
@@ -919,10 +965,15 @@ authRouter.get('/check-plan', requireAuth, async (req: AuthenticatedRequest, res
     }
 
     // 3. Auto-downgrade logic:
-    // If organization plan is 'pro' but has NO active paid subscription and trial is expired (or has used trial and not active)
-    if (currentPlan === 'pro' && !activePaidSub) {
-      if (trialExpired || (org.has_used_trial && !isTrial)) {
-        console.log(`[check-plan] Organization #${orgIdNum} trial has expired. Reverting plan to 'free'`);
+    // Respect active/trialing/past_due Stripe subscriptions; otherwise downgrade if no active paid sub and trial expired
+    const stripeStatus = String(org.stripe_subscription_status || '').toLowerCase();
+    const hasLiveStripeSub = Boolean(
+      org.stripe_subscription_id && ['active', 'trialing', 'past_due'].includes(stripeStatus)
+    );
+
+    if (isPaidCloudPlan(currentPlan) && !hasLiveStripeSub && (!activePaidSub || stripeStatus === 'canceled')) {
+      if (trialExpired || (org.has_used_trial && !isTrial) || stripeStatus === 'canceled') {
+        console.log(`[check-plan] Organization #${orgIdNum} trial/subscription ended. Reverting plan to 'free'`);
         await DirectusAdminClient.updateItem('organizations', orgIdNum, {
           plan: 'free',
           date_updated: now.toISOString(),
@@ -932,13 +983,15 @@ authRouter.get('/check-plan', requireAuth, async (req: AuthenticatedRequest, res
       }
     }
 
-    const isPro = currentPlan === 'pro';
+    const isPro = isPaidCloudPlan(currentPlan);
+    const planTier = normalizePlanTier(currentPlan);
     const { activeOrganization, organizations } = await getUserOrganizations(userId, orgIdNum, email);
 
     return res.json({
       success: true,
       organizationId: orgIdNum,
       plan: currentPlan,
+      planTier,
       isPro,
       isTrial: isPro && isTrial,
       trialDaysRemaining,
@@ -951,7 +1004,7 @@ authRouter.get('/check-plan', requireAuth, async (req: AuthenticatedRequest, res
     });
   } catch (error: any) {
     console.error('[Auth /check-plan Error]:', error);
-    return res.status(500).json({ error: error.message || 'خطا در بررسی وضعیت اشتراک از سرور' });
+    return res.status(500).json({ error: error.message || 'Failed to check subscription status.' });
   }
 });
 
@@ -962,7 +1015,7 @@ authRouter.post('/start-trial', requireAuth, async (req: AuthenticatedRequest, r
     const orgIdNum = Number(req.body?.organization_id || req.body?.organizationId || organizationId);
 
     if (!orgIdNum || isNaN(orgIdNum) || orgIdNum <= 0) {
-      return res.status(400).json({ error: 'شناسه سازمان مشخص نشده است.' });
+      return res.status(400).json({ error: 'Organization ID is not specified.' });
     }
 
     // Verify user membership in organization
@@ -996,9 +1049,9 @@ authRouter.post('/start-trial', requireAuth, async (req: AuthenticatedRequest, r
     const trialDays = 14;
     const trialEndsAt = new Date(now.getTime() + trialDays * 24 * 60 * 60 * 1000);
 
-    // 1. Update organization
+    // 1. Update organization (full Atelier Cloud trial so users can test every module)
     await DirectusAdminClient.updateItem('organizations', orgIdNum, {
-      plan: 'pro',
+      plan: 'atelier',
       has_used_trial: true,
       trial_ends_at: trialEndsAt.toISOString(),
       date_updated: now.toISOString(),
@@ -1027,8 +1080,9 @@ authRouter.post('/start-trial', requireAuth, async (req: AuthenticatedRequest, r
 
     return res.json({
       success: true,
-      message: 'Your 14-day Pro free trial has been activated!',
-      plan: 'pro',
+      message: 'Your 14-day Atelier Cloud free trial has been activated!',
+      plan: 'atelier',
+      planTier: 'atelier',
       isPro: true,
       isTrial: true,
       trialDaysRemaining: 14,
@@ -1118,5 +1172,345 @@ authRouter.post('/create-org', requireAuth, async (req: AuthenticatedRequest, re
   } catch (error: any) {
     console.error('[Auth /create-org Error]:', error);
     return res.status(500).json({ error: error.message || 'Failed to create organization.' });
+  }
+});
+
+// Helper: Resolve Stripe client from project_settings or environment for best-effort subscription cancellation on erasure
+async function getOptionalStripeClient(): Promise<Stripe | null> {
+  try {
+    let secretKey = (process.env.STRIPE_SECRET_KEY || '').trim();
+    if (!secretKey) {
+      const settingsRes = await DirectusAdminClient.request('/items/project_settings').catch(() => null);
+      const record = Array.isArray(settingsRes) ? settingsRes[0] : settingsRes?.data || settingsRes;
+      secretKey = String(record?.stripe_secret_key || record?.STRIPE_SECRET_KEY || '').trim();
+    }
+    if (!secretKey || !secretKey.startsWith('sk_')) return null;
+    return new Stripe(secretKey);
+  } catch {
+    return null;
+  }
+}
+
+const GDPR_EXPORT_COLLECTIONS = [
+  'products',
+  'product_variants',
+  'categories',
+  'brands',
+  'collections',
+  'seasons',
+  'customers',
+  'orders',
+  'order_items',
+  'suppliers',
+  'purchase_orders',
+  'warehouses',
+  'warehouse_locations',
+  'inventory_items',
+  'inventory_movements',
+  'expenses',
+  'expense_categories',
+  'financial_accounts',
+  'person_transactions',
+  'size_guide_templates',
+  'subscriptions',
+] as const;
+
+// Dependency-safe deletion order for tenant-scoped collections on GDPR Art. 17 erasure
+const GDPR_ERASURE_COLLECTIONS = [
+  'order_items',
+  'orders',
+  'purchase_order_items',
+  'purchase_orders',
+  'inventory_movements',
+  'inventory_items',
+  'warehouse_locations',
+  'warehouses',
+  'product_variants',
+  'products',
+  'size_guide_values',
+  'size_guide_measurements',
+  'size_guide_templates',
+  'categories',
+  'brands',
+  'collections',
+  'seasons',
+  'person_transactions',
+  'treasury_transactions',
+  'expenses',
+  'expense_categories',
+  'cheques',
+  'financial_accounts',
+  'customers',
+  'suppliers',
+  'production_orders',
+  'bom_items',
+  'boms',
+  'raw_materials',
+  'contractors',
+  'organization_modules',
+  'subscriptions',
+] as const;
+
+// GDPR Art. 20 — Data Portability Export (strictly scoped to authenticated user & verified organization)
+authRouter.get('/gdpr/export', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId, email, organizationId } = req.user!;
+    const requestedOrgId = req.query.organization_id ? Number(req.query.organization_id) : organizationId;
+
+    const { organizations, activeOrganization } = await getUserOrganizations(userId, requestedOrgId, email);
+    const verifiedOrg =
+      organizations.find((o: any) => Number(o.id) === Number(requestedOrgId)) || activeOrganization;
+
+    if (!verifiedOrg || !verifiedOrg.id) {
+      return res.status(403).json({ error: 'You do not have access to this organization.' });
+    }
+
+    const targetOrgId = Number(verifiedOrg.id);
+    const rawUser = await DirectusAdminClient.request(`/users/${userId}`).catch(() => null);
+    const userObj = rawUser?.data || rawUser || {};
+
+    const sanitizedUser = {
+      id: userObj.id || userId,
+      email: userObj.email || email,
+      first_name: userObj.first_name || '',
+      last_name: userObj.last_name || '',
+      user_phone: userObj.user_phone || '',
+      title: userObj.title || '',
+      status: userObj.status || 'active',
+      role_in_organization: verifiedOrg.user_role || 'viewer',
+    };
+
+    const collections: Record<string, any[]> = {};
+    const counts: Record<string, number> = {};
+
+    for (const collection of GDPR_EXPORT_COLLECTIONS) {
+      try {
+        const items = await DirectusAdminClient.getItems(collection, {
+          filter: { organization_id: { _eq: targetOrgId } },
+          limit: -1,
+        });
+        const list = Array.isArray(items) ? items : [];
+        collections[collection] = list;
+        counts[collection] = list.length;
+      } catch {
+        collections[collection] = [];
+        counts[collection] = 0;
+      }
+    }
+
+    return res.json({
+      schema: 'clozito-gdpr-export-v1',
+      regulation: 'Regulation (EU) 2016/679 (GDPR) — Article 20 Data Portability',
+      exported_at: new Date().toISOString(),
+      user: sanitizedUser,
+      organization: verifiedOrg,
+      counts,
+      collections,
+    });
+  } catch (error: any) {
+    console.error('[GDPR Export Error]:', error);
+    return res.status(500).json({ error: error.message || 'Failed to export GDPR data archive.' });
+  }
+});
+
+// GDPR Art. 17 — Right to Erasure (Account & Sole-Owned Workspace Deletion)
+authRouter.post('/gdpr/delete-account', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { userId, email } = req.user!;
+    const { password, confirmText, deleteOwnedWorkspaces = true, locale = 'en' } = req.body || {};
+    const isIt = String(locale).toLowerCase() === 'it';
+
+    if (String(confirmText || '').trim().toUpperCase() !== 'DELETE') {
+      return res.status(400).json({
+        error: isIt
+          ? 'Per confermare l\'eliminazione digita esattamente DELETE.'
+          : 'Please type DELETE to confirm permanent account erasure.',
+      });
+    }
+
+    if (!password || typeof password !== 'string' || !password.trim()) {
+      return res.status(400).json({
+        error: isIt
+          ? 'La password attuale è obbligatoria per eliminare l\'account.'
+          : 'Current password is required to confirm account deletion.',
+      });
+    }
+
+    // 1. Fetch authoritative user record
+    const rawUser = await DirectusAdminClient.request(`/users/${userId}`).catch(() => null);
+    const currentUser = rawUser?.data || rawUser;
+    const authoritativeEmail = (currentUser?.email || email || '').toString().trim().toLowerCase();
+
+    if (!authoritativeEmail) {
+      return res.status(404).json({ error: 'User account not found.' });
+    }
+
+    // 2. Verify current password directly against Directus Auth before any destructive action
+    const directusBaseUrl = DirectusAdminClient.getBaseUrl();
+    const verifyRes = await fetch(`${directusBaseUrl}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: authoritativeEmail,
+        password: password,
+        mode: 'json',
+      }),
+    });
+
+    if (!verifyRes.ok) {
+      return res.status(401).json({
+        error: isIt
+          ? 'Password attuale non corretta. Eliminazione annullata.'
+          : 'Current password is incorrect. Account deletion aborted.',
+      });
+    }
+
+    // 3. Inspect all memberships for this user
+    const userMemberships = await DirectusAdminClient.getItems('organization_users', {
+      filter: { user_id: { _eq: userId } },
+      limit: -1,
+    }).catch(() => []);
+
+    const deletedOrganizationIds: number[] = [];
+    const stripeClient = await getOptionalStripeClient();
+
+    if (deleteOwnedWorkspaces && Array.isArray(userMemberships)) {
+      for (const membership of userMemberships) {
+        const orgId = Number(
+          typeof membership.organization_id === 'object'
+            ? membership.organization_id?.id
+            : membership.organization_id
+        );
+        if (!orgId || isNaN(orgId)) continue;
+        if (String(membership.role || '').toLowerCase() !== 'owner') continue;
+
+        // Only erase workspace data if this user is the SOLE owner of the organization
+        const orgMembers = await DirectusAdminClient.getItems('organization_users', {
+          filter: { organization_id: { _eq: orgId } },
+          limit: -1,
+        }).catch(() => []);
+
+        const otherOwners = (Array.isArray(orgMembers) ? orgMembers : []).filter((m: any) => {
+          const mUserId = typeof m.user_id === 'object' ? m.user_id?.id : m.user_id;
+          return String(mUserId) !== String(userId) && String(m.role || '').toLowerCase() === 'owner';
+        });
+
+        if (otherOwners.length > 0) {
+          continue;
+        }
+
+        // Best-effort cancel active Stripe subscription so the user is never billed again
+        try {
+          const orgRes = await DirectusAdminClient.request(`/items/organizations/${orgId}`).catch(() => null);
+          const orgObj = orgRes?.data || orgRes;
+          if (stripeClient && orgObj?.stripe_subscription_id) {
+            await stripeClient.subscriptions.cancel(String(orgObj.stripe_subscription_id)).catch((sErr: any) => {
+              console.warn(`[GDPR Erasure] Stripe subscription cancel notice for org #${orgId}:`, sErr?.message);
+            });
+          }
+        } catch {
+          // Non-blocking Stripe cancel
+        }
+
+        // Delete tenant-scoped collection rows for this sole-owned organization
+        for (const collection of GDPR_ERASURE_COLLECTIONS) {
+          try {
+            const rows = await DirectusAdminClient.getItems(collection, {
+              filter: { organization_id: { _eq: orgId } },
+              fields: ['id'],
+              limit: -1,
+            });
+            if (Array.isArray(rows) && rows.length > 0) {
+              const ids = rows.map((r: any) => r.id).filter((id: any) => id !== undefined && id !== null);
+              if (ids.length > 0) {
+                await DirectusAdminClient.request(`/items/${collection}`, {
+                  method: 'DELETE',
+                  body: JSON.stringify(ids),
+                }).catch(async () => {
+                  for (const id of ids) {
+                    await DirectusAdminClient.request(`/items/${collection}/${id}`, { method: 'DELETE' }).catch(() => {});
+                  }
+                });
+              }
+            }
+          } catch {
+            // Continue erasing remaining collections
+          }
+        }
+
+        // Remove all remaining organization_users entries for this sole-owned org
+        if (Array.isArray(orgMembers)) {
+          for (const m of orgMembers) {
+            if (m?.id) {
+              await DirectusAdminClient.request(`/items/organization_users/${m.id}`, { method: 'DELETE' }).catch(() => {});
+            }
+          }
+        }
+
+        // Delete or archive organization record
+        try {
+          await DirectusAdminClient.request(`/items/organizations/${orgId}`, { method: 'DELETE' });
+          deletedOrganizationIds.push(orgId);
+        } catch {
+          await DirectusAdminClient.request(`/items/organizations/${orgId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({
+              name: `Erased Workspace #${orgId}`,
+              status: 'archived',
+              vat_number: null,
+              tax_code: null,
+              phone: null,
+              mobile: null,
+              address: null,
+            }),
+          }).catch(() => {});
+          deletedOrganizationIds.push(orgId);
+        }
+      }
+    }
+
+    // 4. Delete all organization_users memberships belonging to this user
+    if (Array.isArray(userMemberships)) {
+      for (const m of userMemberships) {
+        if (m?.id) {
+          await DirectusAdminClient.request(`/items/organization_users/${m.id}`, { method: 'DELETE' }).catch(() => {});
+        }
+      }
+    }
+
+    // 5. Permanently delete (or anonymize + suspend if constrained by system audit FKs) the Directus user
+    let anonymizedFallback = false;
+    try {
+      await DirectusAdminClient.request(`/users/${userId}`, { method: 'DELETE' });
+    } catch (userDelErr: any) {
+      console.warn(`[GDPR Erasure] Direct user delete fallback to anonymization for ${userId}:`, userDelErr?.message);
+      anonymizedFallback = true;
+      await DirectusAdminClient.request(`/users/${userId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({
+          email: `erased-${userId.slice(0, 8)}-${Date.now()}@deleted.invalid`,
+          first_name: 'Deleted',
+          last_name: 'User',
+          user_phone: null,
+          title: null,
+          avatar: null,
+          status: 'suspended',
+        }),
+      });
+    }
+
+    invalidateUserCaches(userId);
+
+    console.log(`[GDPR Erasure] Completed Right to Erasure for user ${userId}. Deleted orgs: [${deletedOrganizationIds.join(', ')}]`);
+
+    return res.json({
+      success: true,
+      erasedUserId: userId,
+      deletedOrganizationIds,
+      anonymizedFallback,
+    });
+  } catch (error: any) {
+    console.error('[GDPR Delete Account Error]:', error);
+    return res.status(500).json({ error: error.message || 'Failed to erase user account.' });
   }
 });

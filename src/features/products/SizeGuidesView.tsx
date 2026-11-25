@@ -21,6 +21,7 @@ import { Badge } from '../../components/ui/Badge';
 import { Modal } from '../../components/ui/Modal';
 import { DataTable } from '../../components/ui/DataTable';
 import { SizeChartModal } from '../../components/modals/SizeChartModal';
+import { EU_SIZE_GUIDE_PRESETS, EuSizeGuidePreset } from './euSizeGuidePresets';
 import { confirmAction } from '../../utils/confirm';
 import { toPersianDigits } from '../../utils/formatters';
 import {
@@ -37,6 +38,7 @@ import {
   Sparkles,
   Eye,
   X,
+  Globe,
 } from 'lucide-react';
 
 export const SizeGuidesView: React.FC = () => {
@@ -87,7 +89,12 @@ export const SizeGuidesView: React.FC = () => {
   const [isSizeSelectModalOpen, setIsSizeSelectModalOpen] = useState(false);
   const [sizeSearchQuery, setSizeSearchQuery] = useState('');
 
-  const isPersian = false;
+  // EU / IT Standard Size Guide Presets Modal
+  const [isEuPresetsModalOpen, setIsEuPresetsModalOpen] = useState(false);
+  const [installingPresetId, setInstallingPresetId] = useState<string | null>(null);
+  const [presetFeedback, setPresetFeedback] = useState<string | null>(null);
+
+  const isIt = locale === 'it';
 
   const loadData = async () => {
     setIsLoading(true);
@@ -235,27 +242,27 @@ export const SizeGuidesView: React.FC = () => {
 
     if (type === 'apparel') {
       defaultMeas = [
-        { name: isPersian ? 'دور سینه' : 'Chest', code: 'chest', type: 'circumference', unit: 'cm' },
-        { name: isPersian ? 'دور کمر' : 'Waist', code: 'waist', type: 'circumference', unit: 'cm' },
-        { name: isPersian ? 'دور باسن' : 'Hip', code: 'hip', type: 'circumference', unit: 'cm' },
-        { name: isPersian ? 'قد لباس' : 'Length', code: 'length', type: 'length', unit: 'cm' },
-        { name: isPersian ? 'قد آستین' : 'Sleeve', code: 'sleeve', type: 'length', unit: 'cm' },
+        { name: isIt ? 'Torace' : 'Chest', code: 'chest', type: 'circumference', unit: 'cm' },
+        { name: isIt ? 'Vita' : 'Waist', code: 'waist', type: 'circumference', unit: 'cm' },
+        { name: isIt ? 'Fianchi' : 'Hip', code: 'hip', type: 'circumference', unit: 'cm' },
+        { name: isIt ? 'Lunghezza' : 'Length', code: 'length', type: 'length', unit: 'cm' },
+        { name: isIt ? 'Manica' : 'Sleeve', code: 'sleeve', type: 'length', unit: 'cm' },
       ];
     } else if (type === 'footwear') {
       defaultMeas = [
-        { name: isPersian ? 'طول کفی (پا)' : 'Insole Length', code: 'insole_length', type: 'length', unit: 'cm' },
-        { name: isPersian ? 'عرض پنجه پا' : 'Foot Width', code: 'foot_width', type: 'width', unit: 'cm' },
+        { name: isIt ? 'Lunghezza soletta' : 'Insole Length', code: 'insole_length', type: 'length', unit: 'cm' },
+        { name: isIt ? 'Larghezza piede' : 'Foot Width', code: 'foot_width', type: 'width', unit: 'cm' },
       ];
     } else if (type === 'bags') {
       defaultMeas = [
-        { name: isPersian ? 'ارتفاع کیف' : 'Bag Height', code: 'height', type: 'height', unit: 'cm' },
-        { name: isPersian ? 'عرض کیف' : 'Bag Width', code: 'width', type: 'width', unit: 'cm' },
-        { name: isPersian ? 'عمق کیف' : 'Bag Depth', code: 'depth', type: 'depth', unit: 'cm' },
+        { name: isIt ? 'Altezza borsa' : 'Bag Height', code: 'height', type: 'height', unit: 'cm' },
+        { name: isIt ? 'Larghezza borsa' : 'Bag Width', code: 'width', type: 'width', unit: 'cm' },
+        { name: isIt ? 'Profondità borsa' : 'Bag Depth', code: 'depth', type: 'depth', unit: 'cm' },
       ];
     } else if (type === 'accessories') {
       defaultMeas = [
-        { name: isPersian ? 'طول کل' : 'Total Length', code: 'length', type: 'length', unit: 'cm' },
-        { name: isPersian ? 'دور مچ / گردن' : 'Wrist / Neck Circumference', code: 'circumference', type: 'circumference', unit: 'cm' },
+        { name: isIt ? 'Lunghezza totale' : 'Total Length', code: 'length', type: 'length', unit: 'cm' },
+        { name: isIt ? 'Circonferenza polso / collo' : 'Wrist / Neck Circumference', code: 'circumference', type: 'circumference', unit: 'cm' },
       ];
     }
 
@@ -268,6 +275,118 @@ export const SizeGuidesView: React.FC = () => {
         unit: m.unit,
         status: 'active',
       });
+    }
+  };
+
+  // Install a European / Italian standard size guide preset in 1 click
+  const handleInstallEuPreset = async (preset: EuSizeGuidePreset) => {
+    setInstallingPresetId(preset.id);
+    setPresetFeedback(null);
+    try {
+      const adapter = storageManager.getAdapter();
+      const orgId = activeOrganization?.id || 1;
+
+      // 1. Ensure all sizes in the preset exist for the active organization
+      const existingSizes = await adapter.getSizes({ organization_id: orgId });
+      const sizeByName = new Map<string, Size>();
+      (existingSizes || []).forEach((s) => {
+        if (s?.name) sizeByName.set(s.name.trim().toLowerCase(), s);
+      });
+
+      const resolvedSizes: Size[] = [];
+      for (const szDef of preset.sizes) {
+        const key = szDef.name.trim().toLowerCase();
+        let matched = sizeByName.get(key);
+        if (!matched) {
+          matched = await adapter.saveSize({
+            organization_id: orgId,
+            name: szDef.name,
+            code: szDef.code,
+            sort: szDef.sort,
+            status: 'active',
+          });
+          if (matched?.id) {
+            sizeByName.set(key, matched);
+          }
+        }
+        if (matched?.id) {
+          resolvedSizes.push(matched);
+        }
+      }
+
+      // 2. Create the Size Guide Template
+      const tplTitle = isIt ? preset.nameIt : preset.nameEn;
+      const tplDescription = isIt ? preset.descriptionIt : preset.descriptionEn;
+      const savedTpl = await adapter.saveSizeGuideTemplate({
+        organization_id: orgId,
+        name: tplTitle,
+        type: preset.type,
+        unit: preset.unit,
+        description: tplDescription,
+        status: 'active',
+      });
+
+      // 3. Create Measurements & map by code
+      const measByCode = new Map<string, SizeGuideMeasurement>();
+      for (const mDef of preset.measurements) {
+        const savedMeas = await adapter.saveSizeGuideMeasurement({
+          template_id: savedTpl.id,
+          name: isIt ? mDef.nameIt : mDef.nameEn,
+          code: mDef.code,
+          type: mDef.type,
+          unit: mDef.unit,
+          status: 'active',
+        });
+        if (savedMeas?.id) {
+          measByCode.set(mDef.code, savedMeas);
+        }
+      }
+
+      // 4. Populate standard cm matrix values
+      for (const sz of resolvedSizes) {
+        const rowValues = preset.values[sz.name];
+        if (!rowValues) continue;
+        for (const [code, valDef] of Object.entries(rowValues)) {
+          const meas = measByCode.get(code);
+          if (!meas?.id) continue;
+          await adapter.saveSizeGuideValue({
+            template_id: savedTpl.id,
+            size_id: sz.id,
+            measurement_id: meas.id,
+            value: valDef.value,
+            min_value: valDef.min,
+            max_value: valDef.max,
+          });
+        }
+      }
+
+      // 5. Persist selected template sizes in localStorage
+      const sizeIds = resolvedSizes.map((s) => s.id);
+      if (typeof window !== 'undefined' && savedTpl?.id) {
+        try {
+          localStorage.setItem(`tankhor_tpl_sizes_${savedTpl.id}`, JSON.stringify(sizeIds));
+        } catch {
+          // ignore storage errors
+        }
+      }
+
+      // 6. Reload templates & sizes, and select the newly created template
+      await loadData();
+      if (savedTpl?.id) {
+        await handleSelectTemplate({
+          ...savedTpl,
+          name: savedTpl.name || tplTitle,
+          type: (savedTpl.type || preset.type) as SizeGuideType,
+          unit: (savedTpl.unit || preset.unit) as SizeUnit,
+        });
+      }
+
+      setPresetFeedback(t('sizeguides.presetInstalledSuccess', { name: tplTitle }));
+      setIsEuPresetsModalOpen(false);
+    } catch (err) {
+      console.error('[SizeGuidesView] Error installing EU preset:', err);
+    } finally {
+      setInstallingPresetId(null);
     }
   };
 
@@ -445,14 +564,39 @@ export const SizeGuidesView: React.FC = () => {
         title={t('sizeguides.title')}
         subtitle={t('sizeguides.subtitle')}
         action={
-          <Button
-            onClick={() => handleOpenTemplateModal()}
-            icon={<Plus className="w-4 h-4" />}
-          >
-            {t('sizeguides.createTemplate')}
-          </Button>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => setIsEuPresetsModalOpen(true)}
+              icon={<Globe className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />}
+            >
+              {t('sizeguides.euPresetsBtn', 'EU / IT Standard Presets')}
+            </Button>
+            <Button
+              onClick={() => handleOpenTemplateModal()}
+              icon={<Plus className="w-4 h-4" />}
+            >
+              {t('sizeguides.createTemplate')}
+            </Button>
+          </div>
         }
       />
+
+      {presetFeedback && (
+        <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-200 text-xs font-medium">
+          <div className="flex items-center gap-2">
+            <Check className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>{presetFeedback}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setPresetFeedback(null)}
+            className="p-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/40 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
       {/* Main Grid: Left sidebar with templates list, Right area with interactive matrix */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
@@ -620,11 +764,11 @@ export const SizeGuidesView: React.FC = () => {
                   <div>
                     <h4 className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-neutral-400 font-mono flex items-center gap-1.5">
                       <Ruler className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400" />
-                      {t('sizeguides.templateSizesHeader')} ({isPersian ? toPersianDigits(selectedTemplateSizeIds.length) : selectedTemplateSizeIds.length})
+                      {t('sizeguides.templateSizesHeader')} ({selectedTemplateSizeIds.length})
                     </h4>
                     <p className="text-[11px] text-slate-500 dark:text-neutral-400 mt-0.5">
                       {selectedTemplateSizeIds.length > 0
-                        ? `${isPersian ? toPersianDigits(selectedTemplateSizeIds.length) : selectedTemplateSizeIds.length} ${t('sizeguides.selectedSizesCount')}`
+                        ? `${selectedTemplateSizeIds.length} ${t('sizeguides.selectedSizesCount')}`
                         : t('sizeguides.noSizesSelectedForTemplate')}
                     </p>
                   </div>
@@ -1005,11 +1149,78 @@ export const SizeGuidesView: React.FC = () => {
 
           <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-neutral-800">
             <span className="text-xs text-slate-500 dark:text-neutral-400 font-medium">
-              {isPersian ? toPersianDigits(selectedTemplateSizeIds.length) : selectedTemplateSizeIds.length} {t('sizeguides.selectedSizesCount')}
+              {selectedTemplateSizeIds.length} {t('sizeguides.selectedSizesCount')}
             </span>
             <Button onClick={() => setIsSizeSelectModalOpen(false)}>
               {t('sizeguides.applySelectedSizes')}
             </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Modal: European & Italian Standard Size Guide Presets */}
+      <Modal
+        isOpen={isEuPresetsModalOpen}
+        onClose={() => {
+          if (!installingPresetId) setIsEuPresetsModalOpen(false);
+        }}
+        title={t('sizeguides.euPresetsModalTitle', 'European & Italian Size Guide Presets')}
+        maxWidth="lg"
+      >
+        <div className="space-y-4">
+          <p className="text-xs text-slate-600 dark:text-neutral-400 leading-relaxed">
+            {t(
+              'sizeguides.euPresetsModalSubtitle',
+              'Install ready-to-use European and Italian apparel & footwear charts with pre-populated cm measurements in one click.'
+            )}
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {EU_SIZE_GUIDE_PRESETS.map((preset) => {
+              const isInstalling = installingPresetId === preset.id;
+              return (
+                <div
+                  key={preset.id}
+                  className="flex flex-col justify-between p-4 rounded-xl border border-slate-200 dark:border-neutral-800 bg-slate-50/70 dark:bg-[#181a20] space-y-3"
+                >
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 font-mono text-[11px] font-bold">
+                        {preset.badge}
+                      </span>
+                      {getTypeBadge(preset.type)}
+                    </div>
+                    <h4 className="font-bold text-slate-900 dark:text-neutral-100 text-xs sm:text-sm">
+                      {isIt ? preset.nameIt : preset.nameEn}
+                    </h4>
+                    <p className="text-[11px] text-slate-500 dark:text-neutral-400 leading-relaxed">
+                      {isIt ? preset.descriptionIt : preset.descriptionEn}
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2 pt-1 text-[10px] font-mono text-slate-500 dark:text-neutral-400">
+                      <span>{t('sizeguides.presetSizesCount', { count: preset.sizes.length })}</span>
+                      <span>•</span>
+                      <span>{t('sizeguides.presetDimensionsCount', { count: preset.measurements.length })}</span>
+                      <span>•</span>
+                      <span>{preset.unit}</span>
+                    </div>
+                  </div>
+
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    isLoading={isInstalling}
+                    disabled={!!installingPresetId}
+                    onClick={() => handleInstallEuPreset(preset)}
+                    icon={<Sparkles className="w-3.5 h-3.5" />}
+                    className="w-full"
+                  >
+                    {isInstalling
+                      ? t('sizeguides.installingPreset', 'Installing...')
+                      : t('sizeguides.installPresetBtn', 'Install Preset')}
+                  </Button>
+                </div>
+              );
+            })}
           </div>
         </div>
       </Modal>

@@ -3,12 +3,13 @@ import { useOrganization } from '../../context/OrganizationContext';
 import { storageManager } from '../../storage';
 import { useTranslation } from '../../i18n';
 import { BRAND } from '../../config/brand';
+import { getPlanDisplayName } from '../../config/plans';
 import { Button } from '../ui/Button';
-import { CheckCircle2, XCircle, Sparkles, ShieldCheck, RefreshCw, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, XCircle, Sparkles, ShieldCheck, RefreshCw, AlertTriangle, Clock } from 'lucide-react';
 
 interface PaymentResultState {
   isOpen: boolean;
-  status: 'success' | 'module_success' | 'failed' | 'cancelled';
+  status: 'success' | 'module_success' | 'pending' | 'failed' | 'cancelled';
   sessionId?: string | null;
   refNumber?: string | null;
   orgId?: string | null;
@@ -33,10 +34,19 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
     try {
       const urlParams = new URLSearchParams(window.location.search);
       const paymentStatus = urlParams.get('payment');
+      const billingPortal = urlParams.get('billing_portal');
+
+      if (billingPortal === 'returned') {
+        refreshOrganizations().catch(console.error);
+        const cleanUrl = window.location.pathname;
+        window.history.replaceState({}, document.title, cleanUrl);
+        return;
+      }
 
       if (
         paymentStatus === 'success' ||
         paymentStatus === 'module_success' ||
+        paymentStatus === 'pending' ||
         paymentStatus === 'failed' ||
         paymentStatus === 'cancelled'
       ) {
@@ -62,6 +72,10 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
 
         if (paymentStatus === 'success') {
           storageManager.setMode('cloud_synced', { verifiedPro: true });
+          refreshOrganizations().catch(console.error);
+        }
+
+        if (paymentStatus === 'pending') {
           refreshOrganizations().catch(console.error);
         }
 
@@ -95,7 +109,14 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
 
   const isSuccess = result.status === 'success' || result.status === 'module_success';
   const isModule = result.status === 'module_success';
+  const isPending = result.status === 'pending';
   const isCancelled = result.status === 'cancelled';
+
+  const tierLabel = result.plan
+    ? getPlanDisplayName(result.plan, locale)
+    : isIt
+      ? 'Cloud'
+      : 'Cloud';
 
   const title = isSuccess
     ? isModule
@@ -103,8 +124,12 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
         ? 'Modulo attivato!'
         : 'Add-on Module Activated!'
       : isIt
-        ? `Benvenuto in ${BRAND.name} Pro!`
-        : `Welcome to ${BRAND.name} Pro!`
+        ? `Benvenuto in ${BRAND.name} ${tierLabel}!`
+        : `Welcome to ${BRAND.name} ${tierLabel}!`
+    : isPending
+      ? isIt
+        ? 'Pagamento SEPA in elaborazione'
+        : 'Payment Processing (SEPA)'
     : isCancelled
       ? isIt
         ? 'Pagamento annullato'
@@ -119,8 +144,12 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
         ? `La licenza perpetua per "${result.moduleName || result.moduleSlug}" è ora attiva per ${activeOrganization?.name || 'la tua organizzazione'}.`
         : `Your perpetual license for "${result.moduleName || result.moduleSlug}" is now active for ${activeOrganization?.name || 'your organization'}.`
       : isIt
-        ? `L’abbonamento Pro è stato confermato da Stripe. La sincronizzazione cloud è ora attiva per ${activeOrganization?.name || 'il tuo spazio di lavoro'}.`
-        : `Your Stripe payment was confirmed. Cloud Pro sync and multi-user features are now enabled for ${activeOrganization?.name || 'your workspace'}.`
+        ? `L’abbonamento ${tierLabel} è stato confermato da Stripe. La sincronizzazione cloud e i relativi moduli sono ora attivi per ${activeOrganization?.name || 'il tuo spazio di lavoro'}.`
+        : `Your Stripe subscription was confirmed. Cloud Pro sync and multi-user features are now enabled for ${activeOrganization?.name || 'your workspace'}.`
+    : isPending
+      ? isIt
+        ? 'La tua richiesta di addebito bancario SEPA è stata registrata. Il piano Pro si attiverà automaticamente non appena la banca conferma il trasferimento.'
+        : 'Your SEPA bank payment has been submitted. Your Pro workspace will unlock automatically as soon as the bank confirms settlement.'
     : isCancelled
       ? isIt
         ? 'Hai chiuso Stripe Checkout prima del completamento. Nessun addebito è stato effettuato.'
@@ -144,6 +173,8 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
             className={`w-16 h-16 mx-auto rounded-2xl flex items-center justify-center ${
               isSuccess
                 ? 'bg-emerald-100 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400'
+                : isPending
+                  ? 'bg-sky-100 dark:bg-sky-950/40 text-sky-600 dark:text-sky-400'
                 : isCancelled
                   ? 'bg-amber-100 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400'
                   : 'bg-rose-100 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400'
@@ -151,6 +182,8 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
           >
             {isSuccess ? (
               isModule ? <Sparkles className="w-8 h-8" /> : <CheckCircle2 className="w-9 h-9" />
+            ) : isPending ? (
+              <Clock className="w-8 h-8" />
             ) : isCancelled ? (
               <AlertTriangle className="w-8 h-8" />
             ) : (
@@ -197,7 +230,7 @@ export const PaymentResultModal: React.FC<{ onRetryPayment?: () => void }> = ({ 
         </div>
 
         <div className="px-6 py-4 bg-neutral-50 dark:bg-neutral-800/40 border-t border-neutral-100 dark:border-neutral-800 flex items-center justify-end gap-2">
-          {!isSuccess && onRetryPayment && (
+          {!isSuccess && !isPending && onRetryPayment && (
             <Button variant="outline" onClick={handleRetry} className="gap-1.5">
               <RefreshCw className="w-4 h-4" />
               {isIt ? 'Riprova' : 'Try Again'}
