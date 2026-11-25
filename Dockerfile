@@ -18,14 +18,14 @@ ENV NODE_ENV=development \
     NPM_CONFIG_MAXSOCKETS=8
 
 # Copy dependency manifests and npm network configs
-COPY package.json package-lock.json .npmrc* ./
+COPY package.json package-lock.json* .npmrc* ./
 
 # Optional custom registry (e.g. for local mirrors in Coolify build args)
 ARG NPM_REGISTRY=""
 RUN if [ -n "$NPM_REGISTRY" ]; then npm config set registry "$NPM_REGISTRY"; fi
 
-# Fast, clean dependency installation with fallback
-RUN npm ci --no-audit --no-fund || npm install --no-audit --no-fund
+# Fast, clean dependency installation with automatic fallback when lockfile is absent
+RUN if [ -f package-lock.json ]; then npm ci --no-audit --no-fund || npm install --no-audit --no-fund; else npm install --no-audit --no-fund; fi
 
 # Copy all source files
 COPY . .
