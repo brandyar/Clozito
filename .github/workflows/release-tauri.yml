@@ -29,7 +29,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
 
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
@@ -37,7 +36,13 @@ jobs:
           targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
 
       - name: Install frontend dependencies
-        run: npm ci || npm install --include=optional --force
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install --include=optional --force
+          else
+            npm install --include=optional --force
+          fi
 
       - name: Build and Package Tauri Desktop App
         uses: tauri-apps/tauri-action@v0
@@ -279,7 +284,6 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: 'npm'
 
       - name: Setup Java JDK
         uses: actions/setup-java@v4
@@ -301,7 +305,13 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,i686-linux-android,x86_64-linux-android
 
       - name: Install frontend dependencies
-        run: npm ci || npm install --include=optional --force
+        shell: bash
+        run: |
+          if [ -f package-lock.json ]; then
+            npm ci || npm install --include=optional --force
+          else
+            npm install --include=optional --force
+          fi
 
       - name: Build Vite Web Assets
         env:
