@@ -44,14 +44,69 @@ jobs:
             npm install --include=optional --force
           fi
 
+      - name: Prepare & validate Tauri updater signing key
+        id: signing
+        shell: bash
+        env:
+          RAW_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY || secrets.TAURI_PRIVATE_KEY }}
+          RAW_PASS: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || secrets.TAURI_KEY_PASSWORD }}
+        run: |
+          node -e '
+          const fs = require("fs");
+          const rawKey = (process.env.RAW_KEY || "").trim();
+          const rawPass = process.env.RAW_PASS ?? "";
+          const githubEnv = process.env.GITHUB_ENV;
+          const githubOutput = process.env.GITHUB_OUTPUT;
+
+          function setOutput(k, v) {
+            if (githubOutput) fs.appendFileSync(githubOutput, `${k}=${v}\n`);
+          }
+
+          if (!rawKey) {
+            console.log("::warning::TAURI_SIGNING_PRIVATE_KEY is not set in GitHub Repository Secrets. Building desktop installers without auto-updater signatures. Add TAURI_SIGNING_PRIVATE_KEY to enable signed auto-updates.");
+            const confPath = "src-tauri/tauri.conf.json";
+            const conf = JSON.parse(fs.readFileSync(confPath, "utf8"));
+            if (conf.bundle) conf.bundle.createUpdaterArtifacts = false;
+            fs.writeFileSync(confPath, JSON.stringify(conf, null, 2));
+            setOutput("has_key", "false");
+            process.exit(0);
+          }
+
+          // Normalize key to single-line base64-encoded minisign secret key box
+          let normalizedText = rawKey.replace(/\r\n/g, "\n").trim();
+          let finalBase64 = "";
+
+          if (normalizedText.includes("untrusted comment:")) {
+            // Raw multi-line minisign .key content
+            finalBase64 = Buffer.from(normalizedText + "\n", "utf8").toString("base64");
+          } else {
+            // Check if already base64-encoded minisign box
+            const compact = normalizedText.replace(/\s+/g, "");
+            const decoded = Buffer.from(compact, "base64").toString("utf8");
+            if (decoded.includes("untrusted comment:")) {
+              finalBase64 = compact;
+            } else {
+              // Single-line minisign secret body without comment header — wrap with standard minisign comment
+              const wrapped = `untrusted comment: minisign encrypted secret key\n${compact}\n`;
+              finalBase64 = Buffer.from(wrapped, "utf8").toString("base64");
+            }
+          }
+
+          console.log(`::add-mask::${finalBase64}`);
+          if (rawPass) console.log(`::add-mask::${rawPass}`);
+
+          if (githubEnv) {
+            fs.appendFileSync(githubEnv, `TAURI_SIGNING_PRIVATE_KEY=${finalBase64}\n`);
+            fs.appendFileSync(githubEnv, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${rawPass}\n`);
+          }
+          console.log("Tauri updater signing key validated and configured.");
+          setOutput("has_key", "true");
+          '
+
       - name: Build and Package Tauri Desktop App
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY || secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD || secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY || secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD || secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           VITE_APP_URL: 'https://app.clozito.com'
           VITE_GATEWAY_URL: 'https://app.clozito.com/api'
           VITE_DOWNLOADS_URL: 'https://dl.clozito.com'
@@ -61,7 +116,7 @@ jobs:
           releaseBody: 'Clozito multi-platform release for Windows (NSIS), macOS (Universal DMG), and Android (Universal APK) with local offline SQLite storage and real-time cloud synchronization.'
           releaseDraft: false
           prerelease: false
-          includeUpdaterJson: true
+          includeUpdaterJson: ${{ steps.signing.outputs.has_key == 'true' }}
           args: ${{ matrix.args }}
 
   generate-updater-json:
@@ -234,6 +289,11 @@ jobs:
               if (!platforms["linux-x86_64"]) platforms["linux-x86_64"] = { signature: linuxSig, url: linuxUrl };
               if (!platforms["linux-x86_64-appimage"]) platforms["linux-x86_64-appimage"] = { signature: linuxSig, url: linuxUrl };
             }
+          }
+
+          if (Object.keys(platforms).length === 0) {
+            console.log("No signed updater artifacts found in this release; skipping latest.json update.");
+            process.exit(0);
           }
 
           const manifest = {
