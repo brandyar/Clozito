@@ -1,35 +1,11 @@
 import dotenv from 'dotenv';
-dotenv.config();
+import { SERVER_CONFIG } from './config';
 
-function sanitizeDirectusUrl(rawUrl?: string): string {
-  if (!rawUrl || typeof rawUrl !== 'string') {
-    return 'https://api.tankhor.com';
-  }
-  let trimmed = rawUrl.trim().replace(/^["']|["']$/g, '').trim();
-  if (!trimmed) {
-    return 'https://api.tankhor.com';
-  }
-  // If it is just a token (e.g. 32-char alphanumeric with no dots/slashes), it's not a URL
-  if (!trimmed.includes('.') && !trimmed.includes('/') && !trimmed.includes(':') && !trimmed.startsWith('localhost')) {
-    return 'https://api.tankhor.com';
-  }
-  if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) {
-    return trimmed.replace(/\/+$/, '');
-  }
-  if (trimmed.startsWith('localhost') || trimmed.startsWith('127.0.0.1')) {
-    return `http://${trimmed}`.replace(/\/+$/, '');
-  }
-  return `https://${trimmed}`.replace(/\/+$/, '');
-}
+dotenv.config();
 
 export class DirectusAdminClient {
   public static getBaseUrl(): string {
-    const candidate =
-      process.env.DIRECTUS_URL ||
-      process.env.VITE_DIRECTUS_URL ||
-      process.env.DIRECTUS_API_URL ||
-      process.env.API_URL;
-    return sanitizeDirectusUrl(candidate);
+    return SERVER_CONFIG.directusUrl;
   }
 
   public static getAdminToken(): string {

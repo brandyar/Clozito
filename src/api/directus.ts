@@ -1,15 +1,26 @@
 /**
- * Tankhor Backend API Gateway Client (BFF Proxy)
- * Connects securely to the Node.js API Gateway which handles Directus Admin and Tenant Isolation.
+ * Clozito Backend API Gateway Client (BFF Proxy)
+ * Connects securely to the Node.js API Gateway which handles cloud data and Tenant Isolation.
  */
 
 import { SystemModule } from '../types';
 import { swrCache } from './swrCache';
 import { safeSaveCachedUserProfile, safeSetLocalStorageItem } from '../utils/profileCache';
+import { BRAND } from '../config/brand';
 
 export interface DirectusConfig {
   baseUrl: string;
   token?: string | null;
+}
+
+function detectTauriRuntime(): boolean {
+  if (typeof window === 'undefined') return false;
+  return (
+    window.location.protocol.includes('tauri') ||
+    Boolean((window as any).__TAURI__) ||
+    Boolean((window as any).__TAURI_INTERNALS__) ||
+    window.location.hostname === 'tauri.localhost'
+  );
 }
 
 class DirectusClient {
@@ -22,19 +33,15 @@ class DirectusClient {
     } else if (typeof window !== 'undefined') {
       const metaEnv = typeof import.meta !== 'undefined' ? (import.meta as any).env : undefined;
       const customApiUrl = metaEnv?.VITE_API_URL || metaEnv?.VITE_GATEWAY_URL;
-      const isTauri =
-        window.location.protocol.includes('tauri') ||
-        Boolean((window as any).__TAURI__) ||
-        window.location.hostname === 'tauri.localhost';
+      const isTauri = detectTauriRuntime();
 
       if (customApiUrl) {
         this.baseUrl = customApiUrl.replace(/\/+$/, '');
       } else if (isTauri) {
-        // Desktop BFF Gateway: Route auth, registration, and cloud proxy requests through the secure BFF Gateway
-        const desktopGateway = metaEnv?.VITE_GATEWAY_URL || metaEnv?.VITE_API_URL || 'https://my.tankhor.com/api';
-        this.baseUrl = desktopGateway.replace(/\/+$/, '');
+        // Desktop BFF Gateway: Route auth, registration, and cloud proxy requests through the centralized Clozito BFF Gateway
+        this.baseUrl = BRAND.apiGatewayUrl;
       } else {
-        // In browser / web preview / production Cloud Run, all requests go through the same-origin Express BFF proxy at /api
+        // In browser / web preview / production, all requests go through the same-origin Express BFF proxy at /api
         this.baseUrl = '/api';
       }
     } else {
@@ -196,6 +203,9 @@ class DirectusClient {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
+    if (detectTauriRuntime()) {
+      headers['X-Clozito-Platform'] = 'desktop';
+    }
     const skip = options?.skipAuth || (endpoint && this.isAuthPublicEndpoint(endpoint));
     if (!skip) {
       const token = this.getToken();
@@ -1138,9 +1148,9 @@ class DirectusClient {
       });
     } catch (err: any) {
       console.warn('[DirectusClient] /feedback BFF endpoint failed, attempting direct Directus submission:', err?.message);
-      // 2. Direct fallback to live Directus API (https://api.tankhor.com/items/feedbacks)
+      // 2. Direct fallback to configured cloud API endpoint
       try {
-        const directUrl = 'https://api.tankhor.com/items/feedbacks';
+        const directUrl = `${BRAND.directusApiUrl}/items/feedbacks`;
         const headers: Record<string, string> = {
           'Content-Type': 'application/json',
         };

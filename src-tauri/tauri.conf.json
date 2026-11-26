@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "Tankhor",
+  "productName": "Clozito",
   "version": "1.2.2",
-  "identifier": "com.tankhor.app",
+  "identifier": "com.clozito.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "vite build",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "TANKHOR (تن‌خور) - مدیریت پوشاک و انبارداری",
+        "title": "Clozito — Apparel, Inventory & Production Management",
         "width": 1280,
         "height": 800,
         "resizable": true,
@@ -44,16 +44,16 @@
       "icons/icon.ico"
     ],
     "category": "Business",
-    "shortDescription": "پلتفرم مدیریت پوشاک و انبارداری تن‌خور",
-    "longDescription": "تن‌خور یک سیستم جامع مدیریت پوشاک، راهنمای سایز اختصاصی و انبارداری با قابلیت کارکرد آفلاین محلی و همگام‌سازی ابری است."
+    "shortDescription": "Clozito — Apparel, Inventory & Production Management Platform",
+    "longDescription": "Clozito is an all-in-one apparel, footwear, inventory, and garment production management platform with local offline SQLite storage and real-time cloud synchronization."
   },
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERFNUZERDUxNUZFODk5NjMKUldSam1laGZVZDFmM29lQ3B4UlVqQ0xnZnlxdFZzVkJDVVJVMklaOTJKOFgxTjBPSitUQVc2MkYK",
       "endpoints": [
-        "https://dl.tankhor.com/latest.json",
-        "https://dl.tankhor.com/desktop/latest.json",
-        "https://github.com/brandyar/Tankhor/releases/latest/download/latest.json"
+        "https://dl.clozito.com/latest.json",
+        "https://dl.clozito.com/desktop/latest.json",
+        "https://github.com/clozito/clozito-app/releases/latest/download/latest.json"
       ],
       "windows": {
         "installMode": "passive"

@@ -95,7 +95,9 @@ itemsRouter.get(
       }
 
       // Check Plan Gate for Web Clients (exempt subscriptions, organization_modules, and project_settings)
-      const isDesktop = req.headers['x-tankhor-platform'] === 'desktop';
+      const isDesktop =
+        req.headers['x-clozito-platform'] === 'desktop' ||
+        req.headers['x-tankhor-platform'] === 'desktop';
       if (
         !isDesktop &&
         TENANT_SCOPED_COLLECTIONS.has(collection) &&

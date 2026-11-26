@@ -47,7 +47,7 @@ import { CookieConsentBanner } from './components/ui/CookieConsentBanner';
 import { ModuleAccessProvider } from './context/ModuleAccessContext';
 import { Card } from './components/ui/Card';
 import { Button } from './components/ui/Button';
-import { ShieldAlert, RefreshCw, Shirt, Home } from 'lucide-react';
+import { ShieldAlert, RefreshCw, Home } from 'lucide-react';
 import { useTranslation } from './i18n';
 
 const AccessDeniedCard: React.FC<{ userRole: string; onReturn: () => void }> = ({ userRole, onReturn }) => {
@@ -398,8 +398,17 @@ const MainAppContent: React.FC = () => {
   if (isLoading) {
     return (
       <div className="min-h-screen bg-[#fafafa] dark:bg-[#0c0d10] flex flex-col items-center justify-center p-6 text-center font-sans">
-        <div className="w-12 h-12 rounded-2xl bg-neutral-900 dark:bg-neutral-100 text-white dark:text-neutral-900 flex items-center justify-center mb-4 shadow-md animate-bounce">
-          <Shirt className="w-6 h-6 text-white dark:text-neutral-900" />
+        <div className="w-14 h-14 flex items-center justify-center mb-4 animate-bounce">
+          <img
+            src="/logo-dark.png"
+            alt={t('common.appName')}
+            className="w-14 h-14 object-contain block dark:hidden drop-shadow-sm"
+          />
+          <img
+            src="/logo-light.png"
+            alt={t('common.appName')}
+            className="w-14 h-14 object-contain hidden dark:block drop-shadow-sm"
+          />
         </div>
         <p className="text-sm font-bold text-neutral-800 dark:text-neutral-200">{t('common.appName')}</p>
         <p className="text-xs text-neutral-500 dark:text-neutral-400 font-mono mt-1 flex items-center gap-1.5">

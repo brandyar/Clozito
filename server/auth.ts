@@ -1,10 +1,23 @@
 import { Router, Request, Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import jwt from 'jsonwebtoken';
 import Stripe from 'stripe';
 import { DirectusAdminClient } from './directusAdmin';
 import { isPaidCloudPlan, normalizePlanTier } from '../src/config/plans';
+import {
+  authLoginRateLimiter,
+  authRegisterRateLimiter,
+  authRefreshRateLimiter,
+  authSensitiveActionRateLimiter,
+} from './security';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'tankhor_jwt_secret_dev_key_2026';
+const ENV_JWT_SECRET = (process.env.JWT_SECRET || '').trim();
+if (!ENV_JWT_SECRET && process.env.NODE_ENV === 'production') {
+  console.warn(
+    '[Clozito Auth] WARNING: JWT_SECRET environment variable is not set in production. Using an ephemeral random signing key (sessions will reset on restart).'
+  );
+}
+const JWT_SECRET = ENV_JWT_SECRET || crypto.randomBytes(32).toString('hex');
 
 export interface AuthTokenPayload {
   userId: string;
@@ -23,19 +36,17 @@ export function generateToken(payload: AuthTokenPayload): string {
 
 export function verifyToken(token: string): AuthTokenPayload | null {
   try {
-    return jwt.verify(token, JWT_SECRET) as AuthTokenPayload;
+    const verified = jwt.verify(token, JWT_SECRET) as any;
+    if (!verified || typeof verified !== 'object' || !verified.userId) {
+      return null;
+    }
+    return {
+      userId: String(verified.userId),
+      email: String(verified.email || ''),
+      organizationId: Number(verified.organizationId || 0),
+      role: String(verified.role || 'viewer'),
+    };
   } catch {
-    try {
-      const decoded = jwt.decode(token) as any;
-      if (decoded && (decoded.userId || decoded.id) && (decoded.email || decoded.role)) {
-        return {
-          userId: decoded.userId || decoded.id,
-          email: decoded.email || '',
-          organizationId: Number(decoded.organizationId || decoded.organization_id || 1),
-          role: decoded.role || 'viewer',
-        };
-      }
-    } catch {}
     return null;
   }
 }
@@ -348,7 +359,7 @@ export async function getUserOrganizations(userId: string, targetActiveOrgId?: n
 export const authRouter = Router();
 
 // Register new user + provision custom Organization + initial warehouse/category
-authRouter.post('/register', async (req: Request, res: Response) => {
+authRouter.post('/register', authRegisterRateLimiter, async (req: Request, res: Response) => {
   try {
     let body: any = req.body;
     if (typeof body === 'string') {
@@ -589,7 +600,7 @@ authRouter.post('/register', async (req: Request, res: Response) => {
 });
 
 // Login with email & password
-authRouter.post('/login', async (req: Request, res: Response) => {
+authRouter.post('/login', authLoginRateLimiter, async (req: Request, res: Response) => {
   try {
     let body: any = req.body;
     if (typeof body === 'string') {
@@ -704,7 +715,7 @@ authRouter.post('/login', async (req: Request, res: Response) => {
 });
 
 // Silent token refresh endpoint (issues fresh JWT before or shortly after expiry)
-authRouter.post('/refresh', async (req: Request, res: Response) => {
+authRouter.post('/refresh', authRefreshRateLimiter, async (req: Request, res: Response) => {
   try {
     const authHeader = req.headers.authorization;
     const rawToken =
@@ -1314,7 +1325,7 @@ authRouter.get('/gdpr/export', requireAuth, async (req: AuthenticatedRequest, re
 });
 
 // GDPR Art. 17 — Right to Erasure (Account & Sole-Owned Workspace Deletion)
-authRouter.post('/gdpr/delete-account', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
+authRouter.post('/gdpr/delete-account', authSensitiveActionRateLimiter, requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { userId, email } = req.user!;
     const { password, confirmText, deleteOwnedWorkspaces = true, locale = 'en' } = req.body || {};

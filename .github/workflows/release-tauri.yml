@@ -47,10 +47,13 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD || secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY || secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD || secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          VITE_APP_URL: 'https://app.clozito.com'
+          VITE_GATEWAY_URL: 'https://app.clozito.com/api'
+          VITE_DOWNLOADS_URL: 'https://dl.clozito.com'
         with:
           tagName: ${{ github.ref_name }}
-          releaseName: 'TANKHOR v__VERSION__'
-          releaseBody: 'انتشار نسخه چندپلتفرمه تن‌خور (ویندوز، مک و اندروید) با پشتیبانی کامل از دیتابیس آفلاین محلی و همگام‌سازی ابری.'
+          releaseName: 'Clozito v__VERSION__'
+          releaseBody: 'Clozito multi-platform release for Windows (NSIS), macOS (Universal DMG), and Android (Universal APK) with local offline SQLite storage and real-time cloud synchronization.'
           releaseDraft: false
           prerelease: false
           includeUpdaterJson: true
@@ -85,10 +88,10 @@ jobs:
           node -e '
           const fs = require("fs");
 
-          const tag = process.env.TAG_NAME || "v1.0.22";
+          const tag = process.env.TAG_NAME || "v1.2.2";
           const version = tag.replace(/^v/, "");
-          const repo = process.env.REPO || "brandyar/Tankhor";
-          const baseUrl = process.env.DOWNLOAD_BASE_URL || `https://dl.tankhor.com/${tag}`;
+          const repo = process.env.REPO || "clozito/clozito-app";
+          const baseUrl = process.env.DOWNLOAD_BASE_URL || `https://dl.clozito.com/${tag}`;
           const files = fs.readdirSync(".");
 
           console.log("All downloaded release assets:", files);
@@ -230,7 +233,7 @@ jobs:
 
           const manifest = {
             version: version,
-            notes: `بروزرسانی نسخه ${version} نرم‌افزار تن‌خور (پشتیبانی کامل ویندوز، مک و اندروید)`,
+            notes: `Clozito v${version} Desktop & Mobile Release (Windows NSIS, macOS Universal & Android)`,
             pub_date: new Date().toISOString(),
             platforms: platforms
           };
@@ -244,11 +247,11 @@ jobs:
             gh release upload "$TAG_NAME" ../latest.json --repo "$REPO" --clobber
             echo "latest.json uploaded successfully to GitHub Release!"
 
-            # Keep repo root latest.json strictly synchronized with current release signatures
+            # Keep both root latest.json and assets/latest.json strictly synchronized
             cp ../latest.json ./latest.json
             git config --global user.name "github-actions[bot]"
             git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git add latest.json
+            git add ../latest.json ./latest.json
             git commit -m "chore(updater): synchronize latest.json release signatures for $TAG_NAME [skip ci]" || true
             git push origin HEAD:main || true
 
@@ -301,6 +304,10 @@ jobs:
         run: npm ci || npm install --include=optional --force
 
       - name: Build Vite Web Assets
+        env:
+          VITE_APP_URL: 'https://app.clozito.com'
+          VITE_GATEWAY_URL: 'https://app.clozito.com/api'
+          VITE_DOWNLOADS_URL: 'https://dl.clozito.com'
         run: npx vite build
 
       - name: Initialize Android project and sync icons
@@ -308,7 +315,7 @@ jobs:
           # 1. Initialize Android project if not already present
           npx tauri android init || true
 
-          # 2. Sync high-resolution Tankhor branded icons to Android res directories
+          # 2. Sync high-resolution Clozito branded icons to Android res directories
           node src-tauri/sync-android-icons.cjs
 
       - name: Build Android Universal APK (Multi-Architecture)
@@ -330,25 +337,25 @@ jobs:
             VERSION="1.1.0"
           fi
 
-          echo "Preparing single Universal APK release signing for Tankhor v${VERSION}..."
+          echo "Preparing single Universal APK release signing for Clozito v${VERSION}..."
 
           # Prepare keystore: use secret if provided, or generate a valid 2048-bit RSA release keystore
-          KEYSTORE_FILE="tankhor-release.keystore"
-          KEY_ALIAS="tankhor"
-          KEY_PASS="tankhor123"
+          KEYSTORE_FILE="clozito-release.keystore"
+          KEY_ALIAS="clozito"
+          KEY_PASS="clozito123"
 
           if [ -n "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" ]; then
             echo "Using custom provided Android keystore from GitHub Secrets..."
             echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 -d > "$KEYSTORE_FILE"
-            KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'tankhor' }}"
-            KEY_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'tankhor123' }}"
+            KEY_ALIAS="${{ secrets.ANDROID_KEY_ALIAS || 'clozito' }}"
+            KEY_PASS="${{ secrets.ANDROID_KEYSTORE_PASSWORD || 'clozito123' }}"
           else
             echo "Generating production-compliant RSA release keystore..."
             keytool -genkeypair -v -keystore "$KEYSTORE_FILE" \
               -alias "$KEY_ALIAS" \
               -keyalg RSA -keysize 2048 -validity 10000 \
               -storepass "$KEY_PASS" -keypass "$KEY_PASS" \
-              -dname "CN=TANKHOR, OU=Mobile, O=TANKHOR, L=Tehran, ST=Tehran, C=IR"
+              -dname "CN=Clozito, OU=Mobile, O=Clozito, L=Milan, ST=Lombardy, C=IT"
           fi
 
           echo "Locating built APK files..."
@@ -394,7 +401,7 @@ jobs:
           fi
 
           echo "Selected primary Universal APK: $PRIMARY_APK"
-          TARGET_UNIVERSAL_APK="release-apks/TANKHOR-v${VERSION}-universal.apk"
+          TARGET_UNIVERSAL_APK="release-apks/Clozito-v${VERSION}-universal.apk"
 
           # 1. Zipalign (4-byte alignment required by Android)
           zipalign -v -p -f 4 "$PRIMARY_APK" "$TARGET_UNIVERSAL_APK"
@@ -413,8 +420,8 @@ jobs:
           echo "Verifying signature for $TARGET_UNIVERSAL_APK:"
           apksigner verify --verbose "$TARGET_UNIVERSAL_APK"
 
-          # 4. Create standard alias name for easy direct download (TANKHOR.apk)
-          cp "$TARGET_UNIVERSAL_APK" "release-apks/TANKHOR-universal.apk"
+          # 4. Create standard alias name for easy direct download (Clozito-universal.apk)
+          cp "$TARGET_UNIVERSAL_APK" "release-apks/Clozito-universal.apk"
 
           echo "Universal Android APK successfully signed and prepared:"
           ls -lh release-apks/
@@ -422,7 +429,7 @@ jobs:
       - name: Upload Android APK Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: tankhor-android-apk
+          name: clozito-android-apk
           path: release-apks/*.apk
           if-no-files-found: error
 

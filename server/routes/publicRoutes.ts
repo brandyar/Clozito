@@ -4,17 +4,26 @@ import { DirectusAdminClient } from '../directusAdmin';
 import { requireAuth, AuthenticatedRequest, verifyToken } from '../auth';
 import { DEFAULT_SYSTEM_MODULES } from '../../src/utils/license';
 import { isPaidCloudPlan, normalizePlanTier } from '../../src/config/plans';
+import { SERVER_CONFIG } from '../config';
+import { publicCatalogReadRateLimiter, publicWriteRateLimiter } from '../security';
 
 const upload = multer({ limits: { fileSize: 15 * 1024 * 1024 } }); // 15MB
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const ALLOWED_ASSET_QUERY_KEYS = new Set(['width', 'height', 'quality', 'fit', 'format', 'download', 'key']);
 
 export const publicRouter = Router();
 
 // Public / Health Endpoints
-publicRouter.get('/health', (req, res) => {
-  res.json({
+publicRouter.get('/health', (_req, res) => {
+  if (SERVER_CONFIG.isProduction) {
+    return res.json({
+      status: 'ok',
+      timestamp: new Date().toISOString(),
+    });
+  }
+  return res.json({
     status: 'ok',
     mode: 'api-gateway-admin-proxy',
-    directusUrl: DirectusAdminClient.getBaseUrl(),
     hasAdminToken: !!DirectusAdminClient.getAdminToken(),
     timestamp: new Date().toISOString(),
   });
@@ -281,19 +290,22 @@ publicRouter.post(
   }
 );
 
-// Assets Proxy (Directly stream uploaded images from Directus storage)
+// Assets Proxy (Directly stream uploaded images from cloud storage)
 publicRouter.get('/assets/:id', async (req, res) => {
   try {
     const { id } = req.params;
-    if (!id) {
-      return res.status(400).send('Asset ID is required');
+    if (!id || !UUID_REGEX.test(id)) {
+      return res.status(400).send('Invalid asset ID');
     }
 
-    const queryString =
-      Object.keys(req.query).length > 0
-        ? `?${new URLSearchParams(req.query as any).toString()}`
-        : '';
-    const directusUrl = `${DirectusAdminClient.getBaseUrl()}/assets/${id}${queryString}`;
+    const safeParams = new URLSearchParams();
+    for (const [key, val] of Object.entries(req.query)) {
+      if (ALLOWED_ASSET_QUERY_KEYS.has(key) && val !== undefined && val !== null) {
+        safeParams.append(key, String(Array.isArray(val) ? val[0] : val));
+      }
+    }
+    const queryString = safeParams.toString() ? `?${safeParams.toString()}` : '';
+    const directusUrl = `${DirectusAdminClient.getBaseUrl()}/assets/${encodeURIComponent(id)}${queryString}`;
     const token = DirectusAdminClient.getAdminToken();
     const headers: Record<string, string> = {};
     if (token) {
@@ -319,7 +331,7 @@ publicRouter.get('/assets/:id', async (req, res) => {
 });
 
 // Feedback Submission Endpoint
-publicRouter.post('/feedback', async (req, res) => {
+publicRouter.post('/feedback', publicWriteRateLimiter, async (req, res) => {
   try {
     const { subject, message, user_id } = req.body;
     if (!subject || !message) {
@@ -355,7 +367,7 @@ publicRouter.post('/feedback', async (req, res) => {
 });
 
 // Public Online Catalog Endpoint
-publicRouter.get('/public-catalog/:slug', async (req, res) => {
+publicRouter.get('/public-catalog/:slug', publicCatalogReadRateLimiter, async (req, res) => {
   try {
     const { slug } = req.params;
     if (!slug) {
@@ -438,7 +450,7 @@ publicRouter.get('/public-catalog/:slug', async (req, res) => {
 });
 
 // Public Catalog Customer Inquiry Submission
-publicRouter.post('/public-catalog/inquiry', async (req, res) => {
+publicRouter.post('/public-catalog/inquiry', publicWriteRateLimiter, async (req, res) => {
   try {
     const { organization_id, product_id, product_title, size_name, customer_name, customer_phone, note } = req.body;
     if (!customer_phone) {

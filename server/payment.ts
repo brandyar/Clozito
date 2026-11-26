@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import Stripe from 'stripe';
 import { DirectusAdminClient } from './directusAdmin';
+import { SERVER_CONFIG, sanitizeOriginUrl } from './config';
 import { requireAuth, AuthenticatedRequest, getUserOrganizations, invalidateUserCaches } from './auth';
 import { generateLicenseTokenString } from '../src/utils/license';
 import {
@@ -143,14 +144,17 @@ async function getStripeClient(forceRefresh = false): Promise<Stripe | null> {
  * Never trusts arbitrary client-supplied redirect URLs.
  */
 function getAppOrigin(req: Request): string {
-  const configured = (process.env.APP_URL || '').trim().replace(/\/+$/, '');
-  if (configured && /^https?:\/\//i.test(configured)) {
+  const configured = sanitizeOriginUrl(process.env.APP_URL);
+  if (configured) {
     return configured;
   }
   const protoHeader = req.headers['x-forwarded-proto'];
-  const proto = Array.isArray(protoHeader) ? protoHeader[0] : protoHeader || req.protocol || 'http';
-  const host = req.get('host') || 'localhost:3000';
-  return `${proto}://${host}`;
+  const proto = Array.isArray(protoHeader) ? protoHeader[0] : protoHeader || req.protocol || 'https';
+  const host = req.get('host');
+  if (host) {
+    return `${proto}://${host}`;
+  }
+  return SERVER_CONFIG.appUrl;
 }
 
 /**

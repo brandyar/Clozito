@@ -1,5 +1,5 @@
 /**
- * TANKHOR (تن‌خور) - Android Resource & Configuration Synchronization Helper
+ * Clozito — Android Resource & Configuration Synchronization Helper
  * Automatically copies high-resolution branded icons and configures Universal APK generation.
  */
 const fs = require('fs');
@@ -122,7 +122,7 @@ function syncAndroidResources() {
   if (!fs.existsSync(ICONS_SRC_DIR)) {
     console.warn('[Android Sync] Source icons directory not found:', ICONS_SRC_DIR);
   } else if (fs.existsSync(ANDROID_RES_DIR)) {
-    console.log('[Android Sync] Syncing Tankhor custom icons to Android res directory...');
+    console.log('[Android Sync] Syncing Clozito custom icons to Android res directory...');
     copyDirRecursive(ICONS_SRC_DIR, ANDROID_RES_DIR);
     console.log('[Android Sync] Successfully synchronized all Android launcher icons!');
   }

@@ -35,6 +35,18 @@ export interface ImportOrdersResult {
   error?: string;
 }
 
+function getWooCommerceAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    Accept: 'application/json',
+  };
+  const token = directusClient.getToken();
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
+
 export async function testWooCommerceConnection(params: {
   site_url: string;
   consumer_key: string;
@@ -45,10 +57,7 @@ export async function testWooCommerceConnection(params: {
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
+    headers: getWooCommerceAuthHeaders(),
     body: JSON.stringify(params),
   });
 
@@ -68,10 +77,7 @@ export async function syncStockToWooCommerce(params: {
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
+    headers: getWooCommerceAuthHeaders(),
     body: JSON.stringify(params),
   });
 
@@ -90,10 +96,7 @@ export async function syncPricesToWooCommerce(params: {
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
+    headers: getWooCommerceAuthHeaders(),
     body: JSON.stringify(params),
   });
 
@@ -114,10 +117,7 @@ export async function importOrdersFromWooCommerce(params: {
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'application/json',
-    },
+    headers: getWooCommerceAuthHeaders(),
     body: JSON.stringify(params),
   });
 

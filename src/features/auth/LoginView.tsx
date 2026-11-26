@@ -3,7 +3,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useTranslation } from '../../i18n';
 import { BRAND } from '../../config/brand';
 import { Button } from '../../components/ui/Button';
-import { Lock, Mail, ShieldCheck, Eye, EyeOff, AlertCircle, Shirt, User as UserIcon, Phone, Building2 } from 'lucide-react';
+import { Lock, Mail, ShieldCheck, Eye, EyeOff, AlertCircle, User as UserIcon, Phone, Building2 } from 'lucide-react';
 import { AuthLanguageDropdown } from './AuthLanguageDropdown';
 import { LegalModal } from '../legal/LegalDocumentView';
 import { LegalDocType } from '../legal/legalContent';
@@ -100,8 +100,17 @@ export const LoginView: React.FC<LoginViewProps> = ({ onSuccess }) => {
       <div className="w-full max-w-md space-y-6">
         {/* Brand Title */}
         <div className="text-center space-y-2">
-          <div className="inline-flex items-center justify-center w-14 h-14 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 shadow-md">
-            <Shirt className="w-7 h-7" />
+          <div className="inline-flex items-center justify-center w-14 h-14">
+            <img
+              src={BRAND.logoDark}
+              alt={BRAND.name}
+              className="w-14 h-14 object-contain block dark:hidden drop-shadow-sm"
+            />
+            <img
+              src={BRAND.logoLight}
+              alt={BRAND.name}
+              className="w-14 h-14 object-contain hidden dark:block drop-shadow-sm"
+            />
           </div>
           <h1 className="text-2xl font-black text-neutral-900 dark:text-neutral-100 tracking-tight">
             {t('auth.loginTitle')}

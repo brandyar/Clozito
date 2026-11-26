@@ -1,5 +1,7 @@
 import express, { Request, Response, Router } from 'express';
 import { DirectusAdminClient } from './directusAdmin';
+import { requireAuth, AuthenticatedRequest, getUserOrganizations } from './auth';
+import { validateExternalStoreUrl, webhookRateLimiter } from './security';
 
 export const woocommerceRouter: Router = express.Router();
 
@@ -9,25 +11,27 @@ interface WcCredentials {
   consumerSecret: string;
 }
 
-function sanitizeUrl(rawUrl?: string): string {
-  if (!rawUrl || typeof rawUrl !== 'string') return '';
-  let trimmed = rawUrl.trim().replace(/\/+$/, '');
-  if (!trimmed.startsWith('http://') && !trimmed.startsWith('https://')) {
-    trimmed = `https://${trimmed}`;
-  }
-  return trimmed;
-}
-
 function getAuthHeader(consumerKey: string, consumerSecret: string): string {
   const credentials = `${consumerKey.trim()}:${consumerSecret.trim()}`;
   return `Basic ${Buffer.from(credentials).toString('base64')}`;
+}
+
+async function verifyUserOrgAccess(req: AuthenticatedRequest, orgId: number): Promise<boolean> {
+  if (!req.user?.userId || !orgId || orgId <= 0) return false;
+  if (Number(req.user.organizationId) === orgId) return true;
+  try {
+    const { organizations } = await getUserOrganizations(req.user.userId);
+    return Array.isArray(organizations) && organizations.some((o: any) => Number(o.id) === orgId);
+  } catch {
+    return false;
+  }
 }
 
 /**
  * 1. Test Connection Endpoint
  * POST /api/woocommerce/test-connection
  */
-woocommerceRouter.post('/test-connection', async (req: Request, res: Response) => {
+woocommerceRouter.post('/test-connection', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { site_url, consumer_key, consumer_secret } = req.body;
 
@@ -38,7 +42,14 @@ woocommerceRouter.post('/test-connection', async (req: Request, res: Response) =
       });
     }
 
-    const cleanUrl = sanitizeUrl(site_url);
+    const urlCheck = validateExternalStoreUrl(site_url);
+    if (!urlCheck.valid || !urlCheck.url) {
+      return res.status(400).json({
+        success: false,
+        error: urlCheck.error || 'Invalid WooCommerce store URL.',
+      });
+    }
+    const cleanUrl = urlCheck.url;
     const authHeader = getAuthHeader(consumer_key, consumer_secret);
 
     // Call WooCommerce REST API: try /wp-json/wc/v3/system_status or fallback to /wp-json/wc/v3/products
@@ -47,7 +58,7 @@ woocommerceRouter.post('/test-connection', async (req: Request, res: Response) =
       headers: {
         Authorization: authHeader,
         Accept: 'application/json',
-        'User-Agent': 'Tankhor-BFF-Proxy/1.0',
+        'User-Agent': 'Clozito-BFF-Proxy/1.0',
       },
     }).catch(() => null);
 
@@ -108,7 +119,7 @@ woocommerceRouter.post('/test-connection', async (req: Request, res: Response) =
  * 2. Sync Stock to WooCommerce
  * POST /api/woocommerce/sync-stock
  */
-woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
+woocommerceRouter.post('/sync-stock', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { organization_id, warehouse_id, site_url, consumer_key, consumer_secret } = req.body;
 
@@ -120,10 +131,18 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
     }
 
     const orgIdNum = Number(organization_id);
-    const cleanUrl = sanitizeUrl(site_url);
+    if (!(await verifyUserOrgAccess(req, orgIdNum))) {
+      return res.status(403).json({ success: false, error: 'Unauthorized organization access.' });
+    }
+
+    const urlCheck = validateExternalStoreUrl(site_url);
+    if (!urlCheck.valid || !urlCheck.url) {
+      return res.status(400).json({ success: false, error: urlCheck.error || 'Invalid WooCommerce store URL.' });
+    }
+    const cleanUrl = urlCheck.url;
     const authHeader = getAuthHeader(consumer_key, consumer_secret);
 
-    // Fetch Tankhor variants
+    // Fetch Clozito variants
     const variants = await DirectusAdminClient.getItems('product_variants', {
       filter: { organization_id: { _eq: orgIdNum } },
       fields: ['id', 'product_id', 'sku', 'barcode', 'title', 'price'],
@@ -290,7 +309,7 @@ woocommerceRouter.post('/sync-stock', async (req: Request, res: Response) => {
  * 3. Sync Prices to WooCommerce
  * POST /api/woocommerce/sync-prices
  */
-woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
+woocommerceRouter.post('/sync-prices', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { organization_id, site_url, consumer_key, consumer_secret } = req.body;
 
@@ -302,7 +321,15 @@ woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
     }
 
     const orgIdNum = Number(organization_id);
-    const cleanUrl = sanitizeUrl(site_url);
+    if (!(await verifyUserOrgAccess(req, orgIdNum))) {
+      return res.status(403).json({ success: false, error: 'Unauthorized organization access.' });
+    }
+
+    const urlCheck = validateExternalStoreUrl(site_url);
+    if (!urlCheck.valid || !urlCheck.url) {
+      return res.status(400).json({ success: false, error: urlCheck.error || 'Invalid WooCommerce store URL.' });
+    }
+    const cleanUrl = urlCheck.url;
     const authHeader = getAuthHeader(consumer_key, consumer_secret);
 
     // Fetch variants
@@ -421,7 +448,7 @@ woocommerceRouter.post('/sync-prices', async (req: Request, res: Response) => {
  * 4. Import Orders from WooCommerce
  * POST /api/woocommerce/import-orders
  */
-woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => {
+woocommerceRouter.post('/import-orders', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { organization_id, warehouse_id, financial_account_id, site_url, consumer_key, consumer_secret } = req.body;
 
@@ -433,7 +460,15 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
     }
 
     const orgIdNum = Number(organization_id);
-    const cleanUrl = sanitizeUrl(site_url);
+    if (!(await verifyUserOrgAccess(req, orgIdNum))) {
+      return res.status(403).json({ success: false, error: 'Unauthorized organization access.' });
+    }
+
+    const urlCheck = validateExternalStoreUrl(site_url);
+    if (!urlCheck.valid || !urlCheck.url) {
+      return res.status(400).json({ success: false, error: urlCheck.error || 'Invalid WooCommerce store URL.' });
+    }
+    const cleanUrl = urlCheck.url;
     const authHeader = getAuthHeader(consumer_key, consumer_secret);
 
     // Fetch orders from WooCommerce: processing, on-hold, pending
@@ -461,7 +496,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
       });
     }
 
-    // Check existing orders in Tankhor for this organization
+    // Check existing orders in Clozito for this organization
     const existingOrders = await DirectusAdminClient.getItems('orders', {
       filter: { organization_id: { _eq: orgIdNum } },
       fields: ['id', 'order_number', 'notes'],
@@ -479,7 +514,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
       }
     }
 
-    // Fetch Tankhor variants to match SKUs
+    // Fetch Clozito variants to match SKUs
     const variants = await DirectusAdminClient.getItems('product_variants', {
       filter: { organization_id: { _eq: orgIdNum } },
       fields: ['id', 'product_id', 'sku', 'barcode', 'title', 'price'],
@@ -729,7 +764,7 @@ woocommerceRouter.post('/import-orders', async (req: Request, res: Response) => 
  * 5. Incoming Webhook Receiver for WooCommerce
  * POST /api/woocommerce/webhook
  */
-woocommerceRouter.post('/webhook', async (req: Request, res: Response) => {
+woocommerceRouter.post('/webhook', webhookRateLimiter, async (req: Request, res: Response) => {
   try {
     const topic = req.headers['x-wc-webhook-topic'] as string;
     const body = req.body;

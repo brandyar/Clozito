@@ -108,17 +108,16 @@
 
 هدف: آماده شدن نهایی برای انتشار عمومی (Public Launch) روی وب و دسکتاپ.
 
-- [ ] **متمرکز کردن تمام URLها و حذف کامل دامنه‌های قدیمی:**
-  - انتقال تمام آدرس‌های `api.tankhor.com`، `my.tankhor.com` و `dl.tankhor.com` به کانفیگ مرکزی (`brand.ts` و متغیرهای محیطی `.env`).
-- [ ] **نهایی‌سازی نام برند و هویت بصری:**
-  - جایگزینی نهایی لوگوها (`/public/logo-light.png`, `/public/logo-dark.png`, `/public/favicon.png`) و آیکن‌های دسکتاپ/اندروید پس از تثبیت نام نهایی برند.
-- [ ] **به‌روزرسانی کامل اپلیکیشن دسکتاپ (Tauri) و پایپ‌لاین انتشار:**
-  - اصلاح `src-tauri/tauri.conf.json` (`productName`, `identifier`, عنوان پنجره، توضیحات، لینک‌های updater و ریپازیتوری جدید)، `src-tauri/Cargo.toml`، `package.json` و `latest.json`.
-  - تست بیلد و آپدیت خودکار روی Windows (NSIS) و macOS (DMG).
-- [ ] **سخت‌گیری امنیتی سرور Production:**
-  - محدود کردن `CORS` از `*` به دامنه‌های رسمی تولید.
-  - افزودن Rate Limiting روی مسیرهای احراز هویت (`/api/auth/login`, `/api/auth/register`, بازیابی رمز) و کاتالوگ عمومی.
-  - چک نهایی هدرهای امنیتی (HTTPS، CSP و جلوگیری از نشت اطلاعات حساس در پاسخ خطاها).
+- [x] **متمرکز کردن تمام URLها و حذف کامل دامنه‌های قدیمی:**
+  - انتقال تمام آدرس‌های `api.tankhor.com`، `my.tankhor.com` و `dl.tankhor.com` به کانفیگ مرکزی (`src/config/brand.ts`، `server/config.ts` و متغیرهای محیطی `.env.example`) با دامنه رسمی اپلیکیشن **`https://app.clozito.com`**.
+- [x] **نهایی‌سازی نام برند و هویت بصری:**
+  - جایگزینی نهایی لوگوها (`/public/logo-light.png`, `/public/logo-dark.png`, `/public/favicon.png`) و آیکن‌های دسکتاپ/اندروید (از پیش انجام شده) و یکسان‌سازی متادیتای برند **Clozito**.
+- [x] **به‌روزرسانی کامل اپلیکیشن دسکتاپ (Tauri) و پایپ‌لاین انتشار:**
+  - اصلاح `src-tauri/tauri.conf.json` (`productName: Clozito`, `identifier: com.clozito.app`, عنوان پنجره، توضیحات، لینک‌های updater به `dl.clozito.com` و ریپازیتوری `clozito/clozito-app`)، `src-tauri/Cargo.toml` (`clozito_lib`)، `src-tauri/src/main.rs`، `package.json`، `latest.json`، `assets/latest.json` و `.github/workflows/release-tauri.yml`.
+- [x] **سخت‌گیری امنیتی سرور Production (`server/security.ts`):**
+  - محدود کردن `CORS` از `*` به دامنه‌های رسمی تولید (`https://app.clozito.com`، `https://clozito.com`، `ALLOWED_ORIGINS` و originهای رسمی Tauri).
+  - افزودن Rate Limiting روی مسیرهای احراز هویت (`/api/auth/login`, `/api/auth/register`, `/api/auth/refresh`, `/api/auth/gdpr/delete-account`)، وب‌هوک و کاتالوگ عمومی (`/api/public-catalog/*`, `/api/feedback`).
+  - اعمال هدرهای امنیتی (HSTS، CSP، `X-Content-Type-Options`، `Referrer-Policy`، `Permissions-Policy`، حذف `X-Powered-By`)، حذف رمز JWT پیش‌فرض و مسیر `jwt.decode` ناامن، افزودن محافظت SSRF روی WooCommerce، اعتبارسنجی UUID روی `/api/assets/:id` و پاک‌سازی خطاهای حساس 5xx در Production.
 
 ---
 

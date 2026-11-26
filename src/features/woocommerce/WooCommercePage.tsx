@@ -20,7 +20,7 @@ import { Input } from '../../components/ui/Input';
 import { Badge } from '../../components/ui/Badge';
 import { ModuleLockedCard } from '../../components/modules/ModuleLockedCard';
 import { formatCurrency, formatDate, resolveCurrencyCode } from '../../utils/formatters';
-import { BRAND } from '../../config/brand';
+import { BRAND, getPublicAppOrigin } from '../../config/brand';
 import {
   Globe,
   RefreshCw,
@@ -104,10 +104,8 @@ export const WooCommercePage: React.FC<WooCommercePageProps> = ({
 
   const activeOrgId = activeOrganization?.id ? Number(activeOrganization.id) : 1;
 
-  // Webhook URL
-  const webhookUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/api/woocommerce/webhook?org_id=${activeOrgId}`
-    : `${BRAND.websiteUrl}/api/woocommerce/webhook?org_id=${activeOrgId}`;
+  // Webhook URL (uses live web origin or https://app.clozito.com on desktop)
+  const webhookUrl = `${getPublicAppOrigin()}/api/woocommerce/webhook?org_id=${activeOrgId}`;
 
   // Load initial data
   const loadData = async () => {

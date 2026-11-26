@@ -181,8 +181,17 @@ export const WebFreePlanGuardModal: React.FC = () => {
         <div className="p-5 sm:p-8 md:p-10 border-b border-slate-100 dark:border-neutral-800/80 bg-slate-50/50 dark:bg-[#161922]/50">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 mb-3 sm:mb-4">
             <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-2xl bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 flex items-center justify-center font-black text-lg shadow-sm shrink-0">
-                {BRAND.name[0]}
+              <div className="w-10 h-10 flex items-center justify-center shrink-0">
+                <img
+                  src={BRAND.logoDark}
+                  alt={BRAND.name}
+                  className="w-10 h-10 object-contain block dark:hidden"
+                />
+                <img
+                  src={BRAND.logoLight}
+                  alt={BRAND.name}
+                  className="w-10 h-10 object-contain hidden dark:block"
+                />
               </div>
               <div>
                 <h1 className="text-lg sm:text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">

@@ -3,8 +3,23 @@
  * Update this single file to rename the platform or adjust default European/global settings.
  */
 
+const metaEnv: Record<string, string | undefined> =
+  typeof import.meta !== 'undefined' && (import.meta as any).env
+    ? (import.meta as any).env
+    : {};
+
+const trimTrailingSlash = (url: string) => url.replace(/\/+$/, '');
+
+const APP_URL = trimTrailingSlash(metaEnv.VITE_APP_URL || 'https://app.clozito.com');
+const WEBSITE_URL = trimTrailingSlash(metaEnv.VITE_WEBSITE_URL || 'https://clozito.com');
+const API_GATEWAY_URL = trimTrailingSlash(
+  metaEnv.VITE_GATEWAY_URL || metaEnv.VITE_API_URL || `${APP_URL}/api`
+);
+const DIRECTUS_API_URL = trimTrailingSlash(metaEnv.VITE_DIRECTUS_URL || 'https://api.clozito.com');
+const DOWNLOADS_URL = trimTrailingSlash(metaEnv.VITE_DOWNLOADS_URL || 'https://dl.clozito.com');
+
 export const BRAND = {
-  /** Provisional brand name — change here to rename across the UI */
+  /** Official brand name */
   name: 'Clozito',
   /** Short uppercase identifier for print headers, invoices, and SKUs */
   shortName: 'CLOZITO',
@@ -14,7 +29,15 @@ export const BRAND = {
   taglineIt: 'Piattaforma di Gestione Abbigliamento, Magazzino e Produzione',
   /** Contact & support info */
   supportEmail: 'support@clozito.com',
-  websiteUrl: 'https://clozito.com',
+  websiteUrl: WEBSITE_URL,
+  /** Official web application domain */
+  appUrl: APP_URL,
+  /** Official BFF API Gateway base URL (used by desktop & mobile clients) */
+  apiGatewayUrl: API_GATEWAY_URL,
+  /** Direct cloud API URL (centralized, configurable via VITE_DIRECTUS_URL) */
+  directusApiUrl: DIRECTUS_API_URL,
+  /** Official desktop & mobile downloads CDN */
+  downloadsUrl: DOWNLOADS_URL,
   /** Default regional configuration */
   defaultLocale: 'en' as const,
   defaultCurrency: 'EUR' as const,
@@ -22,7 +45,32 @@ export const BRAND = {
   defaultVatRate: 22,
   /** License token prefix (legacy tokens remain supported for verification) */
   licensePrefix: 'CLZ1_',
+  /** Brand logo assets */
+  logoDark: '/logo-dark.png',
+  logoLight: '/logo-light.png',
+  favicon: '/favicon.png',
 } as const;
+
+/**
+ * Returns the public HTTP(S) application origin suitable for shareable links
+ * (Digital Catalog, QR codes, WooCommerce webhooks).
+ * Automatically falls back to BRAND.appUrl (https://app.clozito.com) in Tauri desktop/mobile WebViews.
+ */
+export function getPublicAppOrigin(): string {
+  if (typeof window !== 'undefined' && window.location) {
+    const { protocol, hostname, origin } = window.location;
+    const isTauriWebView =
+      protocol.includes('tauri') ||
+      hostname === 'tauri.localhost' ||
+      Boolean((window as any).__TAURI__) ||
+      Boolean((window as any).__TAURI_INTERNALS__);
+
+    if (!isTauriWebView && (protocol === 'https:' || protocol === 'http:') && origin) {
+      return trimTrailingSlash(origin);
+    }
+  }
+  return BRAND.appUrl;
+}
 
 export const SUPPORTED_CURRENCIES = [
   { code: 'EUR', symbol: '€', labelEn: 'Euro (€)', labelIt: 'Euro (€)' },

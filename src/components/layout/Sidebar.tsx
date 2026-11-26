@@ -635,7 +635,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <img
                 src="/logo-light.png"
                 alt={t('common.appName')}
-                className="w-8 h-8 rounded-lg object-contain shrink-0"
+                className="w-8 h-8 object-contain shrink-0"
                 onError={(e) => {
                   (e.target as HTMLElement).style.display = 'none';
                 }}
@@ -658,7 +658,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               <img
                 src="/logo-light.png"
                 alt={t('common.appName')}
-                className="w-8 h-8 rounded-lg object-contain shrink-0 transition-transform group-hover:scale-105"
+                className="w-8 h-8 object-contain shrink-0 transition-transform group-hover:scale-105"
               />
             </button>
           )}

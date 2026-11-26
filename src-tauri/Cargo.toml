@@ -1,12 +1,12 @@
 [package]
-name = "tankhor"
+name = "clozito"
 version = "1.2.2"
-description = "TANKHOR (تن‌خور) - نرم‌افزار مدیریت پوشاک و انبارداری"
-authors = ["TANKHOR Team"]
+description = "Clozito — Apparel, Inventory & Production Management Platform"
+authors = ["Clozito Team"]
 edition = "2021"
 
 [lib]
-name = "tankhor_lib"
+name = "clozito_lib"
 crate-type = ["staticlib", "cdylib", "rlib"]
 
 [build-dependencies]

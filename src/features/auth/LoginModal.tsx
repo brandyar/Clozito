@@ -181,9 +181,11 @@ export const LoginModal: React.FC = () => {
         {/* Top Feature Banner */}
         <div className="p-3 bg-neutral-900 text-white rounded-xl flex items-center justify-between gap-3 shadow-sm">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-white/10 p-1 flex items-center justify-center shrink-0 border border-white/20">
-              <img src="/favicon.png" alt={BRAND.name} className="w-full h-full object-contain" />
-            </div>
+            <img
+              src={BRAND.logoLight}
+              alt={BRAND.name}
+              className="w-9 h-9 object-contain shrink-0"
+            />
             <div>
               <p className="font-bold text-xs">{BRAND.name}</p>
               <p className="text-[10px] text-neutral-400 font-mono">{locale === 'it' ? BRAND.taglineIt : BRAND.taglineEn}</p>

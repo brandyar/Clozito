@@ -32,7 +32,7 @@ import { ModuleLockedCard } from '../../components/modules/ModuleLockedCard';
 import { formatCurrency, resolveCurrencyCode } from '../../utils/formatters';
 import { PublicCatalogView } from './public/PublicCatalogView';
 import { recommendSize, FitPreference } from './engine/sizeRecommendationEngine';
-import { BRAND } from '../../config/brand';
+import { BRAND, getPublicAppOrigin } from '../../config/brand';
 
 interface OnlineCatalogAdminViewProps {
   initialTab?: 'overview' | 'products' | 'size-engine';
@@ -93,9 +93,7 @@ export const OnlineCatalogAdminView: React.FC<OnlineCatalogAdminViewProps> = ({
   const [simMeasValues, setSimMeasValues] = useState<Record<number, number>>({});
   const [simFit, setSimFit] = useState<FitPreference>('regular');
 
-  const publicUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}/c/${activeOrganization?.slug || activeOrganization?.id || 'demo'}`
-    : `${BRAND.websiteUrl}/c/${activeOrganization?.slug || 'store'}`;
+  const publicUrl = `${getPublicAppOrigin()}/c/${activeOrganization?.slug || activeOrganization?.id || 'store'}`;
 
   // Load store data
   useEffect(() => {
